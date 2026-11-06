@@ -75,6 +75,8 @@ import {
   selectSkillLibraryRevisionMetadataBatch,
   selectSkillLibraryRevisionManifestsBatch,
 } from "../skills/library/selection-read.kernel.js";
+import { isManagedTaskFlowReadCommand } from "../tasks/managed-task-flow-contract.js";
+import { executeManagedTaskFlowReadCommand } from "../tasks/managed-task-flow.worker.js";
 import { isTuiLastSessionReadCommand } from "../tui/tui-last-session.contract.js";
 import { readTuiLastSessionCommand } from "../tui/tui-last-session.kernel.js";
 import { readAgentDatabaseDeletionWorkerSnapshot } from "./agent-deletion-journal.snapshot.worker.js";
@@ -135,6 +137,12 @@ export function readOpenClawStateDatabaseCommand(
   >,
   metadataRead: ReturnType<typeof prepareAcpSessionMetadataRead> | undefined,
 ): OpenClawStateReadResult {
+  if (isManagedTaskFlowReadCommand(command)) {
+    return {
+      type: command.type,
+      value: executeManagedTaskFlowReadCommand({ db, path: input.databasePath }, command),
+    };
+  }
   if (command.type === "claws.packageOwnership") {
     const install =
       command.agentId === undefined

@@ -10,6 +10,10 @@
     "schemaVersions": {
       "state": 22,
       "agent": 27
+    },
+    "npmVendorBackport": {
+      "proof": "patches/npm-12.2.1.glob-cancellation.proof.json",
+      "patch": "patches/npm@12.2.1.patch"
     }
   },
   "description": "Multi-channel AI gateway with extensible messaging integrations",
@@ -2286,7 +2290,8 @@
     "verify": "node --import ./scripts/tsx.mjs scripts/verify.mts"
   },
   "bundleDependencies": [
-    "chrome-devtools-mcp"
+    "chrome-devtools-mcp",
+    "npm"
   ],
   "dependencies": {
     "@agentclientprotocol/sdk": "1.7.0",
@@ -2336,9 +2341,9 @@
     "jszip": "3.10.2",
     "kysely": "0.29.6",
     "linkedom": "0.18.13",
-    "minimatch": "10.2.6",
+    "minimatch": "11.0.1",
     "node-edge-tts": "1.2.10",
-    "npm": "12.2.0",
+    "npm": "12.2.1",
     "openai": "7.28.0",
     "p-limit": "7.3.3",
     "p-map": "7.0.8",
@@ -2356,7 +2361,7 @@
     "web-tree-sitter": "0.27.0",
     "ws": "8.22.0",
     "yaml": "2.9.1",
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@a2ui/lit": "0.12.0",
@@ -2395,7 +2400,7 @@
     "jsdom": "30.1.1",
     "lit": "3.3.3",
     "lit-analyzer": "2.0.3",
-    "markdown-it": "15.0.2",
+    "markdown-it": "15.0.3",
     "markdown-it-anchor": "10.0.0",
     "marked": "18.1.0",
     "minipass": "7.1.3",
@@ -2420,7 +2425,7 @@
     "tsx": "4.23.15",
     "typescript": "7.1.0-dev.20260922.1",
     "unrun": "0.3.1",
-    "vite": "8.3.2",
+    "vite": "8.3.3",
     "vitest": "5.0.5"
   },
   "optionalDependencies": {

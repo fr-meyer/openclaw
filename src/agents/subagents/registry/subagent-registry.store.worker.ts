@@ -1,6 +1,10 @@
 import { readAcpSessionControlInWorker } from "../../../acp/runtime/session-meta-source.worker.js";
 import { requestSessionEntryCurrentAdmission } from "../../../config/sessions/session-entry-current-admission.worker.js";
-import { getNodeSqliteKysely, iterateSqliteQuerySync } from "../../../infra/kysely-sync.js";
+import {
+  executeSqliteQuerySync,
+  getNodeSqliteKysely,
+  iterateSqliteQuerySync,
+} from "../../../infra/kysely-sync.js";
 import { isPostgresSqlConnection, type EngineConnection } from "../../../infra/sql-connection.js";
 import { isSqliteCorruptionError } from "../../../infra/sqlite-error-diagnostics.js";
 import { throwSqliteLifecycleErrors } from "../../../infra/sqlite-lifecycle-errors.js";
@@ -32,6 +36,10 @@ import type {
   OpenClawStateReadResult,
   OpenClawStateReadRequest,
 } from "../../../state/openclaw-state-read.types.js";
+import {
+  assertManagedFlowNativeKillClaimInWorker,
+  bindManagedFlowNativeLaunchInWorker,
+} from "../../../tasks/managed-task-flow-kill-claim.worker.js";
 import { rowToSubagentRunRecord } from "./subagent-registry.store.codec.js";
 import { writeSubagentRunValuesInDatabase } from "./subagent-registry.store.kernel.js";
 import {
@@ -159,11 +167,67 @@ export function persistSubagentRunChangesInWorker(
   input: SubagentRegistryWrite,
   writeOptions: OpenClawStateDatabaseOptions & { database: OpenClawStateDatabase },
 ): SubagentRegistryWriteReceipt {
-  const { writeId, values, deleteRunIds, terminalEvents = [] } = input;
+  const {
+    writeId,
+    values,
+    deleteRunIds,
+    terminalEvents = [],
+    managedFlowKillClaim,
+    managedFlowLaunchClaim,
+  } = input;
   let committedReceipt: SubagentRegistryWriteReceipt | undefined;
   try {
     return runOpenClawStateWriteTransaction((writer): SubagentRegistryWriteReceipt => {
       requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: writeId });
+      if (managedFlowLaunchClaim) {
+        if (values.length !== 1 || deleteRunIds.length !== 0) {
+          throw new Error("Managed flow launch admission must register one exact native run");
+        }
+        const proposed = rowToSubagentRunRecord(values[0]!);
+        if (
+          !proposed ||
+          executeSqliteQuerySync(
+            writer.db,
+            getNodeSqliteKysely<Pick<OpenClawStateKyselyDatabase, "subagent_runs">>(writer.db)
+              .selectFrom("subagent_runs")
+              .select("run_id")
+              .where("run_id", "=", proposed.runId),
+          ).rows.length !== 0 ||
+          proposed.childSessionKey !== managedFlowLaunchClaim.childSessionKey ||
+          proposed.requesterSessionKey !== managedFlowLaunchClaim.ownerKey ||
+          proposed.controllerSessionKey !== managedFlowLaunchClaim.ownerKey ||
+          proposed.label !== `plugin:${managedFlowLaunchClaim.controllerId.replace(/\/v1$/, "")}` ||
+          proposed.expectsCompletionMessage !== false
+        ) {
+          throw new Error("Managed flow launch admission does not own this native row");
+        }
+        bindManagedFlowNativeLaunchInWorker(
+          writer,
+          managedFlowLaunchClaim,
+          proposed.runId,
+          proposed.generation!,
+        );
+      }
+      if (managedFlowKillClaim) {
+        if (
+          values.length !== 1 ||
+          deleteRunIds.length !== 0 ||
+          values[0]?.run_id !== managedFlowKillClaim.runId
+        ) {
+          throw new Error("Managed flow kill admission must write only its exact native root");
+        }
+        const proposed = rowToSubagentRunRecord(values[0]!);
+        if (
+          proposed?.killIntent?.reason !== "killed" ||
+          proposed.childSessionKey !== managedFlowKillClaim.childSessionKey ||
+          proposed.runId !== managedFlowKillClaim.runId ||
+          (proposed.taskRunId ?? proposed.runId) !== managedFlowKillClaim.taskId ||
+          proposed.generation !== managedFlowKillClaim.generation
+        ) {
+          throw new Error("Managed flow kill admission has no exact native kill intent");
+        }
+        assertManagedFlowNativeKillClaimInWorker(writer, managedFlowKillClaim);
+      }
       const admitEvents = (stage: "transaction" | "commit") => {
         for (const [eventIndex, event] of terminalEvents.entries()) {
           requestSessionEntryCurrentAdmission(event.sessionEntryCurrentSource, {

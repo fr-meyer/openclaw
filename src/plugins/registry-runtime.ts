@@ -28,6 +28,7 @@ import {
   createScopedPluginChannelRuntime,
 } from "./registry-runtime-channel.js";
 import { createPluginRuntimeFacades } from "./registry-runtime-facades.js";
+import { createPackagedMergeguezTaskFlowProjector } from "./registry-runtime-task-flow.js";
 import type { PluginRegistryState } from "./registry-state.js";
 import type { PluginRecord, PluginRegistry } from "./registry-types.js";
 import {
@@ -174,9 +175,13 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
     let scopedChannelRuntime:
       | { source: PluginRuntime["channel"]; value: PluginRuntime["channel"] }
       | undefined;
+    const projectTasks = createPackagedMergeguezTaskFlowProjector(record);
     const runtime = new Proxy(registryParams.runtime, {
       get(_target, prop, receiver) {
         const getRuntimeProperty = () => readRuntimeProperty(record, prop, receiver);
+        if (prop === "tasks") {
+          return projectTasks(getRuntimeProperty() as PluginRuntime["tasks"]);
+        }
         if (prop === "state") {
           const baseState = getRuntimeProperty();
           return {

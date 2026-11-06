@@ -1,6 +1,7 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
   "src/infra/approval-session-audience.sqlite.test.ts",
+  "src/tasks/managed-task-flow.worker.integration.test.ts",
   "src/sessions/background-session-result.active-turn.test.ts",
   "src/auto-reply/reply/agent-runner-subagent-conflict.test.ts",
   "src/channels/message/ingress-drain.handoff.test.ts",
@@ -924,6 +925,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/state/openclaw-agent-execution.alias.test.ts",
   "src/state/openclaw-agent-execution.close-wedge.test.ts",
   "src/state/openclaw-agent-execution-cleanup.test.ts",
+  "src/state/openclaw-agent-db-lease.exited-owner.test.ts",
   "src/sessions/session-diff-baseline.test.ts",
   "src/sessions/session-state-events.test.ts",
   "src/sessions/session-state-events.ownership.test.ts",
@@ -1334,6 +1336,7 @@ export const databaseWorkerCoreFormerFastKinds = new Map([
   ["src/agents/mcp-oauth-store.test.ts", "unitFast"],
   ["src/node-host/invoke-system-run.test.ts", "unitFastIsolated"],
   ["src/state/openclaw-agent-execution-cleanup.test.ts", "unitFastIsolated"],
+  ["src/state/openclaw-agent-db-lease.exited-owner.test.ts", "unitFastIsolated"],
   ["src/auto-reply/reply/agent-runner-memory.private-transcript.test.ts", "unitFast"],
   ["src/auto-reply/reply/agent-runner-source-identity.test.ts", "unitFast"],
   ["src/auto-reply/reply/body.test.ts", "unitFast"],

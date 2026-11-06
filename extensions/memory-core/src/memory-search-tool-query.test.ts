@@ -48,6 +48,10 @@ it.each(["abort", "session"] as const)("withholds keyword snapshots for %s", asy
     signal: caller.signal,
     onPartialResults: snapshots,
   });
+  const queryOutcome = query.then(
+    () => ({ status: "fulfilled" as const }),
+    (error: unknown) => ({ status: "rejected" as const, error }),
+  );
   try {
     await searchEntered.promise;
     expect(filterMemorySearchHitsBySessionVisibility).toHaveBeenCalledTimes(
@@ -65,6 +69,35 @@ it.each(["abort", "session"] as const)("withholds keyword snapshots for %s", asy
   } finally {
     filtering.resolve([]);
     finishSearch.resolve([]);
-    await query;
+    const outcome = await queryOutcome;
+    expect(filterMemorySearchHitsBySessionVisibility).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: caller.signal }),
+    );
+    if (event === "abort") {
+      expect(outcome).toEqual({ status: "rejected", error: caller.signal.reason });
+    } else {
+      expect(outcome).toEqual({ status: "fulfilled" });
+    }
   }
+});
+
+it("preserves non-cancellation search failures", async () => {
+  const failure = new Error("search backend unavailable");
+  const manager: MemorySearchManager = {
+    search: async () => {
+      throw failure;
+    },
+    status: () => ({ backend: "builtin", provider: "fixture" }),
+    readFile: async () => ({ status: "not_found", path: "", text: "" }),
+    probeEmbeddingAvailability: async () => ({ ok: true }),
+    probeVectorAvailability: async () => false,
+  };
+  await expect(
+    executeMemorySearchToolQuery({
+      initialManager: { manager },
+      query: { text: "keyword", resultLimit: 1, defaultSources: ["memory"] },
+      visibility: { cfg: {}, agentId: "main", sandboxed: false },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toBe(failure);
 });

@@ -21,17 +21,46 @@ const sdkDir = path.dirname(require.resolve("@discord/embedded-app-sdk/package.j
 const tempDirs: string[] = [];
 afterEach(() => cleanupTempDirs(tempDirs));
 
-// The SDK ships its own Zod 3 implementation; a root Zod override cannot repair it.
-// Exercise both shipped entrypoints, not an unrelated root parser.
-type VendorZod = typeof import("zod/v3");
+// The selected SDK patch bridges its shipped parser entrypoints to its actual
+// native Zod dependency. Exercise each exact shipped module format, not an
+// unrelated root parser or a legacy-v3 fallback.
+type VendorZod = typeof import("zod");
+
+async function loadVendorZod(extension: string): Promise<VendorZod> {
+  if (extension === "cjs") {
+    return require(path.join(sdkDir, "output/lib/zod/lib/index.cjs"));
+  }
+  if (extension === "mjs") {
+    return import(pathToFileURL(path.join(sdkDir, "output/lib/zod/lib/index.mjs")).href);
+  }
+  throw new Error("unexpected SDK parser module format");
+}
+
+async function loadSdk(extension: string): Promise<Sdk> {
+  if (extension === "cjs") {
+    return require(path.join(sdkDir, "output/index.cjs"));
+  }
+  if (extension === "mjs") {
+    return import(pathToFileURL(path.join(sdkDir, "output/index.mjs")).href);
+  }
+  throw new Error("unexpected SDK module format");
+}
+
+async function loadSchemas(extension: string): Promise<Schemas> {
+  if (extension === "cjs") {
+    return require(path.join(sdkDir, "output/generated/schemas.cjs"));
+  }
+  if (extension === "mjs") {
+    return import(pathToFileURL(path.join(sdkDir, "output/generated/schemas.mjs")).href);
+  }
+  throw new Error("unexpected SDK schema module format");
+}
 
 describe("Discord SDK security-patched Zod", () => {
   it.each(["mjs", "cjs"])(
     "rejects oversized collections before element/refinement work (%s)",
     async (extension) => {
-      const z = (await import(
-        pathToFileURL(path.join(sdkDir, "output/lib/zod/lib/index." + extension)).href
-      )) as VendorZod;
+      const z = await loadVendorZod(extension);
       for (const asyncMode of [false, true]) {
         for (const kind of ["array-max", "array-length", "set-max", "set-size"]) {
           let elementCalls = 0;
@@ -40,7 +69,7 @@ describe("Discord SDK security-patched Zod", () => {
             elementCalls += 1;
           });
           const collection = kind.startsWith("array") ? z.array(element) : z.set(element);
-          const capped: import("zod/v3").ZodTypeAny = kind.endsWith("max")
+          const capped = kind.endsWith("max")
             ? collection.max(2, "bounded")
             : kind === "array-length"
               ? z.array(element).length(2, "bounded")
@@ -97,9 +126,7 @@ describe("Discord SDK security-patched Zod", () => {
   it.each(["mjs", "cjs"])(
     "retains bounded async parsing and reports aborted union branches (%s)",
     async (extension) => {
-      const z = (await import(
-        pathToFileURL(path.join(sdkDir, "output/lib/zod/lib/index." + extension)).href
-      )) as VendorZod;
+      const z = await loadVendorZod(extension);
       let calls = 0;
       const asynchronousElement = z.string().refine(async () => {
         calls += 1;
@@ -141,12 +168,8 @@ describe("Discord SDK security-patched Zod", () => {
   it.each(["mjs", "cjs"])(
     "preserves authentication and rejects oversized buttons before parsing (%s)",
     async (extension) => {
-      const sdk: Sdk = await import(
-        pathToFileURL(path.join(sdkDir, "output", "index." + extension)).href
-      );
-      const schemas: Schemas = await import(
-        pathToFileURL(path.join(sdkDir, "output/generated/schemas." + extension)).href
-      );
+      const sdk = await loadSdk(extension);
+      const schemas = await loadSchemas(extension);
       expect(sdk.Common.Scopes.parse("identify")).toBe("identify");
       expect(sdk.Common.Scopes.parse("future.scope")).toBe(-1);
       const response = {

@@ -390,6 +390,7 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
           runs: this.options.runs,
           preparedRows,
           context,
+          managedFlowLaunchClaim: options.managedFlowLaunchClaim,
           assertCurrent,
           onPublished: (postimages, planned) => {
             const entry = planned && postimages.get(planned.runId);

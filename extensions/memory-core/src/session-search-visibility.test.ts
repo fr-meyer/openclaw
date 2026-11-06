@@ -1,3 +1,4 @@
+import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import * as engineSessions from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
 // Memory Core tests cover session search visibility plugin behavior.
 import type { MemorySearchResult } from "openclaw/plugin-sdk/memory-core-host-runtime-files";
@@ -46,6 +47,70 @@ describe("filterMemorySearchHitsBySessionVisibility", () => {
     });
     expect(filtered).toStrictEqual([]);
   });
+
+  it("refuses an aborted visibility request before reading session history", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("synthetic visibility cancellation"));
+    await expect(
+      filterMemorySearchHitsBySessionVisibility({
+        cfg: asOpenClawConfig({ tools: { sessions: { visibility: "all" } } }),
+        requesterSessionKey: "agent:main:main",
+        sandboxed: false,
+        hits: [searchHit("memory/allowed.md", "memory", "x")],
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("synthetic visibility cancellation");
+    expect(engineSessions.loadMemorySearchSessionStore).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Error", new Error("synthetic visibility cancellation")],
+    ["string", "synthetic visibility cancellation"],
+  ] as const)(
+    "preserves the exact %s cancellation reason while a guard is pending",
+    async (_kind, reason) => {
+      const guard = vi
+        .spyOn(sessionVisibility, "createSessionVisibilityGuard")
+        .mockImplementationOnce(() => new Promise<never>(() => {}));
+      const controller = new AbortController();
+      const pending = filterMemorySearchHitsBySessionVisibility({
+        cfg: asOpenClawConfig({ tools: { sessions: { visibility: "all" } } }),
+        requesterSessionKey: "agent:main:main",
+        sandboxed: false,
+        hits: [searchHit("sessions/pending.jsonl", "sessions", "x")],
+        signal: controller.signal,
+      });
+      expect(guard).toHaveBeenCalledOnce();
+      controller.abort(reason);
+      await expect(pending).rejects.toBe(reason);
+      expect(engineSessions.loadMemorySearchSessionStore).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["Error", new Error("synthetic pending-store cancellation")],
+    ["string", "synthetic pending-store cancellation"],
+  ] as const)(
+    "preserves the exact %s cancellation reason while the session store is pending",
+    async (_kind, reason) => {
+      const storeEntered = createDeferred<void>();
+      vi.mocked(engineSessions.loadMemorySearchSessionStore).mockImplementationOnce(() => {
+        storeEntered.resolve();
+        return new Promise<never>(() => {});
+      });
+      const controller = new AbortController();
+      const pending = filterMemorySearchHitsBySessionVisibility({
+        cfg: asOpenClawConfig({ tools: { sessions: { visibility: "self" } } }),
+        requesterSessionKey: "agent:main:main",
+        sandboxed: false,
+        hits: [searchHit("sessions/pending.jsonl", "sessions", "x")],
+        signal: controller.signal,
+      });
+      await storeEntered.promise;
+      controller.abort(reason);
+      await expect(pending).rejects.toBe(reason);
+    },
+  );
 
   it.each(["configured"] as const)(
     "does not load session history for memory-only hits with recall corpus %s",

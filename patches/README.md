@@ -1,5 +1,74 @@
 # Temporary dependency patches
 
+## Zod consumer migration
+
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+is repaired without an audit exception. Native Zod consumers use `4.6.6`.
+The exact-version Zod patch also applies the upstream early collection-bound
+behavior to the retained `zod/v3` compatibility parser in its ESM, CommonJS,
+and TypeScript sources. Oversized bounded arrays and sets reject before
+visiting children; valid, minimum-only and unbounded inputs retain their
+existing behavior. The v3 compatibility API remains available for MCP schemas.
+This does not impose a global size limit on unbounded schemas.
+
+`@a2ui/lit@0.12.0` and `@a2ui/web_core@0.12.0` are migrated together to
+native Zod v4, with generated declarations and source maps updated from their
+published TypeScript sources. The version-qualified dependency overrides are
+required in addition to the package patches: changing an installed manifest
+does not select a different dependency graph. Only A2UI's superseded
+`zod-to-json-schema` dependency is removed; MCP and Mistral still use that
+converter, with its declared mixed peer range preserved. Canvas disables Zod's
+JIT capability probe to respect its strict CSP. Public catalog generation and
+binder/reference traversal require their own compatibility regressions; a
+plain Zod-version override is insufficient.
+Function parameter schemas resolve their own local definitions, with the
+existing catalog-document fallback retained. The inherited recursive-component
+and theme reconstruction limits in `Catalog.fromSchema` remain unchanged;
+this patch does not add a general JSON Schema reconstruction engine.
+Recursive function regressions cover legacy capabilities, standalone argument
+schemas, and catalog-level references. Native union diagnostics retain the
+full parent path without mutating the original issues.
+
+`@discord/embedded-app-sdk@2.5.0` replaces both embedded legacy parsers with
+the official native-v4 dependency. Its affected declarations are regenerated
+from upstream tag `v2.5.0`, commit
+`14264eccbf9e68d5d58c1aadbc7579e003e0dce6`. RPC command results,
+unsupported-scope fallback, omitted envelope data and `SDKError` identity remain
+covered by the regression. Raw validation errors use native-v4 `issues` and
+paths; the old Zod `errors` alias is intentionally absent. OpenClaw's Activity
+consumer uses the SDK's constructor, readiness and authorization methods, not
+that alias.
+
+After regeneration, use stock pnpm with the frozen lock and verify the actual
+installed target hashes. pnpm hashes normalized LF patch bytes; package
+integrities and patch hashes are both retained in the lock. Do not edit
+installed dependencies, mask their versions, remove the strict audit, or apply
+a blanket converter override. Docker already copies these patches before its
+frozen dependency installation.
+
+Focused checks after a frozen or isolated installation:
+
+```sh
+node --test test/zod-container-bounds.test.mjs
+node --test test/discord-native-zod-regression.test.mjs
+node --test test/a2ui-native-zod-regression.test.mjs
+node --test test/mcp-nowistay-sdk-regression.test.mjs
+node scripts/run-vitest.mjs run test/scripts/zod-legacy-closure.test.ts test/scripts/check-package-patches.test.ts --maxWorkers=1
+node scripts/pre-commit/pnpm-audit-prod.mjs --audit-level=high
+```
+
+For an isolated installed fixture, `ZOD_TEST_PROJECT`,
+`DISCORD_SDK_TEST_PROJECT`, `A2UI_TEST_PROJECT` and `NOWISTAY_COMPAT_SDK_ROOT` explicitly select
+that installation. They must identify the tested pinned packages, never a
+substitute schema implementation. The A2UI 0.12 regression also requires
+`A2UI_TEST_VALIDATOR_PROJECT` pointing to an installed Ajv 8.20.0 test fixture
+for actual JSON Schema validation; it is not a runtime dependency. These native
+Node tests are explicit prerequisites, outside the TS-only Vitest discovery.
+Remove each temporary patch, its exact
+registration and guard allowance only when a supported upstream consumer
+release passes the corresponding runtime/type, catalog, browser and audit
+checks without it. A passing audit alone does not prove those contracts.
+
 Keep existing insertion anchors when extending these patches: pnpm 12 can apply a zero-context, zero-length insertion one line early. After regeneration and installation, verify installed files against the patch's target blob hashes before testing.
 
 `@awesome.me/webawesome@3.13.0` retains its approved dropdown, submenu, select, tooltip, and animation lifecycle repairs. The dropdown initializes focus after its popup becomes usable, before joining animation cleanup or completion, and preserves a newer composed focus target during popup rendering. Freshly mounted open menus also join the popup's initial anchor resolution before focusing; already anchored menus retain their existing visibility and native occlusion across reopen. Initial-focus handlers can close or disconnect the menu; the existing transition owner fences those reentrant paths before starting an animation. Opening completion never resets a newer item, submenu, or outside focus. Both published distributions carry the same owner. The tooltip trigger handler uses upstream's `containsComposedNode` helper to retain the 3.13 fix for hover across Shadow DOM slots; the port also preserves upstream overflow-tag size and pill styling.
@@ -111,6 +180,16 @@ dependency files manually. A clean `pnpm install --frozen-lockfile` must apply
 the recorded patch hash to the published integrity and reproduce every patched
 target hash above.
 
+The 10.10 integration retains the upstream patch encoding. Its nine target-file
+hunk bodies and ranges match the retained fork 5.0.5 patch exactly; only Git
+`index` metadata and blank separators differ. The target hashes above come from
+the upstream source record, not a fresh installation of this combined candidate.
+The actual API-mode private-file/token denial in
+`test/v108-remediation-security.test.mjs` remains a separate required regression:
+the lifecycle patch must not weaken the upstream HTTP filesystem deny policy or
+substitute for that proof. Regenerated-lock admission, frozen installation,
+installed-target verification and all runtime regressions remain pending.
+
 `baileys@7.0.0-rc14` needs a two-line adapter for `audio-decode@3.12.0`:
 read the first decoded channel from `channelData[0]` and require the matching
 3.x peer. Version 3 returns raw channel arrays instead of an AudioBuffer;
@@ -129,78 +208,37 @@ WhatsApp plugins retain the adapter. Remove this patch and its registration
 when an upstream Baileys version accepts the current decoder and passes the
 same voice-note regression.
 
-## Zod 3.25.76 early collection bounds
+## 10.9 upstream Zod 3 patch and the selected fork graph
 
-zod@3.25.76.patch is a local Zod-3 adaptation of the early upper-size rejection
-behavior in Colin McDonnell's upstream Zod commit
-a0ebf970f2d752e5f58527cd2942ff48be4f46bd (colinhacks/zod#6652).
-It is not an upstream Zod-3 release, a cherry-pick, or an A2UI/Zod-4 migration.
-The implementation changes three branches in each of src/v3/types.ts,
-v3/types.js, and v3/types.cjs: oversized array max/exact length and set max
-return the existing aborted result before visiting elements. Set exact size
-already delegates to max/min. No declaration, export, A2UI source, license or
-Zod-4 implementation is replaced.
-
-This mitigates collection traversal only where an upper bound is declared.
-A2UI 0.12's catalog JSON-schema loader translates maxItems into such a bound;
-0.11's loader does not, so its integration regression instead exercises a
-custom bounded function schema through the public Catalog invoker. This does
-not add protocol-wide message limits or protect unbounded arrays.
-
-An oversized collection now aborts instead of returning dirty: element and
-outer refinements do not run, and a failing union may report invalid_union
-instead of the dirty branch's too_big. Valid transforms, preprocessing,
-lower-bound failures and wrong-type rejection are covered by regressions.
-The exact-version patch also affects other consumers resolving Zod 3.25.76,
-including zod-to-json-schema; the separate parser embedded in Discord's SDK
-and the package's v4 subpath are not changed. No global advisory clearance is
-claimed. Keep source attribution and original copyright notices intact.
-
-Run node --test test/scripts/a2ui-zod-bounds.regression.mjs and the native
-node scripts/run-vitest.mjs run test/scripts/a2ui-zod-bounds.test.ts.
-
-The package-patch guard registers only zod@3.25.76 at
-patches/zod@3.25.76.patch. Other versions, paths and package-local patch
-registrations remain rejected; no guard or blanket exception is disabled.
-Remove this registration and patch when a maintained upstream release retains
-Zod 3 public contracts and passes the same baseline/fixed Catalog regressions,
-public declaration checks and Canvas bundle checks. Independent full-context
-review and required hosted checks still gate readiness.
-
-Patch SHA-256: 2f14d2000a3645bf519c1a1cc4848a71d55185327a9a976a4f033e7d507b727d
-
-`@discord/embedded-app-sdk@2.5.0` vendors Zod 3 in both `output/lib/zod/lib/index.mjs`
-and `index.cjs`; changing the separately installed Zod package does not repair
-the browser SDK. This patch is a local Zod-3 adaptation of the early upper-size
-guard in Colin McDonnell's upstream Zod commit
+Official 10.9 adds `patches/zod@3.25.76.patch`, SHA-256
+`2f14d2000a3645bf519c1a1cc4848a71d55185327a9a976a4f033e7d507b727d`. It is a local Zod-3 adaptation of Colin McDonnell's early
+upper-size rejection in upstream commit
 `a0ebf970f2d752e5f58527cd2942ff48be4f46bd`
-([colinhacks/zod#6652](https://github.com/colinhacks/zod/pull/6652)), referenced by
-[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
-It is not a cherry-pick, a Zod version upgrade, or a claim that all installed
-Zod copies are fixed. Only the bundled array `.max()` / oversized `.length()`
-and set `.max()` / oversized `.size()` branches change: return the existing
-invalid result before iterating elements or invoking outer refinements.
-The bundled Zod-3 map API has no upper-size constraint. Valid values, lower
-limits, individual bound messages, enum fallback handling, declarations, and
-exports stay on the existing API. Early rejection intentionally omits element
-and refinement issues; unions may report an `invalid_union` wrapper rather than
-the previous direct bound issue.
+([colinhacks/zod#6652](https://github.com/colinhacks/zod/pull/6652)), not an
+upstream Zod-3 release or blanket advisory clearance. That source patch and
+its original attribution remain unchanged in this tree.
 
-As checked on 2026-10-29, the maintained SDK stable release is still 2.5.0 and
-3.0.0-beta.3 still depends on Zod 3. Upstream's Zod-4 migration
-([discord/embedded-app-sdk#318](https://github.com/discord/embedded-app-sdk/pull/318),
-authored by `renovate-bot`, head `81e49dfa871e935641d9b9591ed789e837dc89e1`)
-is open, not an available compatible stable fix. This six-branch adapter avoids
-replacing the entire embedded parser and changing the public schema major.
-Remove the patch and its exact-version registration when a published SDK
-passes `test/scripts/discord-sdk-zod.test.ts` without it, including the
-production browser build. Keep the root dependency-advisory disposition
-separate; this patch deliberately does not suppress audit findings.
+This fork selects Zod `4.6.6`, whose exact patch applies the same early-abort
+intent to the retained `zod/v3` compatibility parser in ESM, CommonJS and
+TypeScript. A2UI uses native v4. The Discord SDK's ESM and CommonJS embedded
+parser entrypoints are replaced by external v4 bridges, so the upstream six
+Zod-3 SDK hunks cannot be appended to those removed parser bodies. The
+unchanged selected Discord migration patch is SHA-256
+`571102cd0329706f1c9edf2dd5cd7f50bfcb8c4336809c961e0c12f43760ab87`; it also preserves v4 declarations, scope fallback and RPC behavior
+covered by the existing native SDK regression.
 
-The patch SHA-256 is
-`016b529034315344702f9c7ac79ce5538b0934cf55381229946597b54343fdfd`.
+The retained pre-derivation fork lock contains no `zod@3.25.76` package. The
+workspace therefore does not register an unused Zod-3 patch. The upstream
+source file is retained but dormant; the guard recognizes only its exact
+version/path. CI lock admission must reject a new unpatched Zod-3 resolution,
+not assume this dormant file is applied. A graph requiring it needs explicit
+reviewed registration or a complete compatible migration before qualification.
+Do not use `allowUnusedPatches`, an audit exception or a broad override to hide
+that condition. Successor lock generation and installation remain unrun here.
 
-| Target | Published SHA-256 | Patched SHA-256 |
-| --- | --- | --- |
-| `output/lib/zod/lib/index.mjs` | `3030e5b032805870bb4a8674e36fd916885552832e52c6a0f2465a929ecec231` | `c520fe1f39ce21e24425fdfc49ab7905e23a2be049450eb549649ef87faabe75` |
-| `output/lib/zod/lib/index.cjs` | `feb2389d716ac303c1e7df76df1d7c4c4d7fb35d5aef3456d43718b68cf46aa1` | `a7ad12c2c2f0cf5b5435d7b4232f4c78adc19812ec9c4ddada333518e06cd92a` |
+Keep the container-bound, A2UI, Discord, MCP/converter, runtime/type and strict
+audit regressions listed above. Early rejection changes oversized bounded
+arrays/sets from dirty to aborted before visiting children; valid, unbounded
+and minimum-only behavior must remain. Retaining source adaptations is not
+proof that every installed copy is fixed. CI graph and installed-package
+owners supply that proof.

@@ -8,6 +8,7 @@ import {
   startSessionWorkAdmissionInterruption,
 } from "../../../sessions/session-lifecycle-admission.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
+import type { ManagedFlowNativeKillClaim } from "../../../tasks/managed-task-flow-kill-claim.worker.js";
 import { createAgentRunDirectAbortError } from "../../run-termination.js";
 import { captureSubagentCommands } from "./subagent-control-commands.js";
 import { createSubagentKillAcceptance } from "./subagent-control-kill-acceptance.js";
@@ -53,6 +54,7 @@ export async function mutateSubagentRunForKill(
     session: SubagentKillSession;
     stateContext: OpenClawStateWorkerContext;
     cancellationControl: SubagentCancellationControl;
+    managedFlowKillClaim?: ManagedFlowNativeKillClaim;
     suppressTaskDelivery?: boolean;
     commands?: ReturnType<typeof captureSubagentCommands>;
     beforeSessionKill?: () => boolean | Promise<boolean>;
@@ -128,6 +130,9 @@ export async function mutateSubagentRunForKill(
   if (!initial || !isCurrent()) {
     return { killed: false, superseded: true };
   }
+  if (params.managedFlowKillClaim && resolveSubagentKillTargetState(initial)) {
+    return { killed: false, declined: true };
+  }
   if (resolveSubagentKillTargetState(initial)) {
     let continuationRetired = false;
     if (params.suppressTaskDelivery && initial.requesterSettleWake) {
@@ -180,6 +185,7 @@ export async function mutateSubagentRunForKill(
           sessionLifecycleRevision,
           suppressTaskDelivery: params.suppressTaskDelivery,
           context: stateContext,
+          managedFlowKillClaim: params.managedFlowKillClaim,
           assertCurrent: () => {
             assertState();
             params.cancellationControl.assertCurrent();
@@ -393,6 +399,14 @@ export async function mutateSubagentRunForKill(
             return;
           }
         }
+      }
+      if (params.managedFlowKillClaim && !killClaim) {
+        preparationResult = {
+          killed: false,
+          declined: true,
+          error: "Managed flow cancellation requires a committed exact root kill claim",
+        };
+        return;
       }
       declined = declineRevokedCancellation();
       if (declined) {

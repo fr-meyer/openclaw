@@ -274,7 +274,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: async auth-provider preparation for Codex and voice model-session patches.
       // +1: isHostNoticePayload for agent-to-agent reply filtering.
       // +1: managed plugin resource root retained during redirected agent execution.
-      3761,
+      // +1: retain the fork's CONFIG_MUTATION_CAPABILITIES durable-backup contract.
+      3762,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(

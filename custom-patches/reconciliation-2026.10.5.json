@@ -1,0 +1,940 @@
+{
+  "schema": "openclaw-v105-fork-patch-reconciliation-v1",
+  "method": "Tree relations use exact Git blobs. Source dispositions record semantic owner review; they do not transfer prior qualification or claim image, migration, or rollback proof.",
+  "v99UpstreamBase": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "v99ForkSource": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+  "v105UpstreamCommit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+  "summary": {
+    "paths": 92,
+    "treeRelations": {
+      "FORK_ONLY_NEW": 26,
+      "PATH_REMOVED": 3,
+      "UPSTREAM_CHANGED": 57,
+      "UPSTREAM_UNCHANGED": 6
+    },
+    "dispositions": {
+      "ADAPTED_SOURCE_ONLY": 77,
+      "CARRIED_INERT_SOURCE_ONLY": 6,
+      "CARRIED_SOURCE_ONLY": 2,
+      "RETIRED_REVIEWED": 4,
+      "UPSTREAM_EQUIVALENT_REVIEWED": 3
+    },
+    "upstreamedExact": 0,
+    "retiredReviewed": 7
+  },
+  "paths": [
+    {
+      "path": "Dockerfile",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "1f29e266a14c12da42073fb9ce22d8e0753eb6c7",
+      "v99ForkBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
+      "v105UpstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime. All RUN instructions declare their network mode; the three acquisition steps inherit the executor default while every other RUN stays explicitly offline. Acquire Matrix crypto native assets with official release SHA256 pins and use its supported loopback download mirror during native offline installation, preserving postinstall and native-addon checks."
+    },
+    {
+      "path": "apps/android/app/src/main/java/ai/openclaw/app/gateway/GatewayProtocol.kt",
+      "treeRelation": "PATH_REMOVED",
+      "disposition": "RETIRED_REVIEWED",
+      "v99BaseBlob": "94bf59f76818852356799b73c27ff024b956c16a",
+      "v99ForkBlob": "7c9b12b5f17626d08bd915652f64c1fc8c43b92c",
+      "v105UpstreamBlob": null,
+      "reason": "10.5 removed this tracked generated file. Current prepare-native-protocol.mjs generates the same method enum from core descriptors into the ignored Android build directory; do not restore the old generated owner."
+    },
+    {
+      "path": "apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift",
+      "treeRelation": "PATH_REMOVED",
+      "disposition": "RETIRED_REVIEWED",
+      "v99BaseBlob": "816c0ab06642ec63552de23af8ecdab02e88cd76",
+      "v99ForkBlob": "81aa1da784c6c375481ed874784e63cf49c910ae",
+      "v105UpstreamBlob": null,
+      "reason": "10.5 removed this tracked generated file. Current prepare-native-protocol.mjs generates the request/result models from ProtocolSchemas into the ignored Swift build directory; do not restore the old generated owner."
+    },
+    {
+      "path": "custom-patches/manifest.json",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "b879c4e0716f092cb970c508a72dc12a25db8d62",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "source-binding",
+      "reason": "Replace the 9.9 preparation identity with the exact signed 10.5 tag/commit/tree and current publisher bytes; no prior runtime qualification or production eligibility transfers."
+    },
+    {
+      "path": "docs/cli/gateway/query.md",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "ee2280de14c41844e073dce31903c50cc23cdc06",
+      "v99ForkBlob": "6a717b426a220409ec7a33a2a23bf3e8f06c87f0",
+      "v105UpstreamBlob": "4facce71043695558704c66f7b0606954352489e",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "docs/plugins/sdk-migration/removed-surfaces.md",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "74c10bf78d6806b7bae546db5a4fab50880f4a58",
+      "v99ForkBlob": "4fb575b9285ee7b7c51753c72363cb5c00b3d852",
+      "v105UpstreamBlob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953",
+      "reason": "Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "docs/plugins/sdk-runtime.md",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "86657f69e0ab484505feedfef18610e23ed4103f",
+      "v99ForkBlob": "c0b376cb6bf56637082d635e7ab603d120fa4521",
+      "v105UpstreamBlob": "61ba6b00e9c8250cfd760ffb710628e064826c50",
+      "reason": "Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "docs/plugins/sdk-runtime/background-work.md",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "c62d762588ad1bdd87926919a978cad5932de41d",
+      "v99ForkBlob": "bd8935969aad3366981d3c816a5998cf6bfa542e",
+      "v105UpstreamBlob": "c62d762588ad1bdd87926919a978cad5932de41d",
+      "reason": "Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "d0510b86380407c316563fa69e68ab3950c9189b",
+      "v99ForkBlob": "f128423061c387be867f0c9bce4631a718356b85",
+      "v105UpstreamBlob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7",
+      "semanticOwner": "memory",
+      "reason": "Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately."
+    },
+    {
+      "path": "extensions/memory-core/src/session-search-visibility.test.ts",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2",
+      "v99ForkBlob": "e06dcd3b998722b6983c86444f56d5b9c80944ad",
+      "v105UpstreamBlob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2",
+      "semanticOwner": "memory",
+      "reason": "Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately."
+    },
+    {
+      "path": "extensions/memory-core/src/session-search-visibility.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "fefec3297715f72206a495bae58135825bb66f66",
+      "v99ForkBlob": "d9a6c5ec44529398f85ce652870fd2cb3b32acd7",
+      "v105UpstreamBlob": "f0b00513849428971d76e3cdd7b14220e8f8e229",
+      "semanticOwner": "memory",
+      "reason": "Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately."
+    },
+    {
+      "path": "packages/gateway-protocol/src/core-request-params.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "a49e3de6d92ba932d8a1ca5b08b44a49cab24c1b",
+      "v99ForkBlob": "725efbe791efe73d7d6c427b16f6f30f720d4559",
+      "v105UpstreamBlob": "6b81e88afda0459be8b5f6f2e96825fe56179935",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "packages/gateway-protocol/src/public-schema.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "03fdd28c3b41abdba280b196db7f462aca8ffd7e",
+      "v99ForkBlob": "128f96e6ad3005b35dee5c8a73100770ecf210cc",
+      "v105UpstreamBlob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "packages/gateway-protocol/src/schema/system-info.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "7d666cf5c8447329c7f300f3b4875ae3b8e2c403",
+      "v99ForkBlob": "8ca082f41c4c69dac05ec235714b79bf690f891e",
+      "v105UpstreamBlob": "a0f4a81f35a35dca2f7c2714790f362661bdb776",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "packages/gateway-protocol/src/validator-registry.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "3e2f3ef1bf6338c53ae1d293fcb85a8f422ba075",
+      "v99ForkBlob": "d2b5e119525b2d457a766fb2b3e4c4226998a44f",
+      "v105UpstreamBlob": "8857f8bcddbc320213b43fad5cc46c052a2af441",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "scripts/check-codex-app-server-protocol.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "UPSTREAM_EQUIVALENT_REVIEWED",
+      "v99BaseBlob": "caf7c72e8ebdf22263541df5bdadf9dd7f575492",
+      "v99ForkBlob": "8d8663105a0cbadd3299175071dd03247cde4b81",
+      "v105UpstreamBlob": "90393b0d7ba59855a898308f16bdfdba35043f92",
+      "reason": "10.5 already derives the config edit type from CodexAppServerRequestParams<\"config/batchWrite\">[\"edits\"][number], which is the old fork patch intent."
+    },
+    {
+      "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "8db3fc79e29defdcd8f2f25dbde1a0fc1f3a9e48",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "inert-publisher-package",
+      "reason": "Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/index.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "CARRIED_INERT_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "85c442b5855163f07a76ea75941c8169ce589deb",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "publisher",
+      "reason": "Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/openclaw.plugin.json",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "CARRIED_INERT_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "50fe1d9bb252488417f633510af5c15800b0cf78",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "publisher",
+      "reason": "Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/package.json",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "CARRIED_INERT_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "publisher",
+      "reason": "Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "c1132956d1ae5965674d9a56b8f0d2a42104b5eb",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "inert-publisher-package",
+      "reason": "Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "CARRIED_INERT_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "publisher",
+      "reason": "Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "72b7c67f4e4b624cb16ad96ee0ba7bc401f407d7",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "inert-publisher-package",
+      "reason": "Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "4171aa6598878bbb6b6459422d595aa94a77bde4",
+      "v105UpstreamBlob": null,
+      "reason": "The status lookup prioritizes a caller session only when it is a configured controller owner; non-owner status agents search the configured roster and still pass their explicit visibility rule. Runtime remains inert pending complete 10.5 controller qualification and exact new source pin."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "a86ee97a7d153b89a9f65b3bde31a8dd7e1cd80f",
+      "v105UpstreamBlob": null,
+      "reason": "The status lookup prioritizes a caller session only when it is a configured controller owner; non-owner status agents search the configured roster and still pass their explicit visibility rule. Runtime remains inert pending complete 10.5 controller qualification and exact new source pin."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "CARRIED_INERT_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "6113b7e6265617d28dc767e13af166ec33444dec",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "publisher",
+      "reason": "Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "6b26c273e7c7e058ae5dd912e37044b223c7a185",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "inert-publisher-package",
+      "reason": "Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "CARRIED_INERT_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "e827634b3032ec387c22202ceca789baa5ad5874",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "publisher",
+      "reason": "Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity."
+    },
+    {
+      "path": "scripts/lib/ci-node-test-inventory.mts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "fd57199fbcc7cf4799a0c4e409c98366973fd047",
+      "v99ForkBlob": "da2aac18d2afa84c7a9e2907241d9531318445c6",
+      "v105UpstreamBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "scripts/lib/ci-node-test-plan.mts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "10b25ad45cb99494e1e3080dee7c5f9db2413f93",
+      "v99ForkBlob": "59be8483986fc48b24b88b41f9543a79000e985b",
+      "v105UpstreamBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "scripts/plugin-sdk-surface-report.mts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "18f8444d9260ea993f171565ca33300de5eee62f",
+      "v99ForkBlob": "3a9b3da6d9254dd107b7d5492a0d78e0f5a68054",
+      "v105UpstreamBlob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
+      "reason": "Retarget the existing fork +1 export allowance to the measured 10.5 surface: 3646 public exports versus upstream 3645, solely for the unchanged CONFIG_MUTATION_CAPABILITIES durable-backup contract. Native measurement found 2115 callable exports and no unauthorized shipped-surface removals. Retain all callable, per-entrypoint, removal and other checks; no environment override or generated inventory change. Re-run the native gate with this exact source policy.",
+      "semanticOwner": "plugin-sdk-surface-budget"
+    },
+    {
+      "path": "src/agents/mcp-http-tool-schema-compatibility.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "b067d3377b6b3b2dc871e798495cbcf5339c7a28",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "mcp",
+      "reason": "Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version."
+    },
+    {
+      "path": "src/agents/mcp-http-transport.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "9a8d7bbe3524a8c90e1c9fef31fd93cae0a83be8",
+      "v99ForkBlob": "ceca4e04d722dba1f5c7a977c02ed8a1126fbfd9",
+      "v105UpstreamBlob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52",
+      "semanticOwner": "mcp",
+      "reason": "Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version."
+    },
+    {
+      "path": "src/agents/worktrees/run-lease-store.kernel.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "af44682679f7710b3bb4eeba53f3dce9758b5eb5",
+      "v99ForkBlob": "7003ffb5fa52f2e80e778efa304154b1a5b345dd",
+      "v105UpstreamBlob": "2cddcb1bf3fc222d11b8b61654439025a19db32e",
+      "semanticOwner": "worktree-lease",
+      "reason": "Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards."
+    },
+    {
+      "path": "src/agents/worktrees/run-lease.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "127e8aad2dd99b37c40655850d8cdfb283c7c934",
+      "v99ForkBlob": "ed85fb4744b555b8d7ca1231cb37d6c0da63e8ab",
+      "v105UpstreamBlob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+      "semanticOwner": "worktree-lease",
+      "reason": "Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards."
+    },
+    {
+      "path": "src/agents/worktrees/run-lease.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "3454f90e24308542b29e2bf147a78d4ab2243e91",
+      "v99ForkBlob": "3e5bdc53db31d0975db4fe26739859943b030fca",
+      "v105UpstreamBlob": "48d7f6a6e98d4f07f2e74e4206da185b4703532b",
+      "semanticOwner": "worktree-lease",
+      "reason": "Retain the byte-identical upstream 10.5 source/observed admission boundary, which supersedes the old expectedAuthority passthrough. The fork authority ordering behavior is adapted in run-lease-store.kernel.ts, with tied and newer-row cases in run-lease.test.ts; this entry does not claim a local edit of run-lease.ts."
+    },
+    {
+      "path": "src/cli/gateway-cli/gateway-call.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "3717147894ee9d37a1042aa85d87377627e48846",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/cli/gateway-cli/register.option-collisions.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "4679874c775589ec0467f84a9203e6cdcce575cc",
+      "v99ForkBlob": "d8fc084230f39c8a27450d49f6cea7131253f932",
+      "v105UpstreamBlob": "a4ab75913653b4fe4ffdd82a97272c61fc41d396",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/cli/gateway-cli/register.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "bfd149f9a9bcfc98d12e995663d7096dd1c4c374",
+      "v99ForkBlob": "d73819424e8bdde8cd901dc94f49861ecefca484",
+      "v105UpstreamBlob": "9cabdd5bda9f60e2512070427fd1d10fc7b1047c",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/cli/gateway-rpc.runtime.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "7dad6e0768fc3d5a65baf61ecb4c22e12a3eec8c",
+      "v99ForkBlob": "2318c2e49c5e8a0af5329897e0546d22a338d522",
+      "v105UpstreamBlob": "7f0afbd625c9a6a62f11d92719978395f5c695c7",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/cli/gateway-rpc.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "23e8515aa1bca0c984e9817e499ef2a7a2a75b7a",
+      "v99ForkBlob": "8a67b650aab561ca2ede0e7eff3a1d9846873a28",
+      "v105UpstreamBlob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/config/backup-rotation.ts",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "CARRIED_SOURCE_ONLY",
+      "v99BaseBlob": "e2ad143a33c1610e5aff02839242711e5d990bc7",
+      "v99ForkBlob": "1661f9186998f53ce5948b52c4498e1b47a9c721",
+      "v105UpstreamBlob": "e2ad143a33c1610e5aff02839242711e5d990bc7",
+      "semanticOwner": "config-mutation",
+      "reason": "Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only."
+    },
+    {
+      "path": "src/config/io.types.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "c04ba50b7702cc25a6c3eedfb872e56b8c3c9ff2",
+      "v99ForkBlob": "1c31c146cf5080663cc1cf327ba13605c6c0e8f6",
+      "v105UpstreamBlob": "2c1cd7161cd4c32b7afecdded47f0bfae792a01c",
+      "semanticOwner": "config-mutation",
+      "reason": "Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only."
+    },
+    {
+      "path": "src/config/io.write.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "1cab93d7e8f08b8f50fe7be7abbb41c3bf8c03e9",
+      "v99ForkBlob": "da964dfc7198f70c0993cc173fe1427527b7b3fc",
+      "v105UpstreamBlob": "72828e07a305f670e8413466b2b653779374c05d",
+      "semanticOwner": "config-mutation",
+      "reason": "Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only."
+    },
+    {
+      "path": "src/gateway/methods/core-descriptors.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "4123e0caa4608ee6f719c373df0174aaa6d679ad",
+      "v99ForkBlob": "21c9f67a1d74a3067c2092469a84c5ad3c3ba39b",
+      "v105UpstreamBlob": "48387a41305c56de5aad947b8f84da7c71845dc8",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "12993a03a614b59c4c23c5b98c029f933d12bf70",
+      "v105UpstreamBlob": null,
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/gateway/server-methods-list.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "39928b35aede96d1f26aedc1b4ceb6334527c1b4",
+      "v99ForkBlob": "37bbcaefdbd512325c28c3c8df0c12f3539a407b",
+      "v105UpstreamBlob": "ec09961e8e6635b467fe448168885780ef2e591c",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server-methods/client-types.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "51ff838cc93ac34fd20485598c2daeb85d808114",
+      "v99ForkBlob": "8c7ae2a211e488bfc9e5c798cace284768641289",
+      "v105UpstreamBlob": "786c47b8e2ed792a7ef829a4008062a9f62456b6",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server-methods/shared-types.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "e4f81601c37edb696a99e19811ba9d00d1060aac",
+      "v99ForkBlob": "4f5bf934c69abfc942a562441def62f5efb2fce2",
+      "v105UpstreamBlob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server-methods/system.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "32627dfcb0dab92e06aa9d0995847b0c9950860b",
+      "v99ForkBlob": "082534d3b94d4ffaff33c4591d36df2281b73c71",
+      "v105UpstreamBlob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server-plugin-subagent-runtime.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "d9454c1c0ea0754857fcbd2ee5007afa02ba564e",
+      "v99ForkBlob": "c1d34dfbd0d9d8b9bdb22906b839dd6373885020",
+      "v105UpstreamBlob": "6e4921e24b2160511374c82fa92a8c16f1408627",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/gateway/server-plugins.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "8c9ccc7b4df5a1c301f6aaf3f2c4e2e4789a5909",
+      "v99ForkBlob": "43f21cdaa483c20e2846d1f70c3078680dc5d13c",
+      "v105UpstreamBlob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/gateway/server-request-context.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "482335ad8a11b259c9673720ff10a7bb7a7e8697",
+      "v99ForkBlob": "37510600f55920fe502971c745d65c31b9d689ad",
+      "v105UpstreamBlob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server-runtime-state-prepare.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "dafed880d626e97548f6289f6bd6ff897e9df96f",
+      "v99ForkBlob": "85a7c563022a09a81f9b6c72b983e14ed54dcf33",
+      "v105UpstreamBlob": "7535f333e53cd85e27935d6abc06119dc3237851",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server/ws-connection/connect-session.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "721dbf2772ae9aab7ec9a8ad6ccda7c26f0aad08",
+      "v99ForkBlob": "da331e8d09a261e83e022b636def31d61497ac26",
+      "v105UpstreamBlob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/gateway/server/ws-types.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "c1ab950205e902f6256f5cceab6bd08e9996d928",
+      "v99ForkBlob": "76b708c58c4ef12885f5887a208fe714b207738a",
+      "v105UpstreamBlob": "db887564fae5c7986a592ab7b941cc8f986c97a5",
+      "semanticOwner": "gateway",
+      "reason": "Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception."
+    },
+    {
+      "path": "src/plugin-sdk/config-mutation.ts",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "CARRIED_SOURCE_ONLY",
+      "v99BaseBlob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34",
+      "v99ForkBlob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d",
+      "v105UpstreamBlob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34",
+      "semanticOwner": "config-mutation",
+      "reason": "Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only."
+    },
+    {
+      "path": "src/plugins/loader-load-context.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "2eb7d8801a6724e03742e6d4f02c3aae1e6198f7",
+      "v99ForkBlob": "c5240ec8abb90f10cf12bdb9ac93a625a83c0efa",
+      "v105UpstreamBlob": "e497a747b287d89576446041de3722da8369fede",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/plugins/loader-module-runtime.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "8f83b78937184f8a8872f8b751ae42d1ecbc1dd1",
+      "v99ForkBlob": "0fbe06eafdaf6f2ce87f3bf9c5bab48a4815d857",
+      "v105UpstreamBlob": "1c6692830856e313fcfb86fb424168fb7ddf30f6",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/plugins/loader.runtime-metadata.test.ts",
+      "treeRelation": "PATH_REMOVED",
+      "disposition": "RETIRED_REVIEWED",
+      "v99BaseBlob": "f8f43ce9db894ded0de563684c98aa46bb9f0a09",
+      "v99ForkBlob": "28299a25690c3018d1fe71e6637aaf36641ada51",
+      "v105UpstreamBlob": null,
+      "reason": "10.5 removed this test owner. Replace its lazy TaskFlow facet coverage in src/plugins/loader.gateway-bindings.test.ts; do not restore the retired test file.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/plugins/loader.runtime-registry.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "RETIRED_REVIEWED",
+      "v99BaseBlob": "b57bc6e03cf1dab57dadce86003f951af3a20000",
+      "v99ForkBlob": "1e4c271abe966e59af9843f6ddc729fae94d0f79",
+      "v105UpstreamBlob": "aaf008d437666e48dcb589dbeaca76e3c310900c",
+      "reason": "Retire the old fork hunk in this file. Current src/plugins/loader.gateway-bindings.test.ts proves that identical TaskFlow runtime owners share a load cache key and distinct owners do not; loader-load-context.ts owns the corresponding runtime identity input.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/plugins/runtime/index.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "3a0311501fe38070bec211c5751f401d5ed4e184",
+      "v99ForkBlob": "e824d8c817f762e569b920e9e082b712406dded7",
+      "v105UpstreamBlob": "02f217a7bf929c325d879479d6d0409a4f164d51",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/plugins/runtime/types.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "61c3fce3e24394fa1586d9c3be2c66cd68444de2",
+      "v99ForkBlob": "998fae23a7a9de3e50864d4808ae9745ff416de2",
+      "v105UpstreamBlob": "1ba77516448680740207175aaea8a29e76ef2774",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/process/supervisor/service-child-cleanup.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "d5a28c88300ca64effe163a9108274817ff0df86",
+      "v99ForkBlob": "5bbd8943a20c203324afb8320b95e23eff7ec9f7",
+      "v105UpstreamBlob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692",
+      "semanticOwner": "process",
+      "reason": "Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output."
+    },
+    {
+      "path": "src/process/supervisor/service-child-relay-host.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "08084c0524df5c91aa2b66b52419c2783ce7d510",
+      "v99ForkBlob": "df25d5fe7b73e4e4d7efd3fc6095d29f8a708d89",
+      "v105UpstreamBlob": "9dbc493107463cbfd5781c876d625162de0f3ee1",
+      "semanticOwner": "process",
+      "reason": "Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output."
+    },
+    {
+      "path": "src/process/supervisor/service-child-relay-host.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "9f63a8720575e05e11c322c0a09b1471fc2c2bb4",
+      "v99ForkBlob": "7f71b19c89f54da914eb07ebda3615bded7f9ac3",
+      "v105UpstreamBlob": "78916e7d113bc6df5a60d42e7189f3ad6cc7098f",
+      "semanticOwner": "process",
+      "reason": "Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output."
+    },
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "80a3323b1b58aeb64ed5cc127e3e7e19e438996d",
+      "v99ForkBlob": "8ec0c9250836767d38d0e5e2d26f092330cfcdb2",
+      "v105UpstreamBlob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030",
+      "semanticOwner": "egress-proxy",
+      "reason": "Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway."
+    },
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "9eba6e57944deb993fd444f63394fdf3b0f17ec9",
+      "v99ForkBlob": "aaa1d8f08081218aee16cc245b657e3f1693a489",
+      "v105UpstreamBlob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac",
+      "semanticOwner": "egress-proxy",
+      "reason": "Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway."
+    },
+    {
+      "path": "src/secrets/egress-proxy/response-headers.ts",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "11714002c31ebbb3400ce7effae8eab5be085785",
+      "v99ForkBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7",
+      "v105UpstreamBlob": "11714002c31ebbb3400ce7effae8eab5be085785",
+      "semanticOwner": "egress-proxy",
+      "reason": "Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway."
+    },
+    {
+      "path": "src/state/openclaw-state-read.types.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "3767266cb1b8f595bfb0d190dc41467ded5f05a1",
+      "v99ForkBlob": "6e482c44c3510429134e46e2ff5fadb7b34ec941",
+      "v105UpstreamBlob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/state/openclaw-state-read.validation.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "86475150d021f9c6245225f7badc4e4f9b648d80",
+      "v99ForkBlob": "220e5fd47d000dcf9b2806302db184f0c4a2612a",
+      "v105UpstreamBlob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/state/openclaw-state-read.worker.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "82a0cb738338373244f576ee056214a25ff17135",
+      "v99ForkBlob": "529b2ce487c38acea398e052cc52579fa714db6e",
+      "v105UpstreamBlob": "69ad71dd27cb930bdf4858d3eca5de74aa646120",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/state/openclaw-state-worker-contract.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "f292162a2f6305ccbe8ea16abc4ab72a8e73a1fe",
+      "v99ForkBlob": "8f2cbd0d74dfb649cb3d432a08d55092d1bb10a0",
+      "v105UpstreamBlob": "88e07e9f47578982eaa2d91db095ae147771d7cc",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/state/openclaw-state-worker-runtime.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "ac6d3778071ad3a93ff2e51ef0ed8904691f33a4",
+      "v99ForkBlob": "961f889bec4db695867c930c67722f02663418a7",
+      "v105UpstreamBlob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2",
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-contract.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "55ebd42bbea9db7d904b945e26533ea5e37c8638",
+      "v105UpstreamBlob": null,
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-host.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "d9e55ae86850c06a2f348ac5e6d4c1d790ea81ea",
+      "v105UpstreamBlob": null,
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "src/tasks/managed-task-flow.worker.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "07cb39732be0d473abf40d5eccc8c8c0e038c2e5",
+      "v105UpstreamBlob": null,
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "test/fixtures/nowistay-list-properties-output-schema.json",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "a9bf78496de8874325791d7f35585d666e8fa88d",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "mcp",
+      "reason": "Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version."
+    },
+    {
+      "path": "test/mcp-nowistay-schema-compatibility.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "5351fa504e8977b04494c19a64a33312b55b3a15",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "mcp",
+      "reason": "Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version."
+    },
+    {
+      "path": "test/mcp-nowistay-sdk-regression.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "4f4e6150e706aa2d810e3b310ebc0a7a32e7c4f3",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "mcp",
+      "reason": "Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version."
+    },
+    {
+      "path": "test/scripts/ci-node-test-plan.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "1c28754496ea314d8379edfb4b7d317fb8496079",
+      "v99ForkBlob": "bdeeca67c45f7078f74b1777c6b5373db50000e3",
+      "v105UpstreamBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "test/scripts/full-release-validation-state.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "UPSTREAM_EQUIVALENT_REVIEWED",
+      "v99BaseBlob": "a0cff54472e757ccd59feccfb9a6a23e37a6a5a6",
+      "v99ForkBlob": "7894c870c1337157f47207f9650a5215c408b57c",
+      "v105UpstreamBlob": "00d1ea11b72b16ae61535470603eecff2dbd1215",
+      "reason": "10.5 already pins GITHUB_REPOSITORY to openclaw/openclaw for these upstream release decision fixtures and restores the ambient value afterward."
+    },
+    {
+      "path": "test/scripts/lint-suppressions.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "cb1425917576441d467e9883aa8ee031ec8c8e9b",
+      "v99ForkBlob": "73bda6252a5397a055e24bdde54dc904146c4fac",
+      "v105UpstreamBlob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc",
+      "semanticOwner": "publisher-lint",
+      "reason": "Carry only the three existing publisher suppression entries, each tied to its exact path/rule/count and retained implementation."
+    },
+    {
+      "path": "test/scripts/verify-stable-main-closeout.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "b5eab0ebed67a6352f5cb69644bf160656828621",
+      "v99ForkBlob": "de1b5c30c30372caf296a55c6c465693ae34baee",
+      "v105UpstreamBlob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9",
+      "semanticOwner": "closeout-fixture",
+      "reason": "Pin the upstream repository identity for upstream release fixtures so ambient fork CI identity cannot change their provenance input."
+    },
+    {
+      "path": "test/vitest-projects-config.test-support.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "0cb679cbdbe8d97b510bf69a1b2116712fd04613",
+      "v99ForkBlob": "79610114350a99ce4b4865209f57e3f6f02a7027",
+      "v105UpstreamBlob": "a469228f45d511e0f05f64c42e6b7aa395385f9b",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "test/vitest-projects-config.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "d83fb469151cbfbb36732266ae3956720437725a",
+      "v99ForkBlob": "cee177a5067ad6699a6b610188eab3c8e2e88801",
+      "v105UpstreamBlob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "test/vitest/vitest.tasks.config.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "7e0586d3e183bc42bdb3ff0270cab3394ac08bc2",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "test/vitest/vitest.test-shards.mjs",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1",
+      "v99ForkBlob": "4974e0fc5b83f1d712d75e6c8df8e6b2f7e528a5",
+      "v105UpstreamBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "ui/src/test-helpers/app-sidebar-cases/session-delegated-activity.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "UPSTREAM_EQUIVALENT_REVIEWED",
+      "v99BaseBlob": "12e92e225be3a3e127fc5bdac8ec78ce144ed093",
+      "v99ForkBlob": "0f0071a81bfb459e54fdcca4e3e3aad3b08d68d1",
+      "v105UpstreamBlob": "78ccc2cb2509054b2603c667531dd4c48bf61076",
+      "reason": "10.5 already refreshes rosterActivityStore and awaits the affected delegated roster state with waitForFast. Retire the old settleRoster helper patch."
+    }
+  ]
+}

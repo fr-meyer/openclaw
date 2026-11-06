@@ -62,8 +62,27 @@ verifyDepsBeforeRun: false
 blockExoticSubdeps: true
 
 overrides:
-  "@microsoft/teams.apps@2.1.0>@azure/msal-node": 7.1.1
+  # GHSA-gg6h-894w-4m9c: patch only the retained Crabline child.
+  "@openclaw/crabline@0.1.29>re2js": 2.8.7
+  # Development-only Sigstore chain: compatible refresh outside GHSA-ch52-4w7c-c8xp's range.
+  "make-fetch-happen@16.0.1>http-cache-semantics": 4.3.0
+  # GHSA-xcx6-jx8p-x3h5: reviewed real-parent compatibility for fixed MSAL.
   "@azure/identity@4.13.3>@azure/msal-node": 7.1.1
+  "@microsoft/teams.apps@2.1.0>@azure/msal-node": 7.1.1
+  # GHSA-xjj6-f33q-929c: repair remaining vulnerable v8 transitive resolutions.
+  "undici@>=8.0.0 <8.12.2": 8.12.2
+  # Fix compressed-body trailing-byte DoS; qs meets this parser's declared range.
+  "express@5.2.1>body-parser": 2.4.0
+  "body-parser@2.4.0>qs": 6.16.1
+  # GHSA-mrhx-c7xc-m3w5: native v4 consumers and bounded SDK compatibility parsing.
+  "zod@>=4.0.0 <4.6.6": 4.6.6
+  # These exact consumers are migrated by the versioned package patches below.
+  "@a2ui/lit@0.12.0>zod": 4.6.6
+  "@a2ui/web_core@0.12.0>zod": 4.6.6
+  "@a2ui/web_core@0.12.0>zod-to-json-schema": "-"
+  "@discord/embedded-app-sdk@2.5.0>zod": 4.6.6
+  # Preserve the converter's declared support for retained v3 schema peers.
+  "zod-to-json-schema@3.25.2>zod": "^3.25.28 || ^4"
   # Memory LanceDB supplies vectors; WhatsApp prepares thumbnails with Rastermill.
   "@lancedb/lancedb>@huggingface/transformers": "-"
   "baileys>sharp": "-"
@@ -86,7 +105,8 @@ overrides:
   # Reject malformed URI schemes/hosts and preserve relative reference semantics.
   # GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h, GHSA-333x-w4r6-6crp.
   fast-uri: 4.2.3
-  follow-redirects: 1.16.1
+  # GHSA-mrwp-f3q8-3g9p: preserve cross-realm sensitive-header removal.
+  follow-redirects: 1.16.2
   defu: 6.1.7
   fast-xml-parser: 5.11.2
   request: "npm:@cypress/request@4.0.1"
@@ -97,13 +117,19 @@ overrides:
   source-map-js: 1.2.2
   file-type: 22.1.1
   form-data: 4.0.6
-  ip-address: 10.7.3
+  ip-address: 10.7.4
   "mailauth@7.1.1>nodemailer": 10.1.4
+  # GHSA-4528-x5fx-h6hg: keep the existing mailauth Joi consumer on major 18.
+  "mailauth@7.1.1>joi": 18.3.1
   "mailparser@3.9.36>nodemailer": 10.1.4
-  minimatch: 10.2.6
+  "mermaid@12.1.0>katex": 0.18.2
+  # GHSA-g3hv-75wg-m249: all retained consumers share the bounded matcher.
+  minimatch: 11.0.1
+  # GHSA-3g3m-2fjr-6pw4: only the retained development cache owns this glob.
+  "cacache@21.0.1>glob": 14.0.2
   path-to-regexp: 8.4.2
   proxy-addr: 2.0.8
-  qs: 6.16.0
+  qs: 6.16.1
   node-domexception: "npm:@nolyfill/domexception@1.0.28"
   typebox: 1.3.35
   tar: 7.5.22
@@ -149,7 +175,11 @@ packageExtensions:
       typescript: 5.9.3
 
 patchedDependencies:
+  npm@12.2.1: patches/npm@12.2.1.patch
+  "@a2ui/lit@0.12.0": patches/@a2ui__lit@0.12.0.patch
+  "@a2ui/web_core@0.12.0": patches/@a2ui__web_core@0.12.0.patch
   "@discord/embedded-app-sdk@2.5.0": patches/@discord__embedded-app-sdk@2.5.0.patch
+  "zod@4.6.6": patches/zod@4.6.6.patch
   "baileys@7.0.0-rc14": patches/baileys@7.0.0-rc14.patch
   "matrix-js-sdk@42.4.0": patches/matrix-js-sdk@42.4.0.patch
   "@novnc/novnc@1.7.0": patches/@novnc__novnc@1.7.0.patch
@@ -157,4 +187,3 @@ patchedDependencies:
   "@awesome.me/webawesome@3.13.0": patches/@awesome.me__webawesome@3.13.0.patch
   ghostty-web@0.4.0: patches/ghostty-web@0.4.0.patch
   chrome-devtools-mcp@1.10.1: patches/chrome-devtools-mcp@1.10.1.patch
-  zod@3.25.76: patches/zod@3.25.76.patch

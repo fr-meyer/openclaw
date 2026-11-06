@@ -67,7 +67,7 @@ const INLINE_RECALL_COLUMNS = [
   ["project_key", "project_key TEXT"],
 ] as const;
 
-type StorageShape = "absent" | "legacy" | "binary";
+type StorageShape = "absent" | "legacy" | "legacy-any" | "binary";
 
 function storageShape(
   db: DatabaseSync,
@@ -82,19 +82,28 @@ function storageShape(
   const shape =
     tableColumns.get("embedding") === "TEXT"
       ? "legacy"
-      : tableColumns.get("embedding") === "BLOB"
-        ? "binary"
-        : undefined;
+      : tableColumns.get("embedding") === "ANY"
+        ? "legacy-any"
+        : tableColumns.get("embedding") === "BLOB"
+          ? "binary"
+          : undefined;
   if (!shape || (chunks && tableColumns.has("chunk_rowid") !== (shape === "binary"))) {
     throw new Error(`Unsupported partial memory storage schema: ${table}`);
   }
+  const legacy = shape === "legacy" || shape === "legacy-any";
   let schema = chunks
-    ? shape === "legacy"
+    ? legacy
       ? LEGACY_CHUNK_SCHEMA
       : MEMORY_INDEX_CHUNKS_SCHEMA_SQL
-    : shape === "legacy"
+    : legacy
       ? legacyCacheSchema(table)
       : buildMemoryEmbeddingCacheSchema(table);
+  if (shape === "legacy-any") {
+    // Some deployed stores used STRICT ANY for the retired JSON representation.
+    // Keep the exact table contract while converting values one row at a time;
+    // non-JSON values retain the existing regeneration or cache-skip policy.
+    schema = schema.replace("embedding TEXT NOT NULL", "embedding ANY NOT NULL");
+  }
   if (chunks) {
     const inline = INLINE_RECALL_COLUMNS.filter(([name]) => tableColumns.has(name));
     if (inline.length > 0) {
@@ -105,7 +114,7 @@ function storageShape(
     }
   }
   if (
-    shape === "legacy" &&
+    legacy &&
     db.prepare("SELECT strict FROM pragma_table_list WHERE schema = 'main' AND name = ?").get(table)
       ?.strict === 0
   ) {
@@ -121,6 +130,9 @@ function storageShape(
               : "idx_embedding_cache_updated_at",
           columns: "updated_at",
         },
+        ...(shape === "legacy-any" && table === MEMORY_EMBEDDING_CACHE_TABLE
+          ? [{ name: "idx_memory_embedding_cache_model_hash", columns: "model, hash" }]
+          : []),
       ];
   schema += indexes
     .map((index) => `CREATE INDEX ${index.name} ON ${table}(${index.columns});`)
@@ -145,7 +157,7 @@ function storageShape(
     },
     readTable,
   );
-  if (shape === "legacy") {
+  if (legacy) {
     assertKnownRebuildDependents(
       db,
       table,
@@ -352,7 +364,10 @@ export function registerMemoryEmbeddingMigrationFunctions(
     const now = performance.now();
     if (now - renewedAt >= 1_000) {
       renewAuthority();
-      renewedAt = now;
+      // Renewal can itself block on the shared state database. Measure the next
+      // interval from completion so successive embedding rows do not immediately
+      // repeat a slow authority check.
+      renewedAt = performance.now();
     }
   };
   db.function("openclaw_memory_embedding_from_json", { deterministic: true }, (raw) => {
@@ -437,8 +452,8 @@ export function migrateMemoryIndexStorage(
     throw new Error("Invalid memory embedding cache table identifier");
   }
   const shapes = storageShapes(db, cacheTable);
-  const migrateChunks = shapes.chunks === "legacy";
-  const migrateCache = shapes.cache === "legacy";
+  const migrateChunks = shapes.chunks === "legacy" || shapes.chunks === "legacy-any";
+  const migrateCache = shapes.cache === "legacy" || shapes.cache === "legacy-any";
   if (!migrateChunks && !migrateCache) {
     return;
   }

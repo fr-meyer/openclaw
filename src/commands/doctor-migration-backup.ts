@@ -49,6 +49,10 @@ import { resolveSchemaMigrationBackupTables } from "../state/schema-migration-ba
 import { resolveRuntimeServiceBuildId, resolveRuntimeServiceCommit, VERSION } from "../version.js";
 import type { BackupSqliteSnapshotFact } from "./backup-resource-inventory.js";
 import { recordDoctorMigrationBackups } from "./doctor-migration-backup-artifacts.js";
+import {
+  parseReviewedDoctorBackupReuse,
+  verifyReviewedDoctorBackupReuse,
+} from "./doctor-migration-backup-reuse.js";
 import { createDoctorRehearsalDatabaseCoverage } from "./doctor-rehearsal-databases.js";
 import type { DoctorSqliteMaintenanceAuthority } from "./doctor-sqlite-maintenance-lock.js";
 import { isUpdateDoctorLintPass } from "./doctor/shared/update-phase.js";
@@ -189,6 +193,13 @@ export async function backupDoctorSqliteDatabases(params: {
   }
   const { authority } = params;
   authority.assertCurrent();
+  const crossBuildReuse = parseReviewedDoctorBackupReuse(params.env);
+  if (crossBuildReuse && params.repair) {
+    throw new DoctorMaintenanceRefusalError(
+      "Cross-build migration backup reuse cannot authorize a same-schema repair.",
+      { kind: "data-at-risk", reason: "incomplete-migration" },
+    );
+  }
   const disposable = params.requireSnapshots
     ? undefined
     : createDoctorRehearsalDatabaseCoverage(params.env);
@@ -213,6 +224,7 @@ export async function backupDoctorSqliteDatabases(params: {
     ),
   ];
   if (
+    !crossBuildReuse &&
     !params.requireSnapshots &&
     sources.length > 0 &&
     sources.every((sourcePath) => {
@@ -249,7 +261,7 @@ export async function backupDoctorSqliteDatabases(params: {
     )
     .digest("hex");
   // Preserve the existing UUID-shaped backup names with a deterministic v8 ID.
-  const backupId = [
+  const currentBackupId = [
     backupDigest.slice(0, 8),
     backupDigest.slice(8, 12),
     `8${backupDigest.slice(13, 16)}`,
@@ -267,6 +279,15 @@ export async function backupDoctorSqliteDatabases(params: {
     }
   };
   const changes: string[] = [];
+  const verifiedReuseIdentities = crossBuildReuse
+    ? verifyReviewedDoctorBackupReuse({
+        env: params.env,
+        proof: crossBuildReuse,
+        inventory,
+        assertCurrent: assertInventory,
+      })
+    : undefined;
+  const backupId = crossBuildReuse?.backupId ?? currentBackupId;
   const fullTargetFor = (sourcePath: string) =>
     `${sourcePath}.pre-startup-migration-${backupId}.bak`;
   const scopedTargetFor = (sourcePath: string) =>
@@ -275,6 +296,12 @@ export async function backupDoctorSqliteDatabases(params: {
   for (const { path: sourcePath } of inventory) {
     const full = fullTargetFor(sourcePath);
     const scoped = scopedTargetFor(sourcePath);
+    if (crossBuildReuse && lstatSync(scoped, { throwIfNoEntry: false })) {
+      throw new DoctorMaintenanceRefusalError(
+        "Cross-build migration backup reuse requires the reviewed full backup group.",
+        { kind: "data-at-risk", reason: "incomplete-migration" },
+      );
+    }
     if (
       lstatSync(full, { throwIfNoEntry: false }) &&
       lstatSync(scoped, { throwIfNoEntry: false })
@@ -290,6 +317,27 @@ export async function backupDoctorSqliteDatabases(params: {
   // snapshot alone cannot prove that a surviving rollback group is incomplete.
   const capturePath = `${fullTargetFor(anchor)}.capturing`;
   let capture = lstatSync(capturePath, { bigint: true, throwIfNoEntry: false });
+  if (crossBuildReuse && capture) {
+    throw new DoctorMaintenanceRefusalError(
+      `Earlier migration backup capture is incomplete: ${capturePath}. Original files were preserved.`,
+      { kind: "data-at-risk", reason: "incomplete-migration" },
+    );
+  }
+  if (
+    crossBuildReuse &&
+    inventory.some(({ path: sourcePath }) =>
+      ["bak", "scoped.bak", "bak.capturing"].some((suffix) =>
+        lstatSync(`${sourcePath}.pre-startup-migration-${currentBackupId}.${suffix}`, {
+          throwIfNoEntry: false,
+        }),
+      ),
+    )
+  ) {
+    throw new DoctorMaintenanceRefusalError(
+      "A current-build backup group already exists; cross-build reuse requires explicit reconciliation.",
+      { kind: "data-at-risk", reason: "incomplete-migration" },
+    );
+  }
   const hasSnapshots = inventory.some(
     ({ path: sourcePath }) =>
       lstatSync(targetFor(sourcePath), { throwIfNoEntry: false }) !== undefined,
@@ -454,11 +502,25 @@ export async function backupDoctorSqliteDatabases(params: {
   try {
     recordDoctorMigrationBackups(
       params.env,
-      backupId,
+      currentBackupId,
       inventory.map(({ path, identity }) => ({ path, identity, archivePath: targetFor(path) })),
       params.migrationTables !== undefined,
+      crossBuildReuse
+        ? {
+            archiveBackupId: backupId,
+            originManifestSha256: crossBuildReuse.manifestSha256,
+            verifiedBackupIdentities: verifiedReuseIdentities,
+          }
+        : {},
     );
   } catch (error) {
+    if (crossBuildReuse) {
+      throw new DoctorMaintenanceRefusalError(
+        `Cross-build backup receipt could not be registered: ${formatErrorMessage(error)}. Original files and receipts were preserved.`,
+        { kind: "data-at-risk", reason: "incomplete-migration" },
+        { cause: error },
+      );
+    }
     warnings.push(
       `Migration backups remain protected; cleanup registration failed: ${formatErrorMessage(error)}`,
     );

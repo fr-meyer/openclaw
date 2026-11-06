@@ -34,13 +34,18 @@ afterEach(() => {
 describe("check-package-patches", () => {
   it("allows approved pnpm patches together", () => {
     const approvedPatches = [
+      ["@a2ui/lit@0.12.0", "patches/@a2ui__lit@0.12.0.patch"],
+      ["@a2ui/web_core@0.12.0", "patches/@a2ui__web_core@0.12.0.patch"],
+      ["@discord/embedded-app-sdk@2.5.0", "patches/@discord__embedded-app-sdk@2.5.0.patch"],
       ["zod@3.25.76", "patches/zod@3.25.76.patch"],
+      ["zod@4.6.6", "patches/zod@4.6.6.patch"],
       ["@awesome.me/webawesome@3.13.0", "patches/@awesome.me__webawesome@3.13.0.patch"],
       ["baileys@7.0.0-rc12", "patches/baileys@7.0.0-rc12.patch"],
       ["baileys@7.0.0-rc13", "patches/baileys@7.0.0-rc13.patch"],
       ["baileys@7.0.0-rc14", "patches/baileys@7.0.0-rc14.patch"],
       ["vitest@5.0.5", "patches/vitest@5.0.5.patch"],
       ["matrix-js-sdk@42.4.0", "patches/matrix-js-sdk@42.4.0.patch"],
+      ["npm@12.2.1", "patches/npm@12.2.1.patch"],
     ] as const;
     const dir = makeRepo();
     mkdirSync(path.join(dir, "patches"), { recursive: true });
@@ -70,12 +75,21 @@ ${approvedPatches.map(([specifier]) => `  "${specifier}": a9aea1790d2c65b1ae543c
   });
 
   it.each([
+    ["@a2ui/web_core@0.99.0", "patches/@a2ui__web_core@0.99.0.patch"],
+    ["@discord/embedded-app-sdk@2.5.0", "patches/@discord__embedded-app-sdk@2.5.0-other.patch"],
+    ["zod@4.6.7", "patches/zod@4.6.7.patch"],
+    ["zod@4.6.6", "patches/zod@4.6.6-unreviewed.patch"],
+    ["vitest@5.0.1", "patches/vitest@5.0.1.patch"],
+    ["vitest@5.0.6", "patches/vitest@5.0.6.patch"],
+    ["vitest@5.0.5", "patches/vitest@5.0.5-unreviewed.patch"],
     ["left-pad@1.3.0", "patches/left-pad@1.3.0.patch"],
     ["zod@3.25.77", "patches/zod@3.25.77.patch"],
     ["zod@4.0.0", "patches/zod@4.0.0.patch"],
     ["zod@3.25.76", "patches/zod@3.25.76-other.patch"],
     ["matrix-js-sdk@42.4.1", "patches/matrix-js-sdk@42.4.1.patch"],
     ["matrix-js-sdk@42.4.0", "patches/matrix-js-sdk@42.4.0-other.patch"],
+    ["npm@12.2.2", "patches/npm@12.2.2.patch"],
+    ["npm@12.2.1", "patches/npm@12.2.1-unreviewed.patch"],
   ])("rejects unapproved workspace patch %s -> %s", (specifier, patchPath) => {
     const dir = makeRepo();
     mkdirSync(path.join(dir, "patches"), { recursive: true });

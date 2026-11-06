@@ -27,6 +27,7 @@ import { enqueueCommandInLane } from "../process/command-queue.js";
 import { getGatewayRestartDrainSignal } from "../process/gateway-work-admission.js";
 import { CommandLane } from "../process/lanes.js";
 import { ADMIN_SCOPE, hasGatewayAdminScope } from "./operator-scopes.js";
+import { consumeGatewayManagedFlowNativeLaunch } from "./server-managed-task-flow-runtime.js";
 import type { GatewayContextResolver, GatewayRequestOptions } from "./server-methods/types.js";
 import {
   dispatchGatewayMethodInProcess,
@@ -480,6 +481,12 @@ export function createGatewaySubagentRuntime(
     },
     async run(request) {
       const params = { ...request };
+      if (
+        params.runTimeoutSeconds !== undefined &&
+        (!Number.isSafeInteger(params.runTimeoutSeconds) || params.runTimeoutSeconds < 0)
+      ) {
+        throw new Error("Plugin subagent timeout must be a nonnegative safe integer in seconds");
+      }
       const assertCurrent = params.assertCurrent;
       assertCurrent?.();
       if (params.disableTools === true && (params.toolsAlsoAllow?.length ?? 0) > 0) {
@@ -490,6 +497,13 @@ export function createGatewaySubagentRuntime(
       );
       const scope = getPluginRuntimeGatewayRequestScope();
       const pluginId = normalizeOptionalString(scope?.pluginId);
+      const managedFlowLaunch = params.managedFlowLaunch
+        ? consumeGatewayManagedFlowNativeLaunch(
+            params.managedFlowLaunch,
+            pluginId ?? "",
+            params.sessionKey,
+          )
+        : undefined;
       const runtimePluginToolGrant = resolvePluginSubagentToolsAlsoAllow({
         pluginId,
         toolsAlsoAllow: params.toolsAlsoAllow,
@@ -563,6 +577,7 @@ export function createGatewaySubagentRuntime(
           ...(params.promptMode === "minimal" && { promptMode: params.promptMode }),
           ...(params.lane && { lane: params.lane }),
           ...(params.cwd && { cwd: params.cwd }),
+          ...(params.runTimeoutSeconds !== undefined && { timeout: params.runTimeoutSeconds }),
           ...(params.lightContext === true && { bootstrapContextMode: "lightweight" }),
           // The Gateway agent schema requires a nonempty idempotency key.
           idempotencyKey: params.idempotencyKey || randomUUID(),
@@ -573,6 +588,7 @@ export function createGatewaySubagentRuntime(
           agentRunTracking: "plugin_subagent",
           ...(!scope?.client ? { operatorRoleActor: { kind: "system" as const } } : {}),
           ...(pluginId ? { pluginRuntimeOwnerId: pluginId } : {}),
+          ...(managedFlowLaunch ? { managedFlowLaunch } : {}),
           ...(pluginSubagentRequester ? { pluginSubagentRequester } : {}),
           ...(runtimePluginToolGrant ? { runtimePluginToolGrant } : {}),
           ...(params.disableTools === true ? { pluginSubagentToolsAllow: [] } : {}),

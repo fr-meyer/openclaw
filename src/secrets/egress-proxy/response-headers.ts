@@ -1,4 +1,9 @@
-import type { IncomingHttpHeaders, OutgoingHttpHeaders } from "node:http";
+import {
+  type IncomingHttpHeaders,
+  type OutgoingHttpHeaders,
+  validateHeaderName,
+  validateHeaderValue,
+} from "node:http";
 
 const ASCII_HEADER_VALUE = /^[\t\x20-\x7e]*$/;
 const DISPOSITION_PARAM = /;\s*([^\s=;]+)\s*=\s*("(?:[^"\\]|\\.)*"|[^;]*)/g;
@@ -18,6 +23,33 @@ export function toForwardableResponseHeaders(headers: IncomingHttpHeaders): Outg
     return headers;
   }
   return { ...headers, "content-disposition": toAsciiContentDisposition(disposition) };
+}
+
+/** Omit invalid metadata from response headers already converted for forwarding. */
+export function sanitizeSecretEgressResponseHeaders(
+  headers: OutgoingHttpHeaders,
+): OutgoingHttpHeaders {
+  // SAFETY: A null-prototype object is a mutable own-key header record without prototype setters.
+  const sanitized: OutgoingHttpHeaders = Object.create(null) as OutgoingHttpHeaders;
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === undefined) {
+      continue;
+    }
+    try {
+      validateHeaderName(name);
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          validateHeaderValue(name, item);
+        }
+      } else {
+        validateHeaderValue(name, String(value));
+      }
+      sanitized[name] = value;
+    } catch {
+      // The upstream response is untrusted; omit only metadata Node cannot encode.
+    }
+  }
+  return sanitized;
 }
 
 function toAsciiContentDisposition(value: string): string {
