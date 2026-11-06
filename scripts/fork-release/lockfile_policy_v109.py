@@ -207,7 +207,8 @@ def validate_h3_source_inputs(h3):
         need(type(scope) is dict and set(scope)=={"authority","sourceGeneration","sourceFamilySha256"},
             "v9.h3_lock_continuation_fields")
         authority.validate_vendor_repair_continuation(scope["authority"])
-        need(type(scope["sourceGeneration"]) is int and scope["sourceGeneration"] in (4,5) and
+        need(type(scope["sourceGeneration"]) is int and (6 if authority.is_combined_source_repair(scope["authority"]) else 4) <= scope["sourceGeneration"] <=
+                scope["authority"]["maximumMaterialSourceGenerations"] and
             h3.get("sourceGeneration")==scope["sourceGeneration"] and
             type(scope["sourceFamilySha256"]) is str and re.fullmatch(r"[0-9a-f]{64}",scope["sourceFamilySha256"]),
             "v9.h3_lock_continuation_binding")
@@ -225,7 +226,9 @@ def validate_h3_source_inputs(h3):
     except ValueError:
         raise LockRefusal("v9.h3_lock_clock")
     need(checked.strftime("%Y-%m-%dT%H:%M:%SZ") == h3["checkedAt"] and
-        authority.utc(authority.H3_NOT_BEFORE) <= checked < authority.utc(authority.H3_EXPIRES_AT), "v9.h3_lock_package_use_floor")
+        authority.utc(authority.H3_NOT_BEFORE) <= checked < authority.utc(
+            scope["authority"]["expiresAt"] if continuation_present and authority.is_combined_source_repair(scope["authority"])
+            else authority.H3_EXPIRES_AT), "v9.h3_lock_package_use_floor")
     for key in ("packageBytes", "workspaceBytes", "fileTransferPackageBytes"):
         need(type(h3[key]) is bytes and 0 < len(h3[key]) <= CAP, "v9.h3_positive_source_bytes")
     if vendor is not None:

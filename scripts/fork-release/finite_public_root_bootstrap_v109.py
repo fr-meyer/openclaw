@@ -27,15 +27,15 @@ PREFIX_BYTES = 16384
 FETCH_OUTPUT_BYTES = 2097152
 METADATA_BYTES = 67108864
 OWNER_PINS = {
-    "bounded_run_contract_v109.py": "655c54b39880fd61a2a310263425a0665178942ec25dbf0f0e81298f2ffcda2a",
+    "bounded_run_contract_v109.py": "22380fe5870c8dc937d9f844b7e9e37814d5e3ff56bee588aaf119c729047704",
     "composite_closed_usage.py": "b5c923e0205a4d49ae81dced385398199725185249a81711ac371d07e624bdb4",
     "manifest_capture.py": "d5fd42317bf538720b48949a9503dc3c58df6a0035f200ac30a20400c1ed3eac",
-    "npm_vendor_derivation_v109.py": "76055bbf33928cb87b01b6a6eb14f4609a07d1e6be2986706307f5be5de17d27",
+    "npm_vendor_derivation_v109.py": "14961402123dcd273b688bad74695a319f1cb7719b86503b538f690839ac168e",
     "preflight.py": "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a",
-    "release.py": "b09926c9cb5a579cc95138f94515d0e2fdf8fa910cf04699d8da32e87278f3a0",
-    "source_validation_contract_v109.py": "020af59db6a504db5561ebd41b81a683584e1718d125ee4fe18a63cef8541bc6",
+    "release.py": "08b45588b622a68a5b17512e4d9ba821b0d09cea0e84a807ddb0a05fa0a0023a",
+    "source_validation_contract_v109.py": "cc3b9bb45f5fcfb59f37b3161268cb062bd99a4813ec9386083503856070263c",
     "source_validation_v108.py": "d2e014f20f5227b183ea217d9874ef7159c90a894debe5a6581bd4696145f965",
-    "source_validation_v109.py": "b6d5777dac30c2a73c0fc8f7381b90c8294672fa9a4795b41800a526153c56bb",
+    "source_validation_v109.py": "d80a20ca6cbc4131bd19db10705a04d6947fad4fa9468e60001dac0457372fc0",
 }
 
 

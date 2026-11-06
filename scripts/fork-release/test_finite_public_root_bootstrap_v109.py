@@ -439,15 +439,21 @@ class BootstrapTests(unittest.TestCase):
     def test_actual_workflow_hash_fixture_selector_and_clock_caps_are_consistent(self):
         root = HERE.parents[1]
         workflow = (root / '.github/workflows/future-v109-source-validation.yml').read_bytes()
-        text = workflow.decode()
         helper_hash = hashlib.sha256((HERE / 'finite_public_root_bootstrap_v109.py').read_bytes()).hexdigest()
-        self.assertEqual(text.count(helper_hash), 3)
-        self.assertEqual(text.count('Checkout exact pipeline bootstrap only'), 3)
-        self.assertEqual(text.count('timeout-minutes: 5'), 3)
-        self.assertNotIn('fetch-depth: 0', text)
-        self.assertEqual(workflow, (HERE / 'fixtures/v109-h3-source-validation.yml').read_bytes())
         import model_diagnostic_v109 as route
-        self.assertEqual(route.H3_SOURCE_WORKFLOW_SHA256, hashlib.sha256(workflow).hexdigest())
+        prep = (HERE / 'fixtures/v109-h3-lock-preparation.yml').read_bytes()
+        full = (HERE / 'fixtures/v109-h3-source-validation.yml').read_bytes()
+        self.assertEqual(workflow, prep)
+        for raw, count, expected in ((prep, 1, route.H3_PREPARATION_WORKFLOW_SHA256),
+                (full, 3, route.H3_SOURCE_WORKFLOW_SHA256)):
+            with self.subTest(bootstrapCount=count):
+                text = raw.decode()
+                self.assertEqual(text.count(helper_hash), count)
+                self.assertEqual(text.count('Checkout exact pipeline bootstrap only'), count)
+                self.assertEqual(text.count('timeout-minutes: 5'), count)
+                self.assertNotIn('fetch-depth: 0', text)
+                self.assertEqual(expected, hashlib.sha256(raw).hexdigest())
+        text = full.decode()
         parsed = ast.parse((HERE / 'source_validation_selection_v109.py').read_bytes())
         entries = next(x.value for x in parsed.body if isinstance(x, ast.Assign)
             and any(isinstance(t, ast.Name) and t.id == 'PIPELINE_CONTRACT_TESTS' for t in x.targets))

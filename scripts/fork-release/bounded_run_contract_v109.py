@@ -136,9 +136,42 @@ def vendor_repair_derivation_recovery_allocation():
     return value
 
 
+def vendor_repair_combined_source_allocation():
+    """Exact Gen6/conditional-Gen7 approval, preserving every prior debit.
+
+    The two full-cost slots are a resource plan. The original needed-record
+    allowance still counts every failed, partial, held and unknown attempt.
+    """
+    return {"schema": "openclaw.v109.vendor-repair-continuation.v1",
+        "proposalSha256": "aa8ce7f20d173176361d582fc955399c949b4148ee22e12b508aa6e0e9dea8a4",
+        "authorizationSha256": "dc24e48bfe15dcb343affc4e04573fca260fdb119560d2a4e47332a02e0cd423",
+        "priorLedgerSha256": "5b1af3981177a487115cc185667dbb06bd25f930cf984c1895cf51165e66c354",
+        "maximumMaterialSourceGenerations": 7, "maximumAdditionalSourceGenerations": 2,
+        "conditionalSecondRevisionEvidenceRequired": True,
+        "plannedFullCostPreparationSlots": 2, "plannedFullCostValidationSlots": 2,
+        "maximumAdditionalRunnerMinutes": 3122,
+        "privateComponentMaximumMinutes": {"preparation": 218, "source": 2760, "incidental": 144},
+        "vendorAggregateMaximumMinutes": 3192,
+        "vendorComponentMaximumMinutes": {"preparation": 267, "source": 2760, "incidental": 165},
+        "stagePools": {"preparation": 310, "source": 3189, "incidental": 194, "image": 180},
+        "futureEnvelopeRunnerMinutes": 2300, "carriedUnusedRunnerMinutes": 1468,
+        "netStageIncreaseRunnerMinutes": 832,
+        "futurePools": {"preparation": 90, "source": 2150, "incidental": 60},
+        "expiresAt": "2026-11-07T03:14:21Z", "latestWholePlanAdmission": "2026-11-06T07:04:21Z",
+        "resourceAllocationRecord": {
+            "decisionSha256": "dc24e48bfe15dcb343affc4e04573fca260fdb119560d2a4e47332a02e0cd423",
+            "kind": "human-approved-source-repair-scope-extension", "newHumanApproval": True}}
+
+
+def is_combined_source_repair(value):
+    return type(value) is dict and canonical(value) == canonical(vendor_repair_combined_source_allocation())
+
+
 def validate_vendor_repair_continuation(value):
     record = value.get("resourceAllocationRecord") if type(value)is dict else None
-    expected = (vendor_repair_derivation_recovery_allocation() if type(record)is dict and
+    expected = (vendor_repair_combined_source_allocation() if type(record)is dict and
+        record.get("decisionSha256") == "dc24e48bfe15dcb343affc4e04573fca260fdb119560d2a4e47332a02e0cd423" else
+        vendor_repair_derivation_recovery_allocation() if type(record)is dict and
         record.get("decisionSha256") == "ec861a2d06b6c0b11d5f4b44138dff44817503ab8d8d55d7d5b896c68e388f82" else
         vendor_repair_resource_allocation() if type(value)is dict and "resourceAllocationRecord" in value else
         vendor_repair_continuation())
@@ -151,7 +184,7 @@ def validate_vendor_repair_continuation(value):
 def vendor_continuation_from_digest(value):
     need(pin(value), "vendor_continuation_digest")
     for projection in (vendor_repair_continuation(), vendor_repair_resource_allocation(),
-            vendor_repair_derivation_recovery_allocation()):
+            vendor_repair_derivation_recovery_allocation(), vendor_repair_combined_source_allocation()):
         if value == digest(projection):
             return projection
     need(False, "vendor_continuation_digest")
@@ -181,20 +214,23 @@ def h3_stage_pools(grant):
     return dict(value["stagePools"] if value is not None else H3_STAGE_POOLS)
 
 
-def h3_stage_descriptor(continuation=False):
-    need(type(continuation) is bool, "vendor_continuation_selector")
+def h3_stage_descriptor(continuation=False, combined_source_repair=False):
+    need(type(continuation) is bool and type(combined_source_repair) is bool and
+        (not combined_source_repair or continuation), "vendor_continuation_selector")
+    combined = vendor_repair_combined_source_allocation() if combined_source_repair else None
+    stage_minutes = sum(combined["stagePools"].values()) if combined is not None else H3_STAGE_MINUTES
     return {"publicAmendmentSha256": H3_AMENDMENT_SHA256,
         "privateAuthorizationSha256": H3_PRIVATE_AUTHORIZATION_SHA256,
-        "expiresAt": H3_EXPIRES_AT, "minimumPackageUseAt": H3_NOT_BEFORE,
+        "expiresAt": combined["expiresAt"] if combined is not None else H3_EXPIRES_AT, "minimumPackageUseAt": H3_NOT_BEFORE,
         "stagePrefixLedgerSha256": H3_PREFIX_LEDGER_SHA256,
-        "stagePrefixNewMinutes": H3_PREFIX_MINUTES, "maximumStageRunnerMinutes": H3_STAGE_MINUTES,
-        "maximumStageBookedMinutes": H3_MAXIMUM_BOOKED_MINUTES,
-        "maximumSourceGenerations": 5 if continuation else H3_MAXIMUM_SOURCE_GENERATIONS}
+        "stagePrefixNewMinutes": H3_PREFIX_MINUTES, "maximumStageRunnerMinutes": stage_minutes,
+        "maximumStageBookedMinutes": H3_PREFIX_MINUTES + stage_minutes,
+        "maximumSourceGenerations": 7 if combined is not None else (5 if continuation else H3_MAXIMUM_SOURCE_GENERATIONS)}
 
 
-def validate_h3_stage_descriptor(value, continuation=False):
+def validate_h3_stage_descriptor(value, continuation=False, combined_source_repair=False):
     fields(value, H3_DESCRIPTOR_FIELDS, "h3_stage_descriptor_fields")
-    expected = h3_stage_descriptor(continuation=continuation)
+    expected = h3_stage_descriptor(continuation=continuation, combined_source_repair=combined_source_repair)
     need(all(type(value[k]) is type(v) and value[k] == v for k, v in expected.items()),
         "h3_stage_descriptor_scope")
     return value
@@ -248,9 +284,10 @@ def source_successor_amendment(grant):
         (("vendorRepairContinuation",) if "vendorRepairContinuation" in grant["sourceSuccessorAmendment"] else ()),
         "h3_amendment_fields")
     continuation = vendor_continuation_for(grant)
-    validate_h3_stage_descriptor({k: value[k] for k in H3_DESCRIPTOR_FIELDS}, continuation=continuation is not None)
+    validate_h3_stage_descriptor({k: value[k] for k in H3_DESCRIPTOR_FIELDS}, continuation=continuation is not None,
+        combined_source_repair=is_combined_source_repair(continuation))
     need(pin(value["sourceFamilySha256"]) and type(value["sourceGeneration"]) is int and
-        (4 if continuation is not None else 1) <= value["sourceGeneration"] <= value["maximumSourceGenerations"] and type(value["bookedArtifacts"]) is list and
+        (6 if is_combined_source_repair(continuation) else (4 if continuation is not None else 1)) <= value["sourceGeneration"] <= value["maximumSourceGenerations"] and type(value["bookedArtifacts"]) is list and
         26 <= len(value["bookedArtifacts"]) <= 4096, "h3_amendment_family")
     ids = set()
     for row in value["bookedArtifacts"]:
@@ -263,7 +300,8 @@ def source_successor_amendment(grant):
 
 
 def effective_expires_at(grant):
-    return H3_EXPIRES_AT if source_successor_amendment(grant) is not None else EXPIRES_AT
+    amendment = source_successor_amendment(grant)
+    return amendment["expiresAt"] if amendment is not None else EXPIRES_AT
 
 
 def amended_source_scope(value):
@@ -301,7 +339,7 @@ def has_budget_amendment(grant):
         r = plan.get("reservations")
         need(type(r) is dict and r.get("current") == (45 if plan["phase"] == "lock-preparation" else 1075) and
             r.get("pendingValidation") == (1075 if plan["phase"] == "lock-preparation" else 0) and
-            r.get("conditionalImage") == 180 and r.get("incidental") == 160, "h3_plan_reservations")
+            r.get("conditionalImage") == 180 and r.get("incidental") == h3_stage_pools(grant)["incidental"], "h3_plan_reservations")
     return True
 
 
@@ -321,7 +359,7 @@ def validate_plan(plan, active=False):
         plan["reasonCode"] in ("initial_recovery", "prior_failure", "generation_ready", "reviewed_pipeline_correction", "approved_source_successor"),
         "plan_scope")
     if "sourceGeneration" in plan:
-        need(type(plan["sourceGeneration"]) is int and 1 <= plan["sourceGeneration"] <= 5 and
+        need(type(plan["sourceGeneration"]) is int and 1 <= plan["sourceGeneration"] <= 7 and
             pin(plan["sourceFamilySha256"]) and plan["sequence"] >= 12, "h3_plan_family")
     else:
         need(plan["reasonCode"] != "approved_source_successor", "h3_reason_requires_binding")
@@ -483,9 +521,9 @@ def validate_h3_budget(grant, plan, charged_total, current_minutes, components):
         "h3_budget_next_operation_pool")
     remaining = sum(pools[k] - observed[k] for k in observed)
     booked = charged_total + remaining
-    need(booked <= min(maximum_new_minutes(grant), H3_MAXIMUM_BOOKED_MINUTES), "h3_budget_cumulative_ceiling")
+    need(booked <= min(maximum_new_minutes(grant), h3["maximumStageBookedMinutes"]), "h3_budget_cumulative_ceiling")
     return {"newObservedOrBookedMinutes": charged_total, "currentObservedMinutes": current_minutes,
         "remainingStagePoolReservationMinutes": remaining, "totalBookedMinutes": booked,
-        "maximumStageBookedMinutes": H3_MAXIMUM_BOOKED_MINUTES,
+        "maximumStageBookedMinutes": h3["maximumStageBookedMinutes"],
         "maximumNewMinutes": maximum_new_minutes(grant), "perAttemptBookedMinuteFloorsApplied": True,
         "stagePoolObservedMinutes": observed}

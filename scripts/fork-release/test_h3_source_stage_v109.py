@@ -9,6 +9,18 @@ import source_validation_selection_v109 as selection
 
 HERE = Path(__file__).resolve().parent
 
+def historical_h3_workflow(name):
+    import hashlib
+    pins = {
+        "v109-h3-lock-preparation.yml": "c0aa0fcb733e51fcbf46a2a723d20334bd8fc32760179504ecbb46493360d428",
+        "v109-h3-source-validation.yml": "4bd74d0c2ac2a94d7c2d0c96f86cc6bd068179ad78c04581f3d6581d2be4c878",
+    }
+    raw = (HERE / "fixtures" / name.replace(".yml", "-before-combined.yml")).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != pins[name]:
+        raise AssertionError("historical H3 workflow pin")
+    return raw
+
+
 def fixture():
     b = p.parse((HERE/'fixtures/v109-h3-anchor-bindings.json').read_bytes())
     prefix = p.parse((HERE/'candidates/v2026.10.9-source-only/h3-stage-prefix.json').read_bytes())
@@ -151,7 +163,7 @@ class H3SourceStageTests(unittest.TestCase):
         from unittest.mock import mock_open
         blocks=[]
         for name in ('v109-h3-lock-preparation.yml','v109-h3-source-validation.yml'):
-            text=(HERE/'fixtures'/name).read_text()
+            text=historical_h3_workflow(name).decode('utf8')
             blocks.extend(textwrap.dedent(body) for body in re.findall(r"python3 - <<'PY'\n(.*?)          PY",text,re.S) if 'def utc(v):' in body)
         self.assertEqual(len(blocks),4)
         floor=p.utc(a.H3_NOT_BEFORE).timestamp()
@@ -177,7 +189,8 @@ class H3SourceStageTests(unittest.TestCase):
         self.assertNotIn(b'fetch-depth: 0',prep);self.assertNotIn(b'fetch-depth: 0',full)
         caps=dict((name,int(value)) for name,value in re.findall(r'profile: ([a-z0-9-]+)\n\s+minutes: ([0-9]+)',full.decode()))
         self.assertEqual(caps,p.PROFILE_MINUTES);self.assertIn(b'max-parallel: 3',full)
-        self.assertIn(b"V109_EXPIRES_AT: '2026-11-06T03:14:21Z'",prep)
+        self.assertIn(b"V109_EXPIRES_AT: '2026-11-07T03:14:21Z'",prep)
+        self.assertIn(b"V109_EXPIRES_AT: '2026-11-06T03:14:21Z'",historical_h3_workflow('v109-h3-lock-preparation.yml'))
         self.assertIn(b'timeout-minutes: 45',prep)
 
     def test_legacy_anchor_remains_legacy(self):

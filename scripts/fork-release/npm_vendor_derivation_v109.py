@@ -61,7 +61,7 @@ def strict_json(raw, need, maximum=2 * 1024 * 1024):
 def validate_record(value, need, *, generation=None):
     keys = {"schema", "sourceGeneration", "workspaceSha256", "patchSha256", "proofSha256", "producerRuntimeSha256"}
     need(type(value) is dict and set(value) == keys and value["schema"] == SCHEMA and
-        type(value["sourceGeneration"]) is int and 2 <= value["sourceGeneration"] <= 5 and
+        type(value["sourceGeneration"]) is int and 2 <= value["sourceGeneration"] <= 7 and
         (generation is None or value["sourceGeneration"] == generation) and
         all(pin(value[k]) for k in keys - {"schema", "sourceGeneration"}), "v9.vendor_record")
     return value

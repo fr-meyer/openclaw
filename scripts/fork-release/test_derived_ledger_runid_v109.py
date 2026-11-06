@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+from test_source_reconciliation_v109 import historical_checker_bytes
 
 HERE=Path(__file__).resolve().parent
 POLICY=HERE/'source_validation_contract_v109.py'
@@ -35,12 +36,17 @@ def ledger():
 def actual_v4_receipt_guard(derived):
  # Execute the actual pinned consumer's receipt assignment and predicate,
  # unmodified. This is the narrow ABI seam, not a full Git/source-graph replay.
- raw=CHECKER.read_bytes()
+ raw=historical_checker_bytes()
  if hashlib.sha256(raw).hexdigest()!='aabbc7684d8ab1b9da2f4529fbd146d6d1ad69105a08aa8cc44ccf1e3bba7e54':raise AssertionError('checker pin')
  function=next(n for n in ast.parse(raw).body if isinstance(n,ast.FunctionDef)and n.name=='check_v109_reconciliation')
  conditional=next(n for n in function.body if isinstance(n,ast.If)and isinstance(n.test,ast.Compare)and
   any(isinstance(c,ast.Constant)and c.value=='pending_ci_derivation'for c in n.test.comparators))
- statements=conditional.orelse[:2]
+ historical_statements=conditional.orelse[:2]
+ current_function=next(n for n in ast.parse(CHECKER.read_bytes()).body if isinstance(n,ast.FunctionDef)and n.name=='check_v109_reconciliation')
+ current_conditional=next(n for n in current_function.body if isinstance(n,ast.If)and isinstance(n.test,ast.Compare)and
+  any(isinstance(c,ast.Constant)and c.value=='pending_ci_derivation'for c in n.test.comparators))
+ statements=current_conditional.orelse[:2]
+ if ast.dump(ast.Module(body=statements,type_ignores=[]))!=ast.dump(ast.Module(body=historical_statements,type_ignores=[])):raise AssertionError('current receipt predicate differs from pinned historical predicate')
  if not (isinstance(statements[0],ast.Assign)and isinstance(statements[1],ast.Expr)and
      any(isinstance(x,ast.Constant)and x.value=='invalid 10.9 lock derivation receipt'for x in ast.walk(statements[1]))):raise AssertionError('actual receipt predicate missing')
  def need(value,code):

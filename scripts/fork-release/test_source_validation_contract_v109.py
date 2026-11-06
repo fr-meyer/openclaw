@@ -315,11 +315,13 @@ class ReviewedInterfaceDeltaTests(unittest.TestCase):
         receipt={"generatedLockSha256":m.digest(files["pnpm-lock.yaml"]),
             "gitDiffSha256":m.digest(files["lock.diff"])}
         with patch.object(m,"validate_generation",return_value=receipt) as validate:
-            self.assertEqual(m.verify_generated_artifact(files,{},"correction"),receipt)
-            validate.assert_called_once_with(b"receipt",{},"correction")
+            bindings={"correction":{}}
+            self.assertEqual(m.verify_generated_artifact(files,bindings,"correction"),receipt)
+            validate.assert_called_once_with(b"receipt",bindings,"correction")
         with patch.object(m,"validate_generation",return_value=receipt) as validate:
-            m.verify_generated_artifact(files,{})
-            validate.assert_called_once_with(b"receipt",{},"validation")
+            bindings={"validation":{}}
+            m.verify_generated_artifact(files,bindings)
+            validate.assert_called_once_with(b"receipt",bindings,"validation")
 
 
 class PipelinePreparationRecoveryTests(unittest.TestCase):

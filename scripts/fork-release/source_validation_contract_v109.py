@@ -137,9 +137,19 @@ H3_VENDOR_PAYLOAD_PATHS = frozenset((
 ))
 
 
+H3_COMBINED_SOURCE_REPAIR_PATHS = frozenset((
+    "scripts/check-package-patches.mts",
+    "test/scripts/check-package-patches.test.ts",
+    "src/test-utils/npm-command.ts",
+    "src/infra/npm-command.test.ts",
+))
+
+
 def h3_material_paths(maximum_generations=3):
-    need(type(maximum_generations) is int and maximum_generations in (3,5), "v9.h3_material_ceiling")
-    return H3_MATERIAL_PATHS | ((H3_VENDOR_CONTINUATION_PATHS | H3_VENDOR_PAYLOAD_PATHS) if maximum_generations==5 else frozenset())
+    need(type(maximum_generations) is int and maximum_generations in (3,5,7), "v9.h3_material_ceiling")
+    return (H3_MATERIAL_PATHS | ((H3_VENDOR_CONTINUATION_PATHS | H3_VENDOR_PAYLOAD_PATHS)
+        if maximum_generations >= 5 else frozenset()) |
+        (H3_COMBINED_SOURCE_REPAIR_PATHS if maximum_generations == 7 else frozenset()))
 
 
 H3_LEGACY_MATERIAL_PATHS = H3_MATERIAL_PATHS
@@ -452,7 +462,8 @@ def source_successor_family(bindings):
 
 def source_authorization_window(bindings):
     """Preserve the original authority bytes; select the bound successor end."""
-    end = run_allowance.H3_EXPIRES_AT if source_successor_family(bindings) is not None else bindings["authorization"]["expiresAt"]
+    end = (run_allowance.effective_expires_at(run_grant(bindings)) if source_successor_family(bindings) is not None
+        else bindings["authorization"]["expiresAt"])
     return bindings["authorization"]["approvedAt"], end
 
 
@@ -460,12 +471,13 @@ def h3_stage_contract(bindings, selected):
     validate_request(selected, bindings)
     if source_successor_family(bindings) is None:
         return None
-    return run_allowance.h3_stage_descriptor(continuation=
-        run_allowance.vendor_continuation_for(run_grant(bindings)) is not None)
+    continuation = run_allowance.vendor_continuation_for(run_grant(bindings))
+    return run_allowance.h3_stage_descriptor(continuation=continuation is not None,
+        combined_source_repair=run_allowance.is_combined_source_repair(continuation))
 
 
 def validate_h3_family(value, maximum_generations=3):
-    need(type(maximum_generations) is int and maximum_generations in (3, 5), "v9.h3_family_ceiling")
+    need(type(maximum_generations) is int and maximum_generations in (3, 5, 7), "v9.h3_family_ceiling")
     fields(value, ("schema", "publicAmendmentSha256", "anchor", "generations"), "v9.h3_family_fields")
     need(value["schema"] == H3_FAMILY_SCHEMA and value["publicAmendmentSha256"] == run_allowance.H3_AMENDMENT_SHA256 and
         value["anchor"] == H3_ANCHOR and type(value["generations"]) is list and
@@ -490,9 +502,14 @@ def validate_h3_family(value, maximum_generations=3):
             item["preparation"]["fileSha256"]["pnpm-lock.yaml"] == previous["fileSha256"]["pnpm-lock.yaml"],
             "v9.h3_reviewed_material_step")
         need(not (set(changed) & H3_VENDOR_CONTINUATION_PATHS) or
-            (maximum_generations == 5 and number >= 4), "v9.vendor_continuation_material_scope")
+            (maximum_generations >= 5 and 4 <= number <= 5), "v9.vendor_continuation_material_scope")
         need(not (set(changed) & H3_VENDOR_PAYLOAD_PATHS) or
-            (maximum_generations == 5 and number == 5), "v9.vendor_payload_material_scope")
+            (maximum_generations >= 5 and number == 5), "v9.vendor_payload_material_scope")
+        need(not (set(changed) & (H3_COMBINED_SOURCE_REPAIR_PATHS - H3_MATERIAL_PATHS)) or
+            (maximum_generations == 7 and number >= 6), "v9.combined_repair_material_generation")
+        need(number <= 5 or (maximum_generations == 7 and
+            set(changed) <= H3_COMBINED_SOURCE_REPAIR_PATHS | {LEDGER} and
+            (number != 6 or H3_COMBINED_SOURCE_REPAIR_PATHS <= set(changed))), "v9.combined_repair_material_scope")
         import npm_vendor_derivation_v109 as vendor
         vendor_active = vendor_active or vendor.PRODUCER in changed
         need(not set(changed) & (H3_VENDOR_MATERIAL_PATHS - H3_LEGACY_MATERIAL_PATHS) or (number >= 2 and vendor_active),
@@ -933,7 +950,8 @@ def budget(request):
             result.update(maximumMaterialSourceGenerations=(continuation["maximumMaterialSourceGenerations"] if continuation is not None else 3),
                 stagePools=deepcopy(continuation["stagePools"] if continuation is not None else run_allowance.H3_STAGE_POOLS),
                 stagePrefixBookedMinutes=run_allowance.H3_PREFIX_MINUTES,
-                maximumStageBookedMinutes=run_allowance.H3_MAXIMUM_BOOKED_MINUTES)
+                maximumStageBookedMinutes=run_allowance.h3_stage_descriptor(continuation=continuation is not None,
+                    combined_source_repair=run_allowance.is_combined_source_repair(continuation))["maximumStageBookedMinutes"])
         return result
     additional = "additionalApprovalSha256" in request
     if additional:
@@ -1099,6 +1117,8 @@ def expected_derived_ledger(before, generated_lock_blob, generation, generated_e
 def verify_generated_artifact(files, bindings, phase="validation"):
     """The caller first authenticates provider artifact/run/head before these bytes."""
     import npm_vendor_derivation_v109 as vendor
+    need(type(phase) is str and phase in ("validation", "correction") and type(bindings) is dict and
+        type(bindings.get(phase)) is dict, "v9.artifact_generation_phase")
     selected = bindings[phase].get("vendorDerivation")
     expected = ("pnpm-lock.yaml", "lock.diff", "generation.json") + (vendor.GENERATED if selected is not None else ())
     fields(files, expected, "v9.artifact_exact_members")
@@ -1360,6 +1380,10 @@ def _verify_reviewed_step(read, before, after, step, *, allowed_additions=frozen
     if set(step["changedPaths"]) & H3_VENDOR_PAYLOAD_PATHS:
         need(vendor_continuation is not None and type(step.get("number")) is int and
             step["number"] == 5, "v9.reviewed_payload_generation")
+    if set(step["changedPaths"]) & (H3_COMBINED_SOURCE_REPAIR_PATHS - H3_MATERIAL_PATHS) or step.get("number", 0) >= 6:
+        need(run_allowance.is_combined_source_repair(vendor_continuation) and type(step.get("number")) is int and
+            6 <= step["number"] <= 7 and set(step["changedPaths"]) <= H3_COMBINED_SOURCE_REPAIR_PATHS | {LEDGER},
+            "v9.reviewed_combined_repair_scope")
     need(set(before) <= set(after) and set(after) - set(before) <= allowed_additions,
         "v9.corrected_source_path_set")
     changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))

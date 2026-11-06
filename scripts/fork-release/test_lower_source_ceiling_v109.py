@@ -241,21 +241,39 @@ class LowerCeilingTests(unittest.TestCase):
         self.assertEqual(new, start + 55 * 60 - 60)
 
     def test_exact_active_workflow_matrix_and_route_binding(self):
-        raw = (ROOT / policy.WORKFLOW).read_bytes()
-        restored = (HERE / 'fixtures/v109-source-validation-restored.yml').read_bytes()
-        self.assertEqual(raw, restored)
+        raw = (HERE / 'fixtures/v109-source-validation-restored.yml').read_bytes()
         self.assertEqual(policy.digest(raw), diagnostic.SOURCE_WORKFLOW_RESTORED)
         matrix = dict((name, int(minutes)) for name, minutes in re.findall(
             rb'- profile: ([a-z0-9-]+)\n\s+minutes: ([0-9]+)', raw))
         self.assertEqual({k.decode(): v for k, v in matrix.items()}, NEXT)
-        diagnostic.workflow_routing(type('R', (), {'regular': staticmethod(lambda p, cap: p.read_bytes())}), ROOT, False)
+        diagnostic.workflow_routing(type('R', (), {'regular': staticmethod(lambda p, cap: raw if p == ROOT / policy.WORKFLOW else p.read_bytes())}), ROOT, False)
+
+    def test_current_h3_workflow_uses_own_closed_route_and_matrix(self):
+        candidate = ROOT / runtime.CANDIDATE
+        bindings = policy.parse((candidate / 'ci-bindings.json').read_bytes())
+        request = policy.parse((candidate / 'source-request.json').read_bytes())
+        policy.validate_request(request, bindings)
+        self.assertIn('sourceSuccessor', bindings)
+        # The retained controls describe the closed Gen5 validation. The new
+        # caller prepares Gen6; no fabricated active Gen6 controls are needed.
+        fixture = 'v109-h3-lock-preparation.yml' if request['phase'] == 'lock-preparation' else 'v109-h3-source-validation.yml'
+        retained_route = (HERE / 'fixtures' / fixture).read_bytes()
+        expected = diagnostic.H3_PREPARATION_WORKFLOW_SHA256 if request['phase'] == 'lock-preparation' else diagnostic.H3_SOURCE_WORKFLOW_SHA256
+        self.assertEqual(policy.digest(retained_route), expected)
+        diagnostic.workflow_routing(type('R', (), {'regular': staticmethod(lambda p, cap: retained_route if p == ROOT / policy.WORKFLOW else p.read_bytes())}),
+            ROOT, False, source_request=request, source_bindings=bindings)
+        raw = (ROOT / policy.WORKFLOW).read_bytes()
+        self.assertEqual(raw, (HERE / 'fixtures/v109-h3-lock-preparation.yml').read_bytes())
+        self.assertEqual(policy.digest(raw), diagnostic.H3_PREPARATION_WORKFLOW_SHA256)
 
     def test_tampered_workflow_map_refuses_at_same_route_guard(self):
         target = ROOT / policy.WORKFLOW
+        original = (HERE / 'fixtures/v109-source-validation-restored.yml').read_bytes()
+        tampered = original.replace(b'- profile: dependency\n            minutes: 25',
+            b'- profile: dependency\n            minutes: 26')
+        self.assertNotEqual(original, tampered)
         def read(p, cap):
-            raw = p.read_bytes()
-            return raw.replace(b'- profile: dependency\n            minutes: 25',
-                b'- profile: dependency\n            minutes: 26') if p == target else raw
+            return tampered if p == target else p.read_bytes()
         with self.assertRaises(policy.Refusal):
             diagnostic.workflow_routing(type('R', (), {'regular': staticmethod(read)}), ROOT, False)
 

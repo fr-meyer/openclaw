@@ -73,9 +73,18 @@ class RealCorrectionArtifactTests(unittest.TestCase):
 
     def test_wrong_or_non_generation_phase_refuses(self):
         bindings, files = correction_artifact()
-        for phase in ("validation", "lock-preparation", "anything"):
+        for phase in ("validation", "lock-preparation", "anything", None, True, []):
             with self.subTest(phase=phase), self.assertRaises(m.Refusal):
                 m.verify_generated_artifact(files, bindings, phase)
+
+    def test_missing_phase_binding_refuses_before_artifact_decode(self):
+        from unittest.mock import patch
+        bindings, files = correction_artifact()
+        del bindings["correction"]
+        with patch.object(m, "validate_generation", side_effect=AssertionError("must refuse before decoding")) as validate:
+            with self.assertRaisesRegex(m.Refusal, "artifact_generation_phase"):
+                m.verify_generated_artifact(files, bindings, "correction")
+            validate.assert_not_called()
 
     def test_correct_phase_still_checks_lock_and_diff_hashes(self):
         for name in ("pnpm-lock.yaml", "lock.diff"):

@@ -19,7 +19,9 @@ TREE = ast.parse(PATH.read_text())
 CONSTANTS = {"HISTORY_START", "HISTORY_MAXIMUM", "HISTORY_QUERY_MAXIMUM", "HISTORY_SEARCH_CAP", "OLD_SOURCE_BRANCH"}
 FUNCTIONS = {"history_rows", "history_created_range", "now_utc", "provider_epoch"}
 ORIGINAL_API_AST_SHA256 = "e117e534d6b935f2374206e991dcddffa316a820a7d19036a1bc6b221e4edd81"
-CURRENT_API_AST_SHA256 = "7145390b5e7b6222a50205d1bfdeb32282bb45ea90dcecb26d84c909ca4a3fd7"
+PRIOR_DIAGNOSTIC_API_AST_SHA256 = "7145390b5e7b6222a50205d1bfdeb32282bb45ea90dcecb26d84c909ca4a3fd7"
+CURRENT_API_AST_SHA256 = "ef90aee722d629b7725ccd5959dc0ed22d7750c4de51750b3d43915d56f39f03"
+PRIOR_DIAGNOSTIC_API_BYTES_SHA256 = "9a0e8a1086a936545a88536bed26b41a5f6276f32d5689a98bba73d147693ac7"
 HISTORICAL_API_SHA256 = "a4a17794bbe6f490e3e2b339986dbed13885bdc8f7a02fd72fafbba35185e692"
 
 
@@ -239,8 +241,16 @@ class HistoryPaginationTests(unittest.TestCase):
         self.assertEqual(historical.body[0].name,'API')
         self.assertEqual(hashlib.sha256(portable_api_ast(historical.body[0]).encode()).hexdigest(),
             ORIGINAL_API_AST_SHA256)
-        self.assertEqual(hashlib.sha256(portable_api_ast(current_class).encode()).hexdigest(),
-            CURRENT_API_AST_SHA256)
+        prior_raw=PATH.with_name('fixtures').joinpath('v109-api-before-oserror-diagnostics.py.txt').read_bytes()
+        self.assertEqual(hashlib.sha256(prior_raw).hexdigest(),PRIOR_DIAGNOSTIC_API_BYTES_SHA256)
+        prior=ast.parse(prior_raw)
+        self.assertEqual(len(prior.body),1)
+        self.assertEqual(hashlib.sha256(portable_api_ast(prior.body[0]).encode()).hexdigest(),PRIOR_DIAGNOSTIC_API_AST_SHA256)
+        self.assertEqual(hashlib.sha256(portable_api_ast(current_class).encode()).hexdigest(),CURRENT_API_AST_SHA256)
+        old_methods={n.name:portable_api_ast(n) for n in prior.body[0].body if isinstance(n,ast.FunctionDef)}
+        new_methods={n.name:portable_api_ast(n) for n in current_class.body if isinstance(n,ast.FunctionDef)}
+        self.assertEqual(set(old_methods),set(new_methods))
+        self.assertEqual({name for name in old_methods if old_methods[name]!=new_methods[name]}, {'__call__'})
 
 
 class ApiSecurityTests(unittest.TestCase):

@@ -123,11 +123,13 @@ class VendorContinuationTests(unittest.TestCase):
         self.assertEqual(g['moneyCeilingUSD'],'25.00')
         self.assertEqual(g['diagnosticBytes'],67108864)
 
-    def test_vendor_record_five_is_source_fact_not_execution_permission(self):
+    def test_vendor_record_seven_is_source_fact_not_execution_permission(self):
         x={'schema':vendor.SCHEMA,'sourceGeneration':5,**{k:'a'*64 for k in
             ('workspaceSha256','patchSha256','proofSha256','producerRuntimeSha256')}}
         vendor.validate_record(x,policy.need)
-        x['sourceGeneration']=6
+        for number in (6,7):
+            x['sourceGeneration']=number; vendor.validate_record(x,policy.need)
+        x['sourceGeneration']=8
         with self.assertRaises(policy.Refusal):vendor.validate_record(x,policy.need)
 
     def test_request_generation_requires_bound_continuation_digest(self):
@@ -138,7 +140,7 @@ class VendorContinuationTests(unittest.TestCase):
         r['vendorRepairContinuationSha256']=run.digest(run.vendor_repair_continuation())
         self.assertEqual(policy.maximum_new_minutes_for(r),25000)
         r['vendorRepairContinuationSha256']='b'*64
-        with self.assertRaises(policy.Refusal):policy.maximum_new_minutes_for(r)
+        with self.assertRaises(run.Refusal):policy.maximum_new_minutes_for(r)
 
 
 # Reuse the maintained real temporary-Git fixture; no candidate package runs.

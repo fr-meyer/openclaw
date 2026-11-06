@@ -400,6 +400,8 @@ class RuntimeTests(unittest.TestCase):
         pipeline=Path('/synthetic/pipeline')
         route_files={path:(ROOT/path).read_bytes() for path in
             (diagnostic.REQUEST_PATH,policy.WORKFLOW,diagnostic.WORKFLOW)}
+        route_files[policy.WORKFLOW]=(ROOT/'scripts/fork-release/fixtures/v109-source-validation-restored.yml').read_bytes()
+        self.assertEqual(policy.digest(route_files[policy.WORKFLOW]),diagnostic.SOURCE_WORKFLOW_RESTORED)
         def regular(path,maximum=2*1024*1024):
             raw=route_files.get(path.relative_to(pipeline).as_posix(),b'fixed tracked bytes')
             self.assertLessEqual(len(raw),maximum)

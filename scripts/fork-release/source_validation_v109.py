@@ -1453,9 +1453,11 @@ def bounded_minute_booking(grant,run_minutes,current_id,current_minutes):
 
 def h3_minute_facts(facts, current_id, current_minutes):
     """Classify observed use once and retain every native-attempt booking floor."""
-    from bounded_run_contract_v109 import h3_stage_pools
+    from bounded_run_contract_v109 import h3_stage_pools, source_successor_amendment
     grant,prefix=facts["grant"],facts["prefix"]
     pools = h3_stage_pools(grant)
+    stage = source_successor_amendment(grant)
+    policy.need(stage is not None, "v9.h3_stage_authority")
     policy.need(prefix is not None and (current_id,1) in facts["run_minutes"] and
         facts["run_minutes"][(current_id,1)]==current_minutes,"v9.h3_current_minute_identity")
     charges=dict(facts["run_minutes"])
@@ -1476,12 +1478,13 @@ def h3_minute_facts(facts, current_id, current_minutes):
     policy.need(all(type(v)is int and 0<=v<=pools[k] for k,v in used.items()),
         "v9.h3_stage_component_ceiling")
     total=sum(charges.values())
-    policy.need(total==2215+sum(used.values()) and total<=5915 and total<=25000,
+    policy.need(total==stage["stagePrefixNewMinutes"]+sum(used.values()) and
+        total<=stage["maximumStageBookedMinutes"] and total<=25000,
         "v9.h3_stage_total_floor")
     components={"preparationObservedMinutes":used["preparation"],"sourceObservedMinutes":used["source"],
         "incidentalObservedMinutes":used["incidental"],"imageObservedMinutes":used["image"],
-        "remainingImageFamilyReserveMinutes":180-used["image"],
-        "remainingIncidentalReserveMinutes":160-used["incidental"]}
+        "remainingImageFamilyReserveMinutes":pools["image"]-used["image"],
+        "remainingIncidentalReserveMinutes":pools["incidental"]-used["incidental"]}
     return total,components
 
 
@@ -2265,31 +2268,33 @@ VENDOR_PAYLOAD_FIXTURE_CASES = 16
 
 
 def vendor_payload_fixture_selected(vendor_record, context):
-    """Only the OWN reviewed G5 source step can select this auxiliary check."""
-    if vendor_record.get("sourceGeneration") != 5:
+    """The OWN reviewed source carries the authenticated G5 payload fixture."""
+    generation = vendor_record.get("sourceGeneration")
+    if generation not in (5, 6, 7):
         return False
     policy.need(type(vendor_record.get("sourceGeneration")) is int and
         type(context.get("bindings")) is dict and type(context.get("request")) is dict,
         "v9.vendor_payload_owned_context")
     bindings, request = context["bindings"], context["request"]
     policy.validate_request(request, bindings)
-    from bounded_run_contract_v109 import source_successor_amendment, validate_vendor_continuation_request
+    from bounded_run_contract_v109 import source_successor_amendment, validate_vendor_continuation_request, is_combined_source_repair
     grant = policy.run_grant(bindings)
     scope = source_successor_amendment(grant)
     continuation = validate_vendor_continuation_request(grant, request)
-    policy.need(scope is not None and continuation is not None and scope["sourceGeneration"] == 5 and
+    policy.need(scope is not None and continuation is not None and scope["sourceGeneration"] == generation and
+        (generation == 5 or is_combined_source_repair(continuation)) and
         request["phase"] == "lock-preparation" and context.get("operationIdentity") == owned_identity(request),
         "v9.vendor_payload_owned_selection")
     family = policy.validate_h3_family(bindings["sourceSuccessor"], scope["maximumSourceGenerations"])
-    policy.need(len(family["generations"]) == 5 and policy.digest(policy.canonical(family)) == scope["sourceFamilySha256"] and
-        policy.H3_VENDOR_PAYLOAD_PATHS <= set(family["generations"][-1]["changedPaths"]),
+    policy.need(len(family["generations"]) == generation and policy.digest(policy.canonical(family)) == scope["sourceFamilySha256"] and
+        policy.H3_VENDOR_PAYLOAD_PATHS <= set(family["generations"][4]["changedPaths"]),
         "v9.vendor_payload_reviewed_paths")
     return True
 
 
 def run_vendor_payload_fixture(source, env, core, context, child_env):
-    """One fixed G5 data-only fixture; not part of the unchanged 30/26/52 gates."""
-    step = context["bindings"]["sourceSuccessor"]["generations"][-1]
+    """Authenticate the carried G5 data fixture before its fresh 16-case check."""
+    step = context["bindings"]["sourceSuccessor"]["generations"][4]
     for name in policy.H3_VENDOR_PAYLOAD_PATHS:
         policy.need(policy.digest(regular(source/name)) == step["contentSha256"][name],
             "v9.vendor_payload_fixture_code_changed")

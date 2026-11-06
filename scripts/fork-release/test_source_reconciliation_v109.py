@@ -29,8 +29,22 @@ def load_release():
 release = load_release()
 
 
+def historical_release_r1_text():
+    raw = (HERE / "fixtures/v109-release-r1.py.txt").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != "3c0cf1e2ee11504fa601faa13a5e5efbe3551684d27626f03e2b00c252728403":
+        raise AssertionError("historical R1 release pin")
+    return raw.decode("utf8")
+
+
+def historical_checker_bytes():
+    raw = (HERE / "fixtures/v109-reconciliation-r3.py.txt").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != "aabbc7684d8ab1b9da2f4529fbd146d6d1ad69105a08aa8cc44ccf1e3bba7e54":
+        raise AssertionError("historical R3 checker pin")
+    return raw
+
+
 def original_release_text():
-    text = (HERE / "release.py").read_text()
+    text = historical_release_r1_text()
     text = text.replace('("v2026.10.6", "v2026.10.7", "v2026.10.8", "v2026.10.9")',
                         '("v2026.10.6", "v2026.10.7", "v2026.10.8")', 1)
     text = text.replace(
@@ -408,11 +422,17 @@ class HistoricalDispatchCases(unittest.TestCase):
             with self.subTest(schema=schema, count=count):
                 self.assertEqual(outcomes[0], outcomes[1])
 
-    def test_v4_zero_three_and_four_successor_shapes(self):
-        release.validate_merge_shape(self.shape(checker.MERGE_SCHEMA, 0))
-        release.validate_merge_shape(self.shape(checker.MERGE_SCHEMA, 3))
+    def test_v4_historical_three_and_current_thirteen_successor_shapes(self):
+        historical = types.ModuleType("historical_v4_shape_owner")
+        exec(compile(historical_release_r1_text(), "pinned-historical-r1", "exec"), historical.__dict__)
+        for count in (0, 3):
+            historical.validate_merge_shape(self.shape(checker.MERGE_SCHEMA, count))
+        with self.assertRaises(historical.Refusal):
+            historical.validate_merge_shape(self.shape(checker.MERGE_SCHEMA, 4))
+        for count in (0, 3, 4, 9, 13):
+            release.validate_merge_shape(self.shape(checker.MERGE_SCHEMA, count))
         with self.assertRaises(release.Refusal):
-            release.validate_merge_shape(self.shape(checker.MERGE_SCHEMA, 4))
+            release.validate_merge_shape(self.shape(checker.MERGE_SCHEMA, 14))
 
     def test_v3_and_v2_dispatch_still_reach_original_owners(self):
         old = baseline_release()

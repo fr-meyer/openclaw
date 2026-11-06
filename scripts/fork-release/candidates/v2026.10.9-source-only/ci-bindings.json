@@ -2243,11 +2243,91 @@
         "runId": "42034422874",
         "nativeAttempt": 1,
         "runnerMinutes": 1
+      },
+      {
+        "runId": "42044736826",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42044737233",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42044736825",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42044737104",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42044737285",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42044736915",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42044737311",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42044737522",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42044737946",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42044737127",
+        "nativeAttempt": 1,
+        "runnerMinutes": 3
+      },
+      {
+        "runId": "42044737353",
+        "nativeAttempt": 1,
+        "runnerMinutes": 517
+      },
+      {
+        "runId": "42044732760",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42044733366",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42044732915",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42044732726",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42044732988",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
     "diagnosticBytes": 67108864,
-    "expiresAt": "2026-11-06T03:14:21Z",
+    "expiresAt": "2026-11-07T03:14:21Z",
     "maximumAdditionalAttempts": 1000,
     "maximumNewRunnerMinutes": 25000,
     "maximumSourceParallelJobs": 3,
@@ -2255,42 +2335,42 @@
     "moneyCeilingUSD": "25.00",
     "nextExecution": {
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "status": "REVIEWED",
-      "sequence": 24,
-      "phase": "validation",
-      "preparationAttempt": 16,
+      "status": "DISARMED",
+      "sequence": 25,
+      "phase": "lock-preparation",
+      "preparationAttempt": 17,
       "source": {
-        "sourceSha": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
-        "sourceTree": "b2819f1628ed53d40ae925c64382444851e265b3",
-        "manifestSha256": "ef24f1613a782362f5003f770ded667e3097a4a6a92142d59be73d86d7ae8ec5",
-        "inventorySha256": "dd6afd5ddbd6f025828f9c04b198ae5e7b70af59952eda71eda33af05af28581",
+        "sourceSha": "bde032ffa56d04ae1f977e787c2ecde705a0ff9c",
+        "sourceTree": "e9a3fd44ee3eaf742e29a0598f35a6ae569b9e1a",
+        "manifestSha256": "3dcbad810acda79ee5fb73607264cea3706f88b6d73b159e91976422956ada33",
+        "inventorySha256": "f20b606b0cb50a6a66ab8ad71f234c6ce50b6374ce910e77730de38faae2fe26",
         "fileSha256": {
           "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
           "pnpm-workspace.yaml": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
           "pnpm-lock.yaml": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
-          "custom-patches/reconciliation-2026.10.9.json": "01e64a4bad19a8a1baaedcee3e31f5a235c17f876a4da6486ba734c9bcb8f266"
+          "custom-patches/reconciliation-2026.10.9.json": "99f44c019143ed159dce0bfc0cf5cd56bb1e4d0c365b3ba4c991f880ec164254"
         }
       },
       "priorSourceRun": {
-        "runId": "42034430423",
-        "pipelineHead": "eebce42013d3dd7e63d734353eaef14268e2e4a0",
-        "requestSha256": "86f44b0f2a63ca062d35285c2feab37d9d7cd382d34bc5c509cfbdddee09b18a"
+        "runId": "42044737353",
+        "pipelineHead": "405591bbcc8a6f0cdebac22f98feadc1da4b0331",
+        "requestSha256": "31867417827c665974f8fec88a20b10d399eef47ab36f5e0e941bc96e33a494f"
       },
-      "reasonCode": "reviewed_pipeline_correction",
-      "reviewSha256": "ed640af20ef8270c466a479b996afa11b9488890060434d64ad37351dc406256",
-      "requestSha256": "31867417827c665974f8fec88a20b10d399eef47ab36f5e0e941bc96e33a494f",
+      "reasonCode": "approved_source_successor",
+      "reviewSha256": null,
+      "requestSha256": null,
       "reservations": {
-        "current": 1075,
-        "pendingValidation": 0,
+        "current": 45,
+        "pendingValidation": 1075,
         "conditionalImage": 180,
-        "incidental": 160
+        "incidental": 194
       },
-      "sourceGeneration": 5,
-      "sourceFamilySha256": "3f73c30492a9f91622a1aa5c7b438e25c6b747e2a2383a99eca10cb1d2b9909e"
+      "sourceGeneration": 6,
+      "sourceFamilySha256": "5b01998df89d7c724bb3ffb90398a5247a2252d915d6b84df2fe305a9e429b8b"
     },
     "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
     "schema": "openclaw.v109.bounded-ci-run-grant.v1",
-    "status": "APPROVED",
+    "status": "DISARMED",
     "budgetCeilingAmendment": {
       "schema": "openclaw.v109.budget-ceiling-amendment-binding.v1",
       "scope": "minute-and-spending-ceilings-only",
@@ -2302,15 +2382,15 @@
     "sourceSuccessorAmendment": {
       "publicAmendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
       "privateAuthorizationSha256": "8df97c688f5273be12a4dad408b282660df2473bdbd1e02260c5613d04958446",
-      "expiresAt": "2026-11-06T03:14:21Z",
+      "expiresAt": "2026-11-07T03:14:21Z",
       "minimumPackageUseAt": "2026-11-04T09:59:50Z",
       "stagePrefixLedgerSha256": "56f29f04c138fd06ea1ecfbd38ab27acfd24e99a48269066f7e2f57ad7a1043b",
       "stagePrefixNewMinutes": 2215,
-      "maximumStageRunnerMinutes": 3700,
-      "maximumStageBookedMinutes": 5915,
-      "maximumSourceGenerations": 5,
-      "sourceFamilySha256": "3f73c30492a9f91622a1aa5c7b438e25c6b747e2a2383a99eca10cb1d2b9909e",
-      "sourceGeneration": 5,
+      "maximumStageRunnerMinutes": 3873,
+      "maximumStageBookedMinutes": 6088,
+      "maximumSourceGenerations": 7,
+      "sourceFamilySha256": "5b01998df89d7c724bb3ffb90398a5247a2252d915d6b84df2fe305a9e429b8b",
+      "sourceGeneration": 6,
       "bookedArtifacts": [
         {
           "fieldPresence": {
@@ -3631,37 +3711,90 @@
             "head_branch": true,
             "head_sha": true
           }
+        },
+        {
+          "producerRunId": "42044737353",
+          "producerHead": "405591bbcc8a6f0cdebac22f98feadc1da4b0331",
+          "nativeResponseSha256": "76e1f2469a93e025ba00c1ec6cc40489dc5ab11ffc885805c01a4bd9cdbd0cf3",
+          "metadata": {
+            "id": 13438326876,
+            "name": "v109-source-validation-42044737353-attempt1",
+            "size_in_bytes": 868,
+            "expired": false,
+            "digest": "sha256:0daff836f33573e8d2956dd417dc6049cac891fe47032a9992a1263f7bf98876",
+            "created_at": "2026-11-05T17:36:43Z",
+            "expires_at": "2026-11-08T17:36:42Z",
+            "updated_at": "2026-11-05T17:36:43Z",
+            "workflow_run": {
+              "id": 42044737353,
+              "repository_id": 1309456040,
+              "head_repository_id": 1309456040,
+              "head_branch": "task/v107-source-binding",
+              "head_sha": "405591bbcc8a6f0cdebac22f98feadc1da4b0331"
+            }
+          },
+          "fieldPresence": {
+            "id": true,
+            "name": true,
+            "size_in_bytes": true,
+            "expired": true,
+            "digest": true,
+            "created_at": true,
+            "expires_at": true,
+            "updated_at": true,
+            "workflow_run": true
+          },
+          "workflowRunFieldPresence": {
+            "id": true,
+            "repository_id": true,
+            "head_repository_id": true,
+            "head_branch": true,
+            "head_sha": true
+          }
         }
       ],
       "vendorRepairContinuation": {
         "schema": "openclaw.v109.vendor-repair-continuation.v1",
-        "proposalSha256": "40468f07a09278c71d8998a80f3f40b3e46239bfff9475828df25a27f9da676f",
-        "authorizationSha256": "46b498143d1f8fc7bcb52d12bde43518ab1476811249cb5ec0b8165ce318cf5e",
-        "priorLedgerSha256": "1948b1b2f08eeab7f00f5160ceda4d1f105e142ffc3e63613bad9f5888bf7482",
-        "maximumMaterialSourceGenerations": 5,
+        "proposalSha256": "aa8ce7f20d173176361d582fc955399c949b4148ee22e12b508aa6e0e9dea8a4",
+        "authorizationSha256": "dc24e48bfe15dcb343affc4e04573fca260fdb119560d2a4e47332a02e0cd423",
+        "priorLedgerSha256": "5b1af3981177a487115cc185667dbb06bd25f930cf984c1895cf51165e66c354",
+        "maximumMaterialSourceGenerations": 7,
         "maximumAdditionalSourceGenerations": 2,
         "conditionalSecondRevisionEvidenceRequired": true,
-        "maximumAdditionalPreparations": 2,
-        "maximumValidationWaves": 2,
-        "maximumSameSourcePipelineCorrections": 1,
-        "maximumAdditionalRunnerMinutes": 2290,
-        "vendorAggregateMaximumMinutes": 2360,
+        "plannedFullCostPreparationSlots": 2,
+        "plannedFullCostValidationSlots": 2,
+        "maximumAdditionalRunnerMinutes": 3122,
+        "privateComponentMaximumMinutes": {
+          "preparation": 218,
+          "source": 2760,
+          "incidental": 144
+        },
+        "vendorAggregateMaximumMinutes": 3192,
         "vendorComponentMaximumMinutes": {
-          "preparation": 225,
-          "source": 2150,
-          "incidental": 110
+          "preparation": 267,
+          "source": 2760,
+          "incidental": 165
         },
         "stagePools": {
-          "preparation": 270,
-          "source": 3090,
-          "incidental": 160,
+          "preparation": 310,
+          "source": 3189,
+          "incidental": 194,
           "image": 180
         },
-        "latestWholePlanAdmission": "2026-11-05T07:14:21Z",
+        "futureEnvelopeRunnerMinutes": 2300,
+        "carriedUnusedRunnerMinutes": 1468,
+        "netStageIncreaseRunnerMinutes": 832,
+        "futurePools": {
+          "preparation": 90,
+          "source": 2150,
+          "incidental": 60
+        },
+        "expiresAt": "2026-11-07T03:14:21Z",
+        "latestWholePlanAdmission": "2026-11-06T07:04:21Z",
         "resourceAllocationRecord": {
-          "decisionSha256": "ec861a2d06b6c0b11d5f4b44138dff44817503ab8d8d55d7d5b896c68e388f82",
-          "kind": "internal-resource-allocation",
-          "newHumanApproval": false
+          "decisionSha256": "dc24e48bfe15dcb343affc4e04573fca260fdb119560d2a4e47332a02e0cd423",
+          "kind": "human-approved-source-repair-scope-extension",
+          "newHumanApproval": true
         }
       }
     }
@@ -3711,62 +3844,29 @@
   ],
   "pipelineBranch": "task/v107-source-binding",
   "preparation": {
-    "sourceSha": "e0e6f07518662748b616dd8f9785e6b5182f3e1f",
-    "sourceTree": "f5c49244b6eed4a2fd4a6d04c769d2ef8e437593",
-    "manifestSha256": "434d71c806e57be32bd10a30ecdff14821c14965b6f6425aa59fee6235401db3",
-    "inventorySha256": "d84142e9cee43ac4339f3d79a8ec671a06cd146057dc11d5708b207f7c1be07f",
+    "sourceSha": "bde032ffa56d04ae1f977e787c2ecde705a0ff9c",
+    "sourceTree": "e9a3fd44ee3eaf742e29a0598f35a6ae569b9e1a",
+    "manifestSha256": "3dcbad810acda79ee5fb73607264cea3706f88b6d73b159e91976422956ada33",
+    "inventorySha256": "f20b606b0cb50a6a66ab8ad71f234c6ce50b6374ce910e77730de38faae2fe26",
     "fileSha256": {
       "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
-      "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
-      "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-      "custom-patches/reconciliation-2026.10.9.json": "994a638577041121c1434dd20b86311a5877956de19a8b763f95e32924228c16"
+      "pnpm-workspace.yaml": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
+      "pnpm-lock.yaml": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+      "custom-patches/reconciliation-2026.10.9.json": "99f44c019143ed159dce0bfc0cf5cd56bb1e4d0c365b3ba4c991f880ec164254"
     }
   },
   "preparationCorrection": null,
   "repository": "fr-meyer/openclaw",
   "schema": "openclaw.v109.ci-bindings.v1",
   "sourceBranch": "prep/v2026.10.9-remediation",
-  "status": "APPROVED_CI",
+  "status": "DISARMED",
   "upstream": {
     "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
     "tag": "v2026.10.9",
     "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
     "tree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7"
   },
-  "validation": {
-    "source": {
-      "sourceSha": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
-      "sourceTree": "b2819f1628ed53d40ae925c64382444851e265b3",
-      "manifestSha256": "ef24f1613a782362f5003f770ded667e3097a4a6a92142d59be73d86d7ae8ec5",
-      "inventorySha256": "dd6afd5ddbd6f025828f9c04b198ae5e7b70af59952eda71eda33af05af28581",
-      "fileSha256": {
-        "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
-        "pnpm-workspace.yaml": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
-        "pnpm-lock.yaml": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
-        "custom-patches/reconciliation-2026.10.9.json": "01e64a4bad19a8a1baaedcee3e31f5a235c17f876a4da6486ba734c9bcb8f266"
-      }
-    },
-    "generation": {
-      "runId": "42022429225",
-      "runAttempt": 1,
-      "pipelineHead": "7901f054959be2ce8bd70755b2afb32387d20898",
-      "artifactId": 13414031761,
-      "artifactSha256": "5c23e71cbcbf8b1e06044d1a0a319e32492e7a282d6d0bdfc0631c34dfcb0396",
-      "receiptSha256": "5cd83f8acb10b0de9f871f178eeae5657927eb56731fc4ca0c13bb62b04258fd",
-      "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
-      "gitDiffSha256": "ab6724bbbe446c090933a4cb28c189963aba91d80b22c7344d87c20c4bf193df"
-    },
-    "preparationAttempt": 16,
-    "unchangedTreeSha256": "2bc2946d14ff4408f0116a8ec02b4ae9463530f9b8a35b87f4066797217d989f",
-    "vendorDerivation": {
-      "schema": "openclaw.v109.npm-vendor-derivation.v1",
-      "sourceGeneration": 5,
-      "workspaceSha256": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
-      "patchSha256": "1f6eb7e7efe61639b838d0f931318b16e2309a71afd6a568017908d69763e866",
-      "proofSha256": "b757ba0b91df785d71f7816350066e8a3f0b5828aa3d58988da129f203d71e2d",
-      "producerRuntimeSha256": "4f7927a4f4c27911e82c1ce21347b47d4c7f3f7e72f66f31c0616b5e4ee29a6c"
-    }
-  },
+  "validation": null,
   "workflow": ".github/workflows/future-v109-source-validation.yml",
   "sourceSuccessor": {
     "schema": "openclaw.v109.material-source-family.v1",
@@ -4090,6 +4190,49 @@
             "producerRuntimeSha256": "4f7927a4f4c27911e82c1ce21347b47d4c7f3f7e72f66f31c0616b5e4ee29a6c"
           }
         }
+      },
+      {
+        "number": 6,
+        "parentSource": {
+          "sourceSha": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
+          "sourceTree": "b2819f1628ed53d40ae925c64382444851e265b3",
+          "manifestSha256": "ef24f1613a782362f5003f770ded667e3097a4a6a92142d59be73d86d7ae8ec5",
+          "inventorySha256": "dd6afd5ddbd6f025828f9c04b198ae5e7b70af59952eda71eda33af05af28581",
+          "fileSha256": {
+            "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
+            "pnpm-workspace.yaml": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
+            "pnpm-lock.yaml": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+            "custom-patches/reconciliation-2026.10.9.json": "01e64a4bad19a8a1baaedcee3e31f5a235c17f876a4da6486ba734c9bcb8f266"
+          }
+        },
+        "preparation": {
+          "sourceSha": "bde032ffa56d04ae1f977e787c2ecde705a0ff9c",
+          "sourceTree": "e9a3fd44ee3eaf742e29a0598f35a6ae569b9e1a",
+          "manifestSha256": "3dcbad810acda79ee5fb73607264cea3706f88b6d73b159e91976422956ada33",
+          "inventorySha256": "f20b606b0cb50a6a66ab8ad71f234c6ce50b6374ce910e77730de38faae2fe26",
+          "fileSha256": {
+            "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
+            "pnpm-workspace.yaml": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
+            "pnpm-lock.yaml": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+            "custom-patches/reconciliation-2026.10.9.json": "99f44c019143ed159dce0bfc0cf5cd56bb1e4d0c365b3ba4c991f880ec164254"
+          }
+        },
+        "changedPaths": [
+          "custom-patches/reconciliation-2026.10.9.json",
+          "scripts/check-package-patches.mts",
+          "src/infra/npm-command.test.ts",
+          "src/test-utils/npm-command.ts",
+          "test/scripts/check-package-patches.test.ts"
+        ],
+        "contentSha256": {
+          "custom-patches/reconciliation-2026.10.9.json": "99f44c019143ed159dce0bfc0cf5cd56bb1e4d0c365b3ba4c991f880ec164254",
+          "scripts/check-package-patches.mts": "721a8681f9fdd42883ae060febebe538f1634ea145c829cd024f014ee953df7a",
+          "src/infra/npm-command.test.ts": "c45ec178ad0d6988cdec38d72469bec79f76602b6cc4bc41eda3983feb44bf23",
+          "src/test-utils/npm-command.ts": "535b2aaec33b66bc70332aa461a4a80ba22ae01dd8d92625f09ae4c0798cd30f",
+          "test/scripts/check-package-patches.test.ts": "ed3fdd92f9b3e9902fb186388625439c8eb3a23eb799e397c926da571c190fc8"
+        },
+        "unchangedTreeSha256": "c0bfb2666473057e22ee998974eb2e6301e72b104de50a7d60a0b1941f6d5038",
+        "validation": null
       }
     ]
   }

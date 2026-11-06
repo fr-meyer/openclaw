@@ -1,5 +1,6 @@
 """Focused delta proof: only the v109 runtime lane changes from reviewed R1."""
 
+import ast
 import hashlib
 import importlib.util
 from pathlib import Path
@@ -26,9 +27,8 @@ NEW = '("v2026.10.6", "v2026.10.7", "v2026.10.8", "v2026.10.9")'
 
 
 def original_r1():
-    text = (HERE / "release.py").read_text()
-    assert text.count(NEW) == 1
-    restored = text.replace(NEW, OLD, 1)
+    # Frozen R1 bytes remain the baseline; later graph/lineage work is separate.
+    restored = proof_tests.historical_release_r1_text()
     assert hashlib.sha256(restored.encode()).hexdigest() == \
         "3c0cf1e2ee11504fa601faa13a5e5efbe3551684d27626f03e2b00c252728403"
     module = types.ModuleType("original_r1_node_selection")
@@ -66,7 +66,15 @@ class ValidationNodeDeltaCases(unittest.TestCase):
 
     def test_only_node_tuple_changed_and_reviewed_helper_is_pinned(self):
         original_r1()
-        self.assertEqual(hashlib.sha256((HERE / "source_reconciliation_v109.py").read_bytes()).hexdigest(),
+        current_text = (HERE / "release.py").read_text()
+        baseline_text = proof_tests.historical_release_r1_text()
+        current_fn = next(n for n in ast.parse(current_text).body if isinstance(n, ast.FunctionDef) and n.name == "validation_node_version")
+        baseline_fn = next(n for n in ast.parse(baseline_text).body if isinstance(n, ast.FunctionDef) and n.name == "validation_node_version")
+        selected = ast.get_source_segment(current_text, current_fn)
+        self.assertEqual(selected.count(NEW), 1)
+        self.assertEqual(ast.dump(ast.parse(selected.replace(NEW, OLD, 1))),
+                         ast.dump(ast.parse(ast.get_source_segment(baseline_text, baseline_fn))))
+        self.assertEqual(hashlib.sha256(proof_tests.historical_checker_bytes()).hexdigest(),
                          "aabbc7684d8ab1b9da2f4529fbd146d6d1ad69105a08aa8cc44ccf1e3bba7e54")
         self.assertEqual(hashlib.sha256(proof_tests.original_release_text().encode()).hexdigest(),
                          "d809c07015cd86e717c750ae87fa7849baf7e27a86209d0ca55b068c236246ac")

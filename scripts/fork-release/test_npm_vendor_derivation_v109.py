@@ -22,6 +22,29 @@ def need(value, code):
         raise ValueError(code)
 
 
+def vendor_bootstrap_binding(number):
+    """The admitted entrypoint receives a complete synthetic owned request."""
+    from test_h3_source_stage_v109 import fixture
+    bindings = fixture()
+    family = bindings["sourceSuccessor"]
+    for current in range(2, number + 1):
+        parent = deepcopy(family["generations"][-1]["preparation"])
+        source = deepcopy(parent)
+        source.update(sourceSha=format(current, "040x"), sourceTree=format(current + 100, "040x"))
+        paths = sorted((p.LEDGER, v.PRODUCER if current == 2 else "package.json"))
+        family["generations"].append({"number": current, "parentSource": parent, "preparation": source,
+            "changedPaths": paths, "contentSha256": {name: "c" * 64 for name in paths},
+            "unchangedTreeSha256": "d" * 64, "validation": None})
+    source = family["generations"][-1]["preparation"]
+    digest = p.digest(p.canonical(family))
+    bindings["preparation"] = source
+    grant = bindings["ciRunGrant"]
+    grant["sourceSuccessorAmendment"].update(sourceGeneration=number, sourceFamilySha256=digest)
+    grant["nextExecution"].update(source=source, sourceGeneration=number, sourceFamilySha256=digest,
+        sequence=11 + number, preparationAttempt=6 + number)
+    return bindings, p.request_for(bindings, "lock-preparation", 6 + number)
+
+
 def proof_fixture():
     # Synthetic files isolate the protocol owner. No candidate package is loaded.
     rows = [{"path": "synthetic/f%04d" % i, "mode": 0o644, "size": 1, "sha256": "a" * 64} for i in range(1938)]
@@ -307,9 +330,9 @@ class VendorProtocolTests(unittest.TestCase):
                     out = Path(argv[-1]); out.mkdir()
                     (out/Path(v.PATCH).name).write_bytes(raw_patch); (out/Path(v.PROOF).name).write_bytes(encoded(value))
                 return SimpleNamespace(returncode=0, timed_out=False)
-            bindings = {"sourceSuccessor": {"generations": [{"number": 2, "parentSource": {"sourceSha": "a" * 40}}]}}
+            bindings, request = vendor_bootstrap_binding(2)
             with patch.object(controller, "git_read", side_effect=git_read), patch.object(controller, "vendor_archive") as fetch, patch.object(v, "ORIGINAL_INVENTORY_SHA256", inventory):
-                record, files, archives = controller.prepare_npm_vendor(source, bindings, {"source":{"sourceSha":"b"*40}}, {"GITHUB_ACTIONS":"true"}, SimpleNamespace(phase_process=phase), {"deadlineEpoch":9999999999}, {"PATH":"/known", "CI":"true"}, home)
+                record, files, archives = controller.prepare_npm_vendor(source, bindings, request, {"GITHUB_ACTIONS":"true"}, SimpleNamespace(phase_process=phase), {"deadlineEpoch":9999999999}, {"PATH":"/known", "CI":"true"}, home)
             self.assertEqual(len(calls), 2)
             self.assertEqual(calls[0][0], ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"])
             self.assertEqual(calls[1][0][:3], ["node", v.PRODUCER, "--original-npm"])
@@ -323,10 +346,10 @@ class VendorProtocolTests(unittest.TestCase):
             # genuine producer and does not rewrite files to fabricate a delta.
             mtimes={name:(source/name).stat().st_mtime_ns for name in v.GENERATED}
             workspace=files[v.WORKSPACE]
-            bindings["sourceSuccessor"]["generations"][-1]["number"]=3
+            bindings, request = vendor_bootstrap_binding(3)
             second_home=home/"second";second_home.mkdir()
             with patch.object(controller, "git_read", side_effect=git_read), patch.object(controller, "vendor_archive"), patch.object(v, "ORIGINAL_INVENTORY_SHA256", inventory):
-                third, third_files, _ = controller.prepare_npm_vendor(source,bindings,{"source":{"sourceSha":"c"*40}}, {"GITHUB_ACTIONS":"true"},SimpleNamespace(phase_process=phase),{"deadlineEpoch":9999999999},{"PATH":"/known","CI":"true"},second_home)
+                third, third_files, _ = controller.prepare_npm_vendor(source,bindings,request, {"GITHUB_ACTIONS":"true"},SimpleNamespace(phase_process=phase),{"deadlineEpoch":9999999999},{"PATH":"/known","CI":"true"},second_home)
             self.assertEqual(third["sourceGeneration"],3);self.assertEqual(third_files,files)
             self.assertEqual({name:(source/name).stat().st_mtime_ns for name in v.GENERATED},mtimes)
 
@@ -335,7 +358,8 @@ class VendorProtocolTests(unittest.TestCase):
             source = Path(temporary).resolve(); (source/"package.json").write_bytes(b'{"dependencies":{"npm":"latest"}}')
             with patch.object(controller, "git_read", return_value=b'{"dependencies":{"npm":"12.2.1"}}'), patch.object(controller, "vendor_archive", side_effect=AssertionError("no HTTP")):
                 with self.assertRaisesRegex(ValueError, "same_dependency_graph"):
-                    controller.prepare_npm_vendor(source, {"sourceSuccessor":{"generations":[{"number":2,"parentSource":{"sourceSha":"a"*40}}]}}, {}, {"GITHUB_ACTIONS":"true"}, SimpleNamespace(), {"deadlineEpoch":9999999999}, {}, source)
+                    bindings, request = vendor_bootstrap_binding(2)
+                    controller.prepare_npm_vendor(source, bindings, request, {"GITHUB_ACTIONS":"true"}, SimpleNamespace(), {"deadlineEpoch":9999999999}, {}, source)
 
     def test_private_capture_precedes_parse_and_keeps_oversize_prefix(self):
         with tempfile.TemporaryDirectory() as temporary:
