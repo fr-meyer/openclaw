@@ -327,25 +327,34 @@ class ModelDiagnostic(unittest.TestCase):
                         "requestSha256":model.H_REQUEST}}
                 binding={"authorization":{"approvedAt":model.START},"ciRunGrant":grant,
                     "preparationCorrection":None,"validation":{"source":SOURCE["source"],"generation":generation}}
-                def content(api,path,head,*args):
+                def content(api,path,head,maximum=131072):
+                    self.assertIn(path,(runtime.BINDINGS,runtime.REQUEST,model.REQUEST_PATH))
+                    self.assertEqual(maximum,{runtime.BINDINGS:131072,
+                        runtime.REQUEST:65536,model.REQUEST_PATH:16384}[path])
                     if path==runtime.BINDINGS:
                         historical=deepcopy(binding)
                         historical["ciRunGrant"]["nextExecution"]["requestSha256"]=policy.digest(contents[head,runtime.REQUEST])
-                        return policy.encode(historical)
-                    return contents[head,path]
+                        raw=policy.encode(historical)
+                    else:
+                        raw=contents[head,path]
+                    self.assertLessEqual(len(raw),maximum)
+                    return raw
                 captured=[]
                 def sequence(b,q,rows,current):
                     captured.append({"ids":{r[0]for r in rows},"current":current,"request":q})
                     return {"sourceExecutionSequence":q["executionSequence"]}
                 tree=ast.parse((HERE/"source_validation_v109.py").read_text())
                 nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef)and
-                    n.name in {"history_checks","collect_history_accounting"}]
-                self.assertEqual({n.name for n in nodes},{"history_checks","collect_history_accounting"})
+                    n.name in {"history_checks","collect_history_accounting","source_history_binding_content"}]
+                self.assertEqual({n.name for n in nodes},
+                    {"history_checks","collect_history_accounting","source_history_binding_content"})
                 module=types.ModuleType("synthetic_model_history_composition")
                 module.__dict__.update(runtime.__dict__)
                 module.__name__="synthetic_model_history_composition"
                 module.history_rows=lambda api,clock:history
                 module.closed_baseline=lambda *a:(set(),set(),set())
+                # Compile the unchanged historical selector below so its globals
+                # use this closed reader, retaining its bound/hash checks.
                 module.content=content
                 module.regular=lambda *a:b"synthetic already-reviewed baseline boundary"
                 module.jobs_for=lambda api,r:jobs[str(r["id"])]
