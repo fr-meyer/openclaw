@@ -3,8 +3,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type { SourceFile } from "typescript/ast";
 import {
-  createVirtualFileSystem,
-  type FileSystem,
+  serverFS,
+  type FileSystemCallbacks,
   type FileSystemEntries,
 } from "typescript/fs";
 import {
@@ -18,6 +18,14 @@ import {
 export type NativeTypeScriptSource = { fileName: string; text: string };
 export type NativeTypeScriptParser = ReturnType<typeof createNativeTypeScriptParser>;
 export type NativeTypeScriptProject = ReturnType<typeof createNativeTypeScriptProject>;
+
+type FileSystem = {
+  readFile?: (file: string) => string | undefined;
+  fileExists?: (file: string) => boolean | undefined;
+  directoryExists?: (directory: string) => boolean | undefined;
+  realpath?: (file: string) => string | undefined;
+  getAccessibleEntries?: (directory: string) => FileSystemEntries | undefined;
+};
 
 type ProjectOptions = {
   cwd: string;
@@ -50,26 +58,85 @@ function directoryEntries(directory: string): FileSystemEntries {
       "code" in error &&
       (error.code === "ENOENT" || error.code === "ENOTDIR")
     ) {
-      return { files: [], directories: [] };
+      return { files: [], directories: [], symlinks: [] };
     }
     throw error;
   }
   const files: string[] = [];
   const directories: string[] = [];
+  const symlinks: string[] = [];
   for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      symlinks.push(entry.name);
+    }
     const isDirectory = entry.isSymbolicLink()
       ? fs.statSync(path.join(directory, entry.name), { throwIfNoEntry: false })?.isDirectory()
       : entry.isDirectory();
     (isDirectory ? directories : files).push(entry.name);
   }
-  return { files, directories };
+  return { files, directories, symlinks };
+}
+
+function emptyDirectoryEntries(): FileSystemEntries {
+  return { files: [], directories: [], symlinks: [] };
+}
+
+/** The 7.1 beta removed the virtual callback helper; retain its in-memory contract here. */
+function createVirtualFileSystem(contents: Readonly<Record<string, string>>) {
+  const files = new Map(Object.entries(contents).map(([file, text]) => [path.resolve(file), text]));
+  const directories = new Set<string>();
+  for (const file of files.keys()) {
+    for (let directory = path.dirname(file); ; directory = path.dirname(directory)) {
+      directories.add(directory);
+      if (directory === path.dirname(directory)) {
+        break;
+      }
+    }
+  }
+  return {
+    readFile: (file: string) => files.get(path.resolve(file)),
+    fileExists: (file: string) => files.has(path.resolve(file)),
+    directoryExists: (directory: string) => directories.has(path.resolve(directory)),
+    realpath: (file: string) => path.resolve(file),
+    getAccessibleEntries(directory: string): FileSystemEntries {
+      const root = path.resolve(directory);
+      return {
+        files: [...files.keys()].filter((file) => path.dirname(file) === root).map(path.basename),
+        directories: [...directories]
+          .filter((child) => child !== root && path.dirname(child) === root)
+          .map(path.basename),
+        symlinks: [],
+      };
+    },
+  };
+}
+
+function completeFileSystem(base: FileSystem): FileSystemCallbacks {
+  return {
+    readFile: base.readFile ?? serverFS.useOS,
+    fileExists: base.fileExists
+      ? (file) => base.fileExists?.(file) ?? serverFS.useOS
+      : serverFS.useOS,
+    directoryExists: base.directoryExists
+      ? (directory) => base.directoryExists?.(directory) ?? serverFS.useOS
+      : serverFS.useOS,
+    realpath: base.realpath
+      ? (file) => base.realpath?.(file) ?? serverFS.identity
+      : serverFS.useOS,
+    getAccessibleEntries: base.getAccessibleEntries
+      ? (directory) => base.getAccessibleEntries?.(directory) ?? emptyDirectoryEntries()
+      : serverFS.useOS,
+    stat: serverFS.fakeStat,
+    writeFile: serverFS.noop,
+    removeFile: serverFS.noop,
+  };
 }
 
 function overlayFileSystem(
   cwd: string,
   files: Readonly<Record<string, string>>,
   base: FileSystem = {},
-): FileSystem {
+): FileSystemCallbacks {
   const contents = Object.fromEntries(
     Object.entries(files).map(([file, text]) => [compilerFileName(cwd, file), text]),
   );
@@ -77,22 +144,39 @@ function overlayFileSystem(
   const hasFile = (file: string) => Object.hasOwn(contents, compilerFileName(cwd, file));
   return {
     readFile: (file) =>
-      hasFile(file) ? contents[compilerFileName(cwd, file)] : base.readFile?.(file),
-    fileExists: (file) => (hasFile(file) ? true : base.fileExists?.(file)),
+      hasFile(file)
+        ? contents[compilerFileName(cwd, file)]
+        : base.readFile
+          ? base.readFile(file)
+          : serverFS.useOS,
+    fileExists: (file) =>
+      hasFile(file) ? true : (base.fileExists?.(file) ?? serverFS.useOS),
     directoryExists: (directory) =>
-      virtual.directoryExists?.(directory) || base.directoryExists?.(directory),
-    realpath: (file) => (hasFile(file) ? compilerFileName(cwd, file) : base.realpath?.(file)),
+      virtual.directoryExists(directory)
+        ? true
+        : base.directoryExists
+          ? (base.directoryExists(directory) ?? serverFS.useOS)
+          : serverFS.useOS,
+    realpath: (file) =>
+      hasFile(file)
+        ? compilerFileName(cwd, file)
+        : base.realpath
+          ? (base.realpath(file) ?? serverFS.identity)
+          : serverFS.useOS,
     getAccessibleEntries(directory) {
-      const added = virtual.getAccessibleEntries?.(directory);
-      if (!added) {
-        return base.getAccessibleEntries?.(directory);
-      }
-      const existing = base.getAccessibleEntries?.(directory) ?? directoryEntries(directory);
+      const added = virtual.getAccessibleEntries(directory);
+      const existing = base.getAccessibleEntries
+        ? (base.getAccessibleEntries(directory) ?? emptyDirectoryEntries())
+        : directoryEntries(directory);
       return {
         files: [...new Set([...existing.files, ...added.files])],
         directories: [...new Set([...existing.directories, ...added.directories])],
+        symlinks: [...new Set([...(existing.symlinks ?? []), ...(added.symlinks ?? [])])],
       };
     },
+    stat: serverFS.fakeStat,
+    writeFile: serverFS.noop,
+    removeFile: serverFS.noop,
   };
 }
 
@@ -102,7 +186,11 @@ export function createNativeTypeScriptProject(options: ProjectOptions) {
   const configFileName = compilerFileName(cwd, options.configFileName);
   const api = new API({
     cwd,
-    fs: options.files ? overlayFileSystem(cwd, options.files, options.fs) : options.fs,
+    fs: options.files
+      ? overlayFileSystem(cwd, options.files, options.fs)
+      : options.fs
+        ? completeFileSystem(options.fs)
+        : undefined,
   });
   let snapshot: Snapshot;
   let project: Project;
@@ -135,7 +223,11 @@ export async function createNativeTypeScriptProjectAsync(options: ProjectOptions
   const configFileName = compilerFileName(cwd, options.configFileName);
   const api = new AsyncAPI({
     cwd,
-    fs: options.files ? overlayFileSystem(cwd, options.files, options.fs) : options.fs,
+    fs: options.files
+      ? overlayFileSystem(cwd, options.files, options.fs)
+      : options.fs
+        ? completeFileSystem(options.fs)
+        : undefined,
   });
   try {
     const snapshot = await api.createSnapshot({
@@ -210,12 +302,14 @@ export function createNativeTypeScriptParser({
       cwd: root,
       tsserverPath,
       fs: {
-        readFile: (file) => virtual.readFile?.(file) ?? null,
-        fileExists: (file) => virtual.fileExists?.(file) ?? false,
-        directoryExists: (directory) => virtual.directoryExists?.(directory) ?? false,
-        getAccessibleEntries: (directory) =>
-          virtual.getAccessibleEntries?.(directory) ?? { files: [], directories: [] },
+        readFile: (file) => virtual.readFile(file),
+        fileExists: (file) => virtual.fileExists(file),
+        directoryExists: (directory) => virtual.directoryExists(directory),
+        getAccessibleEntries: (directory) => virtual.getAccessibleEntries(directory),
         realpath: (file) => file,
+        stat: serverFS.fakeStat,
+        writeFile: serverFS.noop,
+        removeFile: serverFS.noop,
       },
     });
     const previousNames = new Set(sourceNames);

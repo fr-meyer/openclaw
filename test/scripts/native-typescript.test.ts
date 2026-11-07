@@ -1,8 +1,11 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createNativeTypeScriptParser,
   createNativeTypeScriptProject,
+  createNativeTypeScriptProjectAsync,
   type NativeTypeScriptProject,
 } from "../../scripts/lib/native-typescript.mts";
 
@@ -69,5 +72,97 @@ describe("native TypeScript semantic overlays", () => {
         text: "Type 'string' is not assignable to type 'number'.",
       }),
     ]);
+  });
+
+  it("keeps a host file hidden when the base callback denies listings", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-native-overlay-"));
+    try {
+      fs.writeFileSync(path.join(root, "host.ts"), "export const host = 1;");
+      const isolated = createNativeTypeScriptProject({
+        cwd: root,
+        configFileName: "tsconfig.json",
+        files: {
+          "tsconfig.json": JSON.stringify({
+            compilerOptions: { noLib: true, types: [] },
+            include: ["*.ts"],
+          }),
+          "virtual.ts": "export const virtual = 1;",
+        },
+        fs: {
+          readFile: () => undefined,
+          fileExists: () => false,
+          directoryExists: () => false,
+          getAccessibleEntries: () => undefined,
+          realpath: (file) => file,
+        },
+      });
+      try {
+        const names = isolated.project.program.getSourceFileNames();
+        expect(names).toContain(path.join(root, "virtual.ts").split(path.sep).join("/"));
+        expect(names).not.toContain(path.join(root, "host.ts").split(path.sep).join("/"));
+      } finally {
+        isolated.close();
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("discovers a host symlink through an overlay project glob", () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-native-symlink-"));
+    try {
+      fs.writeFileSync(path.join(root, "target.ts"), "export const linked = 2;");
+      fs.symlinkSync("target.ts", path.join(root, "alias.ts"));
+      const linked = createNativeTypeScriptProject({
+        cwd: root,
+        configFileName: "tsconfig.json",
+        files: {
+          "tsconfig.json": JSON.stringify({
+            compilerOptions: { noLib: true, types: [] },
+            include: ["alias*.ts"],
+          }),
+        },
+      });
+      try {
+        const program = linked.project.program;
+        expect(program.getSourceFileNames()).toContain(
+          path.join(root, "alias.ts").split(path.sep).join("/"),
+        );
+        expect(
+          program.getSourceFileNames().some((name) =>
+            program.getSourceFile(name)?.getText().includes("export const linked = 2;"),
+          ),
+        ).toBe(true);
+      } finally {
+        linked.close();
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("opens a virtual project through the asynchronous API", async () => {
+    const root = path.resolve(".artifacts", "native-typescript-async-fixture");
+    const asynchronous = await createNativeTypeScriptProjectAsync({
+      cwd: root,
+      configFileName: "tsconfig.json",
+      files: {
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: { noLib: true, types: [] },
+          files: ["virtual.ts"],
+        }),
+        "virtual.ts": "export const virtual = 1;",
+      },
+    });
+    try {
+      expect(await asynchronous.project.program.getSourceFileNames()).toContain(
+        path.join(root, "virtual.ts").split(path.sep).join("/"),
+      );
+    } finally {
+      await asynchronous.close();
+    }
   });
 });
