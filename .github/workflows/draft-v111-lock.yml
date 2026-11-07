@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = a45152713f3cdccee802e3547562ec242d25e300
-          test "$(git rev-parse HEAD^^)" = 099ce6f6040189a67478c789bc538c45fd6a3a4b
+          test "$(git rev-parse HEAD^)" = 1f20ad00d42f999af9c8ebaa8678ae925531e755
+          test "$(git rev-parse HEAD^^)" = a45152713f3cdccee802e3547562ec242d25e300
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 815ecaa51d26e8a6bf49b4e8ba1ed07e0694dae1
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
           test "$(git rev-parse HEAD:scripts/generate-npm-package-lock.mts)" = e863c132e3465c27a35d382f8ec8dd36e56f3c4f
