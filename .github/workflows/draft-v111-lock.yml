@@ -1,4 +1,4 @@
-name: Diagnose 11.1 native declaration failure
+name: Diagnose 11.1 noEmitOnError guard
 
 on:
   push:
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = b7f486d8dde72c3e7b5b0f35744c0532062b6fe0
-          test "$(git rev-parse HEAD^^)" = a42f89c3bbed0f01514d9e9bd0b8afcda528b214
+          test "$(git rev-parse HEAD^)" = dff2d761c9559c8a710f9a9b9ee82371558801a0
+          test "$(git rev-parse HEAD^^)" = b7f486d8dde72c3e7b5b0f35744c0532062b6fe0
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -185,7 +185,7 @@ jobs:
                       declaration: true,
                       emitDeclarationOnly: true,
                       noCheck,
-                      noEmitOnError: false,
+                      noEmitOnError: true,
                       rootDir: dir,
                     },
                     files: [sourcePath],
