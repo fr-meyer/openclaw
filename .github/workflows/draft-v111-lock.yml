@@ -1,4 +1,4 @@
-name: Derive 11.1 Smithy and peer lock
+name: Qualify 11.1 Smithy and peer source
 
 on:
   push:
@@ -9,14 +9,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: derive-v111-smithy-peer-lock-${{ github.ref }}
+  group: qualify-v111-smithy-peer-source-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  derive:
+  dependency-admission:
     if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-source-qualification'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,15 +29,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = e69c7be7c7512172dc31f5f962b8ba1b5ef178c3
-          test "$(git rev-parse HEAD^^)" = b828cf984627e27d8e9a96e55d7d2337366b395b
-          test "$(git rev-parse HEAD:pnpm-lock.yaml)" = ef8b311c13ee265ba09567df44e379e3f6f5be9d
+          test "$(git rev-parse HEAD^)" = b6761987b533dbad7135a615ed4fc1aa7d42b98c
+          test "$(git rev-parse HEAD^^)" = e69c7be7c7512172dc31f5f962b8ba1b5ef178c3
+          test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 815ecaa51d26e8a6bf49b4e8ba1ed07e0694dae1
           test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = 91ac3d364b4ac945d2f61c3209ac823b68564c84
           test "$(git rev-parse HEAD:package.json)" = 9fbf5eb73aa60cd83cb416041388f6f44b9058b5
           test "$(git rev-parse HEAD:extensions/memory-lancedb/package.json)" = 20b4bf7adff1876b19d7f480fd7d7c0c3e68fb68
-          test "$(git rev-parse HEAD:custom-patches/manifest.json)" = 7ad63e1a7272123c39ded7d80410f6dbd58c5a15
-          test "$(git rev-parse HEAD:custom-patches/reconciliation-2026.11.1.json)" = ab899153fab196aa9ae2e94a6ab3840159b66f32
-          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101
+          test "$(git rev-parse HEAD:custom-patches/manifest.json)" = b7fe918d6e695b2e4ca72b551163e7beba112eda
+          test "$(git rev-parse HEAD:custom-patches/reconciliation-2026.11.1.json)" = d88384f749dbdbfc5b7a23f9e9166727fc951214
+          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = f112c6c044975f5cd0b66bc3545337e4997c70bddfee5b1bbbb15ca7ef1ae63c
           node - <<'NODE'
           const fs = require('node:fs');
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
@@ -54,7 +54,7 @@ jobs:
               manifest.status !== 'LOCAL_INTEGRATION_DRAFT_UNQUALIFIED' ||
               manifest.productionEligible !== false ||
               manifest.integrationBasis?.combinedLock !==
-                'PENDING_APPROVED_SMITHY_AND_PEER_SECRETLESS_CI_REDERIVATION') {
+                'REVIEWED_SMITHY_PEER_LOCK_FROZEN_PENDING_UNQUALIFIED') {
             throw new Error('Expected unqualified 11.1 source candidate');
           }
           NODE
@@ -67,22 +67,33 @@ jobs:
           install-deps: 'false'
           cache-mode: off
 
-      - name: Derive approved Smithy and peer lock without install scripts
+      - name: Frozen dependency admission without install scripts
         shell: bash
         env:
           CI: 'true'
         run: |
           set -euo pipefail
           test "$(pnpm -v)" = '12.15.0'
-          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          pnpm install --frozen-lockfile --ignore-scripts
+          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = f112c6c044975f5cd0b66bc3545337e4997c70bddfee5b1bbbb15ca7ef1ae63c
           grep -q "^  '@smithy/core@3.38.1':" pnpm-lock.yaml
           ! grep -q "^  '@smithy/core@3.35.1':" pnpm-lock.yaml
           grep -q '^  rolldown-plugin-dts@0.29.0:' pnpm-lock.yaml
           grep -q '^  tsdown@0.23.2:' pnpm-lock.yaml
           grep -q "^  '@lancedb/lancedb@0.41.0':" pnpm-lock.yaml
-          git diff --check -- pnpm-lock.yaml
-          sha256sum pnpm-lock.yaml
-          git diff --numstat -- pnpm-lock.yaml
-          echo 'BEGIN_DRAFT_V111_SMITHY_PEER_LOCK_GZIP_BASE64'
-          gzip -n -c pnpm-lock.yaml | base64 -w 76
-          echo 'END_DRAFT_V111_SMITHY_PEER_LOCK_GZIP_BASE64'
+
+      - name: Check peers, patches, pins and npm mirrors independently
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          peer=0; patches=0; pins=0; mirrors=0
+          pnpm peers check || peer=$?
+          pnpm deps:patches:check || patches=$?
+          pnpm deps:pins:check || pins=$?
+          pnpm deps:npm-lock:check || mirrors=$?
+          echo "RESULT peers=$peer patches=$patches pins=$pins npm_mirrors=$mirrors"
+          if (( peer || patches || pins || mirrors )); then
+            exit 1
+          fi

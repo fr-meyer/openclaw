@@ -16,7 +16,7 @@
   },
   "provedGitAncestryMerge": false,
   "qualificationTransferred": false,
-  "lockState": "PENDING_APPROVED_SMITHY_AND_PEER_SECRETLESS_CI_REDERIVATION",
+  "lockState": "REVIEWED_SMITHY_PEER_LOCK_FROZEN_PENDING_UNQUALIFIED",
   "applicationTests": "UNRUN",
   "nativeImageExecuted": false,
   "productionAuthorized": false,
@@ -32,9 +32,9 @@
       "source1010Blob": "93357277e8881eaf4bb5ea11518589775d32d2ce",
       "upstream1010Blob": null,
       "upstream111Blob": null,
-      "resultBlob": "7ad63e1a7272123c39ded7d80410f6dbd58c5a15",
-      "disposition": "APPROVED_SMITHY_AND_PEER_SOURCE_UNQUALIFIED",
-      "resultSha256": "871e82fdc486c8a725056bd983317f27d0013a1ca6f063de08914ffbd1f107db"
+      "resultBlob": "b7fe918d6e695b2e4ca72b551163e7beba112eda",
+      "disposition": "REVIEWED_SMITHY_PEER_LOCK_MANIFEST_UNQUALIFIED",
+      "resultSha256": "a1e9422fecd65dbd265456d144828dc5b9433b7a41e32ddc20d051b966b05a67"
     },
     {
       "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
@@ -1000,9 +1000,9 @@
       "source1010Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "upstream1010Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "upstream111Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
-      "resultBlob": "ef8b311c13ee265ba09567df44e379e3f6f5be9d",
-      "disposition": "PRE_SMITHY_AND_PEER_LOCK_PENDING_REDERIVATION_UNQUALIFIED",
-      "resultSha256": "e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101"
+      "resultBlob": "815ecaa51d26e8a6bf49b4e8ba1ed07e0694dae1",
+      "disposition": "REVIEWED_SMITHY_PEER_LOCK_FROZEN_PENDING_UNQUALIFIED",
+      "resultSha256": "f112c6c044975f5cd0b66bc3545337e4997c70bddfee5b1bbbb15ca7ef1ae63c"
     },
     {
       "path": "pnpm-workspace.yaml",
@@ -1010,7 +1010,7 @@
       "upstream1010Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
       "upstream111Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
       "resultBlob": "91ac3d364b4ac945d2f61c3209ac823b68564c84",
-      "disposition": "APPROVED_SMITHY_AND_PEER_OVERRIDES_PENDING_LOCK",
+      "disposition": "APPROVED_SMITHY_AND_PEER_OVERRIDES_LOCK_REVIEWED_UNQUALIFIED",
       "resultSha256": "960f973eaa08a40996672dc144cb77b2d757c72e4d271c72a138e2adf0397e44"
     },
     {
