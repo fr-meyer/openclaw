@@ -1,4 +1,4 @@
-name: Qualify 11.1 update compatibility bridge
+name: Diagnose 11.1 updater binding
 
 on:
   push:
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 5b37d2715db78b093c0455c0716faf155efef472
-          test "$(git rev-parse HEAD^^)" = 141be20206a1b8e32d3200b4c14254867f5d2938
+          test "$(git rev-parse HEAD^)" = d2affe9540c5af39adcfc6d53856f55ac05d222a
+          test "$(git rev-parse HEAD^^)" = 5b37d2715db78b093c0455c0716faf155efef472
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -201,6 +201,50 @@ jobs:
         run: |
           set -euo pipefail
           pnpm build
+
+      - name: Diagnose generated updater binding after failed build
+        if: ${{ failure() }}
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          node --import ./scripts/tsx.mjs --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          import { createNativeTypeScriptParser } from "./scripts/lib/native-typescript.mts";
+          import { ModuleGraph } from "./scripts/lib/update-compat-module-graph.mts";
+          const dist = path.resolve("dist");
+          const symbol = "findSystemGatewayServices";
+          const matches = [];
+          const visit = (dir) => {
+            if (!fs.existsSync(dir)) return;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const file = path.join(dir, entry.name);
+              if (entry.isDirectory()) visit(file);
+              else if (/\\.m?js$/.test(entry.name) && fs.readFileSync(file, "utf8").includes(symbol)) {
+                matches.push(file);
+              }
+            }
+          };
+          visit(dist);
+          const named = path.join(dist, "daemon/inspect.js");
+          console.log(JSON.stringify({ namedExists: fs.existsSync(named), matchingFiles: matches.map((file) => path.relative(dist, file)).slice(0, 30), matchingCount: matches.length }));
+          const parser = createNativeTypeScriptParser({ cwd: process.cwd() });
+          try {
+            const graph = new ModuleGraph(parser);
+            for (const file of [...new Set([named, ...matches])].slice(0, 15)) {
+              if (!fs.existsSync(file)) continue;
+              const source = fs.readFileSync(file, "utf8");
+              const regions = [...source.matchAll(/^\\/\\/#region (.+)$/gm)].map((match) => match[1]);
+              const names = graph.names(file);
+              const bindings = names.map((name) => ({ name, binding: graph.binding(file, name) })).filter(({ name, binding }) => name === symbol || binding?.origin?.module === "src/daemon/inspect.ts");
+              console.log(JSON.stringify({ file: path.relative(dist, file), regions: regions.filter((name) => name.includes("daemon/inspect")).slice(0, 8), names: names.filter((name) => name.includes("findSystem") || name.includes("GatewayServices")), bindings }));
+            }
+          } finally {
+            parser[Symbol.dispose]();
+          }
+          NODE
 
       - name: Verify built update bridge and compatibility tests
         shell: bash
