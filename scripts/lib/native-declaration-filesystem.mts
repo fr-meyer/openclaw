@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { serverFS, type FileSystemCallbacks, type FileSystemEntries } from "typescript/fs";
+import type { FileSystemCallbacks, FileSystemEntries } from "typescript/fs";
 import { createDeclarationInputBoundary } from "./local-check-runtime.mts";
 
 export type DeclarationLookup =
@@ -184,7 +184,22 @@ export function createDeclarationFileSystem(
     writeFile(this: void) {
       reject(new Error("Native declarations must be emitted in memory"));
     },
-    stat: serverFS.fakeStat,
+    stat(file: string) {
+      const accepted = local(file);
+      if (accepted === undefined) {
+        return undefined;
+      }
+      const virtual = virtualFiles.get(accepted);
+      if (virtual !== undefined) {
+        return {
+          mode: fs.constants.S_IFREG | 0o644,
+          size: Buffer.byteLength(virtual),
+          mtime: new Date(0),
+        };
+      }
+      const metadata = stat(accepted);
+      return metadata && { mode: metadata.mode, size: metadata.size, mtime: metadata.mtime };
+    },
   } satisfies FileSystemCallbacks;
   const filesystem = {
     readFile(file: string) {

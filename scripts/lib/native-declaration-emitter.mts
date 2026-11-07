@@ -2,7 +2,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { API, EmitOutputFile } from "typescript/async";
-import type { FileSystemCallbacks } from "typescript/fs";
 import { createDeclarationInputBoundary, resolveRepoToolBinPath } from "./local-check-runtime.mts";
 import { createDeclarationFileSystem } from "./native-declaration-filesystem.mts";
 import {
@@ -34,19 +33,7 @@ type NativeCompiler = {
   executable: string;
   packageJson: string;
   module: NativeApiModule;
-  fakeStat: FileSystemCallbacks["stat"] | undefined;
 };
-
-function resolveFakeStat(module: unknown): FileSystemCallbacks["stat"] | undefined {
-  if (!isRecord(module) || !isRecord(module.serverFS)) {
-    return undefined;
-  }
-  const candidate = module.serverFS.fakeStat;
-  if (typeof candidate !== "function" && typeof candidate !== "symbol") {
-    return undefined;
-  }
-  return candidate as FileSystemCallbacks["stat"];
-}
 
 function resolveTypeScriptPackage(compilerRoot: string) {
   try {
@@ -81,12 +68,10 @@ async function resolveNativeCompiler(compilerRoot: string | undefined): Promise<
     const entry = exports["./async"] ?? exports["./unstable/async"];
     if (typeof entry === "string") {
       const module: NativeApiModule = await load(entry);
-      const fsModule: unknown = await load(exports["./fs"] ?? exports["./unstable/fs"]);
       return {
         executable: resolveRepoToolBinPath("tsgo", { cwd: compilerRoot }),
         packageJson,
         module,
-        fakeStat: resolveFakeStat(fsModule),
       };
     }
     if (entry !== undefined) {
@@ -95,14 +80,10 @@ async function resolveNativeCompiler(compilerRoot: string | undefined): Promise<
   }
   // Roots without TypeScript or with TypeScript 6 predate the native API; they keep
   // the installed compiler.
-  const [module, fsModule] = await Promise.all([
-    import("typescript/async"),
-    import("typescript/fs"),
-  ]);
+  const module = await import("typescript/async");
   return {
     ...resolveInstalledNativeTypeScriptCompiler(),
     module,
-    fakeStat: resolveFakeStat(fsModule),
   };
 }
 
@@ -157,20 +138,10 @@ export async function compileNativeProject({
         throw new Error(`Invalid declaration package manifest: ${manifestFile}`);
       }
     }
-    const filesystem = view.filesystem;
-    // Keep the missing-file result local instead of requesting OS fallback.
-    const compilerFileSystem =
-      compiler.fakeStat === undefined
-        ? filesystem
-        : {
-            ...filesystem,
-            stat: compiler.fakeStat,
-            readFile: (file: string) => filesystem.readFile(file) ?? undefined,
-          };
     api = new compiler.module.API({
       cwd: root,
       tsserverPath: binary,
-      fs: compilerFileSystem,
+      fs: view.filesystem,
     });
     const configured = await api.parseConfigFile(config);
     view.assertValid();

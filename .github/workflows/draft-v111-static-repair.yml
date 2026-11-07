@@ -29,9 +29,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 19702ae69f6346f5e18cb4b8147d505514a799a9
-          # Exact 51-path reviewed source/format repair inventory.
-          test "$(git diff --name-only HEAD^ HEAD | sha256sum | cut -d' ' -f1)" = 99760d0daf9ca33a99c934cffee0c74841b61d9553ea67aa54ca4ad2ab86af56
+          test "$(git rev-parse HEAD^)" = b3b67a640fa488fd1b6a92cf5cff6b8c7ae0ac46
+          test "$(git diff --name-only HEAD^ HEAD)" = "$(printf '%s\n' \
+            .github/workflows/draft-v111-static-repair.yml \
+            scripts/audit-control-ui-dead-css.mts \
+            scripts/lib/native-declaration-emitter.mts \
+            scripts/lib/native-declaration-filesystem.mts \
+            test/scripts/native-declaration-subprocess.test.ts)"
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 9a8fad5519c62064cd3e9b8960d5225ce207f895
           test "$(git rev-parse HEAD:custom-patches/manifest.json)" = 91c3232e601f96d2dc5bf346065a6650f1766d09
           test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = 41e318361b737665c117d3d9c16f71c6a583c9a7e60cbdf0455dc541b0c28a7f

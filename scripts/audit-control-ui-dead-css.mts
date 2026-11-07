@@ -6,7 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import postcss, { type Rule } from "postcss";
-import selectorParser, { type ClassName, type Selector } from "postcss-selector-parser";
+import selectorParser, { type ClassName, type Pseudo, type Selector } from "postcss-selector-parser";
 import * as ts from "typescript/ast";
 import { groupBy } from "./lib/group-by.mts";
 import { createNativeTypeScriptParser } from "./lib/native-typescript.mts";
@@ -437,7 +437,8 @@ function selectorClasses(selector: Selector): ClassName[] {
 
 function selectorTargetsPart(selector: Selector): boolean {
   let targetsPart = false;
-  selector.walkPseudos((pseudo) => {
+  const walker = selector as unknown as { walkPseudos(visit: (node: Pseudo) => void): void };
+  walker.walkPseudos((pseudo) => {
     if (pseudo.value === "::part") {
       targetsPart = true;
     }
