@@ -6,6 +6,7 @@ import path from "node:path";
 import { asRecord } from "@openclaw/normalization-core/record-coerce";
 import YAML from "yaml";
 import { classifyDependencySpec } from "./lib/dependency-spec-policy.mts";
+import { isAuditedPeerOverride } from "./lib/peer-override-policy.mts";
 import { runAsScript } from "./lib/ts-guard-utils.mts";
 
 const PACKAGE_DEPENDENCY_SECTIONS = ["dependencies", "devDependencies", "optionalDependencies"];
@@ -84,10 +85,29 @@ function collectDependencyMapViolations(
   section: string,
   dependencyMap: unknown,
   violations: DependencyPinViolation[],
+  peerPackages: Record<string, unknown> = {},
 ): void {
   for (const [name, spec] of Object.entries(asRecord(dependencyMap))) {
     if (section === "overrides" && spec === "-") {
       continue;
+    }
+    if (
+      section === "overrides" &&
+      typeof spec === "string" &&
+      !classifyDependencySpec(spec).allowedPinned
+    ) {
+      const separator = name.lastIndexOf(">");
+      if (separator > 0) {
+        const parentSelector = name.slice(0, separator);
+        const parent = asRecord(peerPackages[parentSelector]);
+        const peerName = name.slice(separator + 1);
+        if (
+          isAuditedPeerOverride(parentSelector, peerName, spec) &&
+          asRecord(parent.peerDependencies)[peerName] === spec
+        ) {
+          continue;
+        }
+      }
     }
     if (!classifyDependencySpec(spec).allowedPinned) {
       violations.push({ file, section, name, spec });
@@ -102,8 +122,13 @@ function collectWorkspaceViolations(cwd: string): DependencyPinViolation[] {
     return [];
   }
   const workspace = asRecord(YAML.parse(fs.readFileSync(workspacePath, "utf8")) as unknown);
+  const lockPath = path.join(cwd, "pnpm-lock.yaml");
+  const lockDocuments = fs.existsSync(lockPath)
+    ? YAML.parseAllDocuments(fs.readFileSync(lockPath, "utf8"))
+    : [];
+  const peerPackages = asRecord(asRecord(lockDocuments.at(-1)?.toJS() as unknown).packages);
   const violations: DependencyPinViolation[] = [];
-  collectDependencyMapViolations(file, "overrides", workspace.overrides, violations);
+  collectDependencyMapViolations(file, "overrides", workspace.overrides, violations, peerPackages);
   for (const [packageName, extension] of Object.entries(asRecord(workspace.packageExtensions))) {
     collectDependencyMapViolations(
       file,

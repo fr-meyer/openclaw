@@ -29,9 +29,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = b6761987b533dbad7135a615ed4fc1aa7d42b98c
-          test "$(git rev-parse HEAD^^)" = e69c7be7c7512172dc31f5f962b8ba1b5ef178c3
+          test "$(git rev-parse HEAD^)" = 099ce6f6040189a67478c789bc538c45fd6a3a4b
+          test "$(git rev-parse HEAD^^)" = b6761987b533dbad7135a615ed4fc1aa7d42b98c
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 815ecaa51d26e8a6bf49b4e8ba1ed07e0694dae1
+          test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
+          test "$(git rev-parse HEAD:scripts/generate-npm-package-lock.mts)" = e863c132e3465c27a35d382f8ec8dd36e56f3c4f
+          test "$(git rev-parse HEAD:scripts/lib/peer-override-policy.mts)" = f37d11ba55e3c6d190c6be4a836f449216c5a658
+          test "$(git rev-parse HEAD:test/scripts/check-dependency-pins.test.ts)" = 3899206d15f874cd7b114e3661c60abdb064660b
+          test "$(git rev-parse HEAD:test/scripts/generate-npm-package-lock-peers.test.ts)" = 9da098e88490b33862c6d57749b7bd74fb24c756
           test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = 91ac3d364b4ac945d2f61c3209ac823b68564c84
           test "$(git rev-parse HEAD:package.json)" = 9fbf5eb73aa60cd83cb416041388f6f44b9058b5
           test "$(git rev-parse HEAD:extensions/memory-lancedb/package.json)" = 20b4bf7adff1876b19d7f480fd7d7c0c3e68fb68
@@ -81,6 +86,14 @@ jobs:
           grep -q '^  rolldown-plugin-dts@0.29.0:' pnpm-lock.yaml
           grep -q '^  tsdown@0.23.2:' pnpm-lock.yaml
           grep -q "^  '@lancedb/lancedb@0.41.0':" pnpm-lock.yaml
+
+      - name: Test peer override guards
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          pnpm test test/scripts/check-dependency-pins.test.ts test/scripts/generate-npm-package-lock-peers.test.ts --maxWorkers=1
 
       - name: Check peers, patches, pins and npm mirrors independently
         shell: bash

@@ -242,4 +242,60 @@ packageExtensions:
       },
     ]);
   });
+
+  it("accepts only audited exact-release Zod peer ranges", () => {
+    const dir = makeRepo();
+    writeJson(path.join(dir, "package.json"), {});
+    writeFileSync(
+      path.join(dir, "pnpm-workspace.yaml"),
+      `overrides:
+  "@agentclientprotocol/sdk@2.0.1>other": "^4.0.0"
+  "@anthropic-ai/claude-agent-sdk@0.3.309>zod": "^4.0.0"
+  "zod-to-json-schema@3.25.2>zod": "^3.25.28 || ^4"
+  "unknown-parent@1.0.0>zod": "^4.0.0"
+  "@agentclientprotocol/sdk@^2.0.0>zod": "^3.25.76 || ^4.0.0"
+  "@agentclientprotocol/sdk@2.0.1>zod": "^3.25.76 || ^4.0.0"
+`,
+    );
+    writeFileSync(
+      path.join(dir, "pnpm-lock.yaml"),
+      `packages:
+  "@agentclientprotocol/sdk@2.0.1":
+    peerDependencies:
+      zod: ^3.25.76 || ^4.0.0
+      other: ^4.0.0
+  "@anthropic-ai/claude-agent-sdk@0.3.309":
+    peerDependencies:
+      zod: ^4.0.0
+  "zod-to-json-schema@3.25.2":
+    peerDependencies:
+      zod: ^3.25.28 || ^4
+  "unknown-parent@1.0.0":
+    peerDependencies:
+      zod: ^4.0.0
+`,
+    );
+    git(dir, ["add", "package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"]);
+
+    expect(collectDependencyPinViolations(dir)).toEqual([
+      {
+        file: "pnpm-workspace.yaml",
+        section: "overrides",
+        name: "@agentclientprotocol/sdk@2.0.1>other",
+        spec: "^4.0.0",
+      },
+      {
+        file: "pnpm-workspace.yaml",
+        section: "overrides",
+        name: "unknown-parent@1.0.0>zod",
+        spec: "^4.0.0",
+      },
+      {
+        file: "pnpm-workspace.yaml",
+        section: "overrides",
+        name: "@agentclientprotocol/sdk@^2.0.0>zod",
+        spec: "^3.25.76 || ^4.0.0",
+      },
+    ]);
+  });
 });

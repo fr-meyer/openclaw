@@ -26,6 +26,7 @@ import { parse as parseYaml } from "yaml";
 import { isRecord } from "../packages/normalization-core/src/record-coerce.ts";
 import { listChangedPathsFromGit, listStagedChangedPaths } from "./changed-lanes.mts";
 import { pnpmLockfileDocuments, resolveSnapshot } from "./lib/pnpm-lockfile-documents.mjs";
+import { isAuditedPeerOverride } from "./lib/peer-override-policy.mts";
 import { resolveNpmRunner } from "./npm-runner.mts";
 import { prepareNpmVendorArtifact } from "./lib/npm-vendor-delivery.mjs";
 
@@ -414,7 +415,8 @@ function expandScopedOverrideChildren(overrides: OverrideMap): OverrideMap {
 
 function resolvePnpmLockOverridePlan(lockfile: unknown) {
   const versionsByName = collectPnpmLockPackageVersions(lockfile);
-  if (!recordAt(lockfile, "packages")) {
+  const packages = recordAt(lockfile, "packages");
+  if (!packages) {
     throw new Error("pnpm-lock.yaml is missing package resolution data.");
   }
   const multiVersionPackageNames = new Set(
@@ -433,6 +435,18 @@ function resolvePnpmLockOverridePlan(lockfile: unknown) {
     const parentSelector = `${parent.name}@${parent.version}`;
     for (const [dependencyName, dependencySpec] of Object.entries(dependencies)) {
       if (!multiVersionPackageNames.has(dependencyName)) {
+        continue;
+      }
+      // pnpm snapshots include resolved peers in "dependencies". Only these
+      // audited exact peer contracts may bypass a derived runtime child pin.
+      const parentPackage = recordAt(packages, parentSelector);
+      if (
+        isAuditedPeerOverride(
+          parentSelector,
+          dependencyName,
+          recordAt(parentPackage, "peerDependencies")?.[dependencyName],
+        )
+      ) {
         continue;
       }
       const version = exactVersionFromOverrideSpec(String(dependencySpec));
