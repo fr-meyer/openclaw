@@ -1788,7 +1788,7 @@ describe("runTsdownBuildInvocation", () => {
 
   it("preserves successful native declarations when source syntax is invalid", ({ signal }) =>
     fixture.run(async () => {
-      const rootDir = fs.realpathSync(createTempDir("openclaw-tsdown-syntax-"));
+      const rootDir = fs.realpathSync(createTempDir("openclaw-tsdown-syntax-", process.cwd()));
       const sourcePath = path.join(rootDir, "index.ts");
       const outputPath = path.join(rootDir, "dist", "index.d.ts");
       fs.writeFileSync(path.join(rootDir, "package.json"), '{"type":"module"}\n');
@@ -1811,7 +1811,7 @@ describe("runTsdownBuildInvocation", () => {
       const buildOptions = {
         clean: false,
         config: false,
-        cwd: rootDir,
+        cwd: process.cwd(),
         entry: [sourcePath],
         fixedExtension: false,
         format: "esm",
@@ -1822,18 +1822,20 @@ describe("runTsdownBuildInvocation", () => {
         tsconfig: path.join(rootDir, "tsconfig.json"),
       };
       const dtsOptions = '{ generator: "tsgo", emitDtsOnly: true, tsgo: { path: getExePath() } }';
+      const boundaryUrl = new URL("../../scripts/lib/tsdown-declaration-boundary.mts", import.meta.url).href;
       const script = [
         'import { build } from "tsdown";',
+        `import { createDeclarationBoundaryHooks } from ${JSON.stringify(boundaryUrl)};`,
         'const nativePackage = import.meta.resolve("typescript/package.json");',
         'const { default: getExePath } = await import(new URL("lib/getExePath.js", nativePackage).href);',
-        `await build({ ...${JSON.stringify(buildOptions)}, dts: ${dtsOptions} });`,
+        `await build({ ...${JSON.stringify(buildOptions)}, dts: ${dtsOptions}, hooks: createDeclarationBoundaryHooks() });`,
       ].join("\n");
       const output = createWriteSink();
       // Keep compiler scratch output inside the fixture even when compilation rejects.
       const env = { ...process.env, TMPDIR: rootDir, TEMP: rootDir, TMP: rootDir };
       const invocation = {
         command: process.execPath,
-        args: ["--input-type=module", "-e", script],
+        args: ["--import", "./scripts/tsx.mjs", "--input-type=module", "-e", script],
         options: { stdio: ["ignore", "pipe", "pipe"], shell: false, env },
       };
       const runOptions = { stdout: output.sink, stderr: output.sink };
