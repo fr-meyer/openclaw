@@ -206,7 +206,10 @@ describe("git commit resolution", () => {
     expect(resolveLoadedFullCommitHash({ moduleUrl })).toBeNull();
     await fs.rm(path.join(dist, ".buildstamp"));
     expect(resolveLoadedFullCommitHash({ moduleUrl })).toBe(built);
-    await fs.writeFile(path.join(dist, "build-info.json"), JSON.stringify({ commit: built.slice(0, 7) }));
+    await fs.writeFile(
+      path.join(dist, "build-info.json"),
+      JSON.stringify({ commit: built.slice(0, 7) }),
+    );
     expect(resolveLoadedFullCommitHash({ moduleUrl })).toBeNull();
   });
 

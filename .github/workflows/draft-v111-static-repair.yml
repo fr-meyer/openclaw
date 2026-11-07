@@ -29,7 +29,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = b07b2a03fad23cf530d1bb72f56e487744702fa3
+          test "$(git rev-parse HEAD^)" = 19702ae69f6346f5e18cb4b8147d505514a799a9
+          # Exact 51-path reviewed source/format repair inventory.
+          test "$(git diff --name-only HEAD^ HEAD | sha256sum | cut -d' ' -f1)" = 99760d0daf9ca33a99c934cffee0c74841b61d9553ea67aa54ca4ad2ab86af56
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 9a8fad5519c62064cd3e9b8960d5225ce207f895
           test "$(git rev-parse HEAD:custom-patches/manifest.json)" = 91c3232e601f96d2dc5bf346065a6650f1766d09
           test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = 41e318361b737665c117d3d9c16f71c6a583c9a7e60cbdf0455dc541b0c28a7f
@@ -43,25 +45,19 @@ jobs:
             throw new Error('11.1 source identity or admission status changed');
           }
           NODE
-          while IFS= read -r file; do
-            case "$file" in
-              .github/workflows/draft-v111-static-repair.yml|extensions/file-transfer/src/workspace-service.test-support.ts|scripts/audit-control-ui-dead-css.mts|scripts/lib/control-ui-icon-grid-fit.mts|scripts/lib/database-worker-compat.mts|scripts/lib/extension-boundary-projects.mts|scripts/lib/native-declaration-emitter.mts|scripts/lib/native-declaration-filesystem.mts|scripts/lib/runtime-import-closure.mts|src/agents/embedded-agent-runner/run.timeout-triggered-compaction.test-support.ts|src/state/openclaw-state-read-handlers.ts|src/state/openclaw-state.worker.ts) ;;
-              *) echo "Unexpected source path: $file" >&2; exit 1 ;;
-            esac
-          done < <(git diff --name-only HEAD^ HEAD)
 
       - name: Setup pinned Node and pnpm without cache
         uses: ./.github/actions/setup-node-env
         with:
-          node-version: '24.22.1'
-          install-bun: 'false'
-          install-deps: 'false'
+          node-version: "24.22.1"
+          install-bun: "false"
+          install-deps: "false"
           cache-mode: off
 
       - name: Frozen install without scripts
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
         run: |
           set -euo pipefail
           test "$(pnpm -v)" = '12.15.0'
@@ -71,7 +67,7 @@ jobs:
       - name: Check types, workflows and format independently
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
           OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-static-repair-state
         run: |
           set -uo pipefail
@@ -81,7 +77,7 @@ jobs:
           pnpm tsgo:scripts || scripts=$?
           pnpm check:workflows || workflows=$?
           pnpm format:check || format=$?
-          pnpm exec vitest run test/scripts/extension-boundary-cache.test.ts test/scripts/extension-boundary-selection.test.ts test/scripts/native-typescript.test.ts || focused=$?
+          pnpm exec vitest run test/scripts/extension-boundary-cache.test.ts test/scripts/extension-boundary-selection.test.ts test/scripts/native-typescript.test.ts test/scripts/native-declaration-boundary.test.ts test/scripts/native-declaration-subprocess.test.ts || focused=$?
           echo "RESULT prod_types=$prod script_types=$scripts workflows=$workflows format=$format focused=$focused"
           if (( format )); then
             pnpm exec oxfmt

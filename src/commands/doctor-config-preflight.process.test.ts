@@ -321,271 +321,279 @@ describe("doctor invalid config process exit", () => {
 // Synchronous CLI probes must not consume neighboring cases' timeout budgets.
 describe("Doctor repair followed by gateway readiness", () => {
   // Doctor, Gateway startup and status each retain their existing 30-second bound.
-  it("serves canonical state after Doctor repairs cron and preserves retired plugin sidecars", async ({
-    signal,
-    onTestFailed,
-    onTestFinished,
-  }) => {
-    const startedAt = performance.now();
-    type Phase =
-      | "fixture"
-      | "seed"
-      | "doctor-cli"
-      | "repair-validation"
-      | "gateway-start"
-      | "gateway-readiness"
-      | "gateway-status"
-      | "status-validation"
-      | "canonical-state-validation"
-      | "complete";
-    type CleanupPhase =
-      | "not-started"
-      | "gateway-stop"
-      | "gateway-stopped"
-      | "instance-cleanup"
-      | "complete";
-    let phase: Phase = "fixture";
-    let cleanupPhase: CleanupPhase = "not-started";
-    const markPhase = (next: Phase) => {
-      phase = next;
-      console.log(
-        "[doctor-cron-readiness-phase]",
-        JSON.stringify({ phase, elapsedMs: Math.round(performance.now() - startedAt) }),
+  it(
+    "serves canonical state after Doctor repairs cron and preserves retired plugin sidecars",
+    async ({ signal, onTestFailed, onTestFinished }) => {
+      const startedAt = performance.now();
+      type Phase =
+        | "fixture"
+        | "seed"
+        | "doctor-cli"
+        | "repair-validation"
+        | "gateway-start"
+        | "gateway-readiness"
+        | "gateway-status"
+        | "status-validation"
+        | "canonical-state-validation"
+        | "complete";
+      type CleanupPhase =
+        | "not-started"
+        | "gateway-stop"
+        | "gateway-stopped"
+        | "instance-cleanup"
+        | "complete";
+      let phase: Phase = "fixture";
+      let cleanupPhase: CleanupPhase = "not-started";
+      const markPhase = (next: Phase) => {
+        phase = next;
+        console.log(
+          "[doctor-cron-readiness-phase]",
+          JSON.stringify({ phase, elapsedMs: Math.round(performance.now() - startedAt) }),
+        );
+      };
+      const markCleanup = (next: CleanupPhase) => {
+        cleanupPhase = next;
+        console.log(
+          "[doctor-cron-readiness-cleanup]",
+          JSON.stringify({ cleanupPhase, elapsedMs: Math.round(performance.now() - startedAt) }),
+        );
+      };
+      markPhase("fixture");
+      const nodeExecutable = resolveTestNodeExecPath();
+      const runtimeRoot = createBuiltRuntime(
+        tempDirs.createTempDir("openclaw-cron-upgrade-runtime-"),
       );
-    };
-    const markCleanup = (next: CleanupPhase) => {
-      cleanupPhase = next;
-      console.log(
-        "[doctor-cron-readiness-cleanup]",
-        JSON.stringify({ cleanupPhase, elapsedMs: Math.round(performance.now() - startedAt) }),
-      );
-    };
-    markPhase("fixture");
-    const nodeExecutable = resolveTestNodeExecPath();
-    const runtimeRoot = createBuiltRuntime(
-      tempDirs.createTempDir("openclaw-cron-upgrade-runtime-"),
-    );
-    const instance = await tempDirs.acquire(() =>
-      createOpenClawTestInstance({
-        name: "cron-upgrade-ready",
-        cwd: runtimeRoot,
-        gatewayCommandPrefix: [nodeExecutable],
-        entrypoint: [...ISOLATED_RUNTIME_NODE_ARGS, path.join(runtimeRoot, "dist", "entry.js")],
-        startTimeoutMs: 30_000,
-        stopTimeoutMs: 1_500,
-        signal,
-        verifyCleanup: tempDirs.verifyCleanup,
-        env: {
-          NODE_ENV: undefined,
-          NO_COLOR: "1",
-          OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
-          OPENCLAW_HOME: undefined,
-          OPENCLAW_NO_RESPAWN: "1",
-          OPENCLAW_SKIP_CHANNELS: "1",
-          OPENCLAW_TEST_FAST: "1",
-          VITEST: undefined,
-          // Preserve full startup; the shared fixture otherwise skips sidecar readiness.
-          OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
-          OPENCLAW_GATEWAY_PASSWORD: process.env.OPENCLAW_GATEWAY_PASSWORD,
-          OPENCLAW_SKIP_PROVIDERS: process.env.OPENCLAW_SKIP_PROVIDERS,
-          OPENCLAW_SKIP_GMAIL_WATCHER: process.env.OPENCLAW_SKIP_GMAIL_WATCHER,
-          OPENCLAW_SKIP_CRON: process.env.OPENCLAW_SKIP_CRON,
-          OPENCLAW_SKIP_BROWSER_CONTROL_SERVER: process.env.OPENCLAW_SKIP_BROWSER_CONTROL_SERVER,
-          OPENCLAW_SKIP_CANVAS_HOST: process.env.OPENCLAW_SKIP_CANVAS_HOST,
-          OPENCLAW_TEST_MINIMAL_GATEWAY: process.env.OPENCLAW_TEST_MINIMAL_GATEWAY,
-        },
-      }),
-    );
-    const cleanupInstance = async () => {
-      markCleanup("instance-cleanup");
-      await instance.cleanup();
-      markCleanup("complete");
-    };
-    // Join the fixture owner's same cleanup even if Vitest's timeout wins first.
-    onTestFinished(cleanupInstance);
-    let doctorFailureOutput: { stdout: string; stderr: string } | undefined;
-    onTestFailed(async () => {
-      console.error(
-        "[doctor-cron-readiness-failure]",
-        JSON.stringify({
-          phase,
-          cleanupPhase,
-          elapsedMs: Math.round(performance.now() - startedAt),
-          aborted: signal.aborted,
-          ...(doctorFailureOutput
-            ? {
-                doctorStdoutTail: doctorFailureOutput.stdout.slice(-4_096),
-                doctorStderrTail: doctorFailureOutput.stderr.slice(-4_096),
-              }
-            : {}),
+      const instance = await tempDirs.acquire(() =>
+        createOpenClawTestInstance({
+          name: "cron-upgrade-ready",
+          cwd: runtimeRoot,
+          gatewayCommandPrefix: [nodeExecutable],
+          entrypoint: [...ISOLATED_RUNTIME_NODE_ARGS, path.join(runtimeRoot, "dist", "entry.js")],
+          startTimeoutMs: 30_000,
+          stopTimeoutMs: 1_500,
+          signal,
+          verifyCleanup: tempDirs.verifyCleanup,
+          env: {
+            NODE_ENV: undefined,
+            NO_COLOR: "1",
+            OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
+            OPENCLAW_HOME: undefined,
+            OPENCLAW_NO_RESPAWN: "1",
+            OPENCLAW_SKIP_CHANNELS: "1",
+            OPENCLAW_TEST_FAST: "1",
+            VITEST: undefined,
+            // Preserve full startup; the shared fixture otherwise skips sidecar readiness.
+            OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+            OPENCLAW_GATEWAY_PASSWORD: process.env.OPENCLAW_GATEWAY_PASSWORD,
+            OPENCLAW_SKIP_PROVIDERS: process.env.OPENCLAW_SKIP_PROVIDERS,
+            OPENCLAW_SKIP_GMAIL_WATCHER: process.env.OPENCLAW_SKIP_GMAIL_WATCHER,
+            OPENCLAW_SKIP_CRON: process.env.OPENCLAW_SKIP_CRON,
+            OPENCLAW_SKIP_BROWSER_CONTROL_SERVER: process.env.OPENCLAW_SKIP_BROWSER_CONTROL_SERVER,
+            OPENCLAW_SKIP_CANVAS_HOST: process.env.OPENCLAW_SKIP_CANVAS_HOST,
+            OPENCLAW_TEST_MINIMAL_GATEWAY: process.env.OPENCLAW_TEST_MINIMAL_GATEWAY,
+          },
         }),
       );
-      try {
-        console.error(await instance.diagnose());
-      } catch {
-        console.error("[doctor-cron-readiness-diagnostic-unavailable]");
-      }
-    });
-    const { env, port, stateDir } = instance;
-    const storePath = path.join(stateDir, "cron", "jobs.json");
-    const databasePath = path.join(stateDir, "state", "openclaw.sqlite");
-
-    try {
-      signal.throwIfAborted();
-      markPhase("seed");
-      // Readiness must use the migration fixture without extra hooks or Control UI settings.
-      await instance.state.writeConfig({
-        agents: { entries: { main: {} } },
-        gateway: { mode: "local", port, auth: { mode: "none" } },
-      });
-      seedPluginStateSidecar(stateDir, 2_000);
-      const sidecarPath = path.join(stateDir, "plugin-state", "state.sqlite");
-      const preservedSidecar = fs.readFileSync(sidecarPath);
-      const readCanonicalPluginState = () => {
-        const database = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"), {
-          readOnly: true,
-        });
+      const cleanupInstance = async () => {
+        markCleanup("instance-cleanup");
+        await instance.cleanup();
+        markCleanup("complete");
+      };
+      // Join the fixture owner's same cleanup even if Vitest's timeout wins first.
+      onTestFinished(cleanupInstance);
+      let doctorFailureOutput: { stdout: string; stderr: string } | undefined;
+      onTestFailed(async () => {
+        console.error(
+          "[doctor-cron-readiness-failure]",
+          JSON.stringify({
+            phase,
+            cleanupPhase,
+            elapsedMs: Math.round(performance.now() - startedAt),
+            aborted: signal.aborted,
+            ...(doctorFailureOutput
+              ? {
+                  doctorStdoutTail: doctorFailureOutput.stdout.slice(-4_096),
+                  doctorStderrTail: doctorFailureOutput.stderr.slice(-4_096),
+                }
+              : {}),
+          }),
+        );
         try {
-          return database
-            .prepare(
-              "SELECT value_json, created_at FROM plugin_state_entries WHERE plugin_id = 'discord' AND namespace = 'components' AND entry_key = 'interaction:1'",
-            )
-            .get();
-        } finally {
-          database.close();
+          console.error(await instance.diagnose());
+        } catch {
+          console.error("[doctor-cron-readiness-diagnostic-unavailable]");
         }
-      };
-      const job = {
-        name: "SQLite automation",
-        enabled: true,
-        createdAtMs: 1,
-        updatedAtMs: 1,
-        schedule: { kind: "cron", expr: "0 9 * * *" },
-        sessionTarget: "main",
-        wakeMode: "now",
-        payload: { kind: "systemEvent", text: "tick" },
-        state: {},
-      };
-      const jobs = [
-        { ...job, id: "valid-job" },
-        { ...job, id: "invalid-state-job", state: { nextRunAtMs: -1 } },
-        { ...job, id: "invalid-trigger-job", trigger: { script: [] } },
-      ];
-      const database = new DatabaseSync(databasePath);
+      });
+      const { env, port, stateDir } = instance;
+      const storePath = path.join(stateDir, "cron", "jobs.json");
+      const databasePath = path.join(stateDir, "state", "openclaw.sqlite");
+
       try {
-        // Raw rows preserve corruption that the current store writer rejects.
-        const insert = database.prepare(`
+        signal.throwIfAborted();
+        markPhase("seed");
+        // Readiness must use the migration fixture without extra hooks or Control UI settings.
+        await instance.state.writeConfig({
+          agents: { entries: { main: {} } },
+          gateway: { mode: "local", port, auth: { mode: "none" } },
+        });
+        seedPluginStateSidecar(stateDir, 2_000);
+        const sidecarPath = path.join(stateDir, "plugin-state", "state.sqlite");
+        const preservedSidecar = fs.readFileSync(sidecarPath);
+        const readCanonicalPluginState = () => {
+          const database = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"), {
+            readOnly: true,
+          });
+          try {
+            return database
+              .prepare(
+                "SELECT value_json, created_at FROM plugin_state_entries WHERE plugin_id = 'discord' AND namespace = 'components' AND entry_key = 'interaction:1'",
+              )
+              .get();
+          } finally {
+            database.close();
+          }
+        };
+        const job = {
+          name: "SQLite automation",
+          enabled: true,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+          schedule: { kind: "cron", expr: "0 9 * * *" },
+          sessionTarget: "main",
+          wakeMode: "now",
+          payload: { kind: "systemEvent", text: "tick" },
+          state: {},
+        };
+        const jobs = [
+          { ...job, id: "valid-job" },
+          { ...job, id: "invalid-state-job", state: { nextRunAtMs: -1 } },
+          { ...job, id: "invalid-trigger-job", trigger: { script: [] } },
+        ];
+        const database = new DatabaseSync(databasePath);
+        try {
+          // Raw rows preserve corruption that the current store writer rejects.
+          const insert = database.prepare(`
           INSERT INTO cron_jobs (
             store_key, job_id, name, enabled, payload_kind, job_json, state_json,
             runtime_updated_at_ms, sort_order, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        for (const [index, { state, updatedAtMs, ...definition }] of jobs.entries()) {
-          insert.run(
-            storePath,
-            definition.id,
-            definition.name,
-            1,
-            definition.payload.kind,
-            JSON.stringify({ ...definition, state: {} }),
-            JSON.stringify(state),
-            updatedAtMs,
-            index,
-            updatedAtMs,
-          );
+          for (const [index, { state, updatedAtMs, ...definition }] of jobs.entries()) {
+            insert.run(
+              storePath,
+              definition.id,
+              definition.name,
+              1,
+              definition.payload.kind,
+              JSON.stringify({ ...definition, state: {} }),
+              JSON.stringify(state),
+              updatedAtMs,
+              index,
+              updatedAtMs,
+            );
+          }
+        } finally {
+          database.close();
         }
-      } finally {
-        database.close();
-      }
 
-      markPhase("doctor-cli");
-      const doctor = await instance.cli(
-        ["doctor", "--fix", "--non-interactive", "--no-workspace-suggestions"],
-        { execPath: nodeExecutable, timeoutMs: 30_000 },
-      );
-      doctorFailureOutput = doctor;
-      console.log(
-        "[doctor-cron-readiness-child-exit]",
-        JSON.stringify({
-          phase,
-          code: doctor.code,
-          signal: doctor.signal,
-          elapsedMs: Math.round(performance.now() - startedAt),
-        }),
-      );
-      signal.throwIfAborted();
-      markPhase("repair-validation");
-      const doctorOutput = `${doctor.stdout}\n${doctor.stderr}`;
-      expect(doctor.code, doctorOutput).toBe(0);
-      expect(doctorOutput).not.toContain("Building Control UI assets");
-      expect(doctorOutput).not.toContain("Left plugin-state sidecar in place");
-      expect(fs.readFileSync(sidecarPath)).toEqual(preservedSidecar);
-      expect(readCanonicalPluginState()).toEqual({ value_json: '{"ok":false}', created_at: 2_000 });
-      const backupNames = fs
-        .readdirSync(path.dirname(databasePath))
-        .filter((name) => name.startsWith("openclaw.sqlite.doctor-cron-") && name.endsWith(".bak"));
-      expect(backupNames.length).toBeGreaterThan(0);
-      const backup = new DatabaseSync(
-        path.join(path.dirname(databasePath), backupNames.toSorted()[0]!),
-        {
-          readOnly: true,
-        },
-      );
-      try {
-        expect(backup.prepare("SELECT job_id FROM cron_jobs ORDER BY sort_order").all()).toEqual([
-          { job_id: "valid-job" },
-          { job_id: "invalid-state-job" },
-          { job_id: "invalid-trigger-job" },
-        ]);
-      } finally {
-        backup.close();
-      }
-
-      try {
-        markPhase("gateway-start");
-        await instance.startGateway();
-        markPhase("gateway-readiness");
-        const response = await fetch(`http://127.0.0.1:${port}/readyz`, { signal });
-        await expect(response.json()).resolves.toMatchObject({ ready: true, failing: [] });
-        const logs = instance.logs();
-        expect(logs).not.toContain("Left plugin-state sidecar in place");
-        expect(logs).not.toContain(STARTUP_REFUSAL);
-        markPhase("gateway-status");
-        const status = await instance.cli(["gateway", "call", "status", "--json"], {
-          execPath: nodeExecutable,
-        });
+        markPhase("doctor-cli");
+        const doctor = await instance.cli(
+          ["doctor", "--fix", "--non-interactive", "--no-workspace-suggestions"],
+          { execPath: nodeExecutable, timeoutMs: 30_000 },
+        );
+        doctorFailureOutput = doctor;
+        console.log(
+          "[doctor-cron-readiness-child-exit]",
+          JSON.stringify({
+            phase,
+            code: doctor.code,
+            signal: doctor.signal,
+            elapsedMs: Math.round(performance.now() - startedAt),
+          }),
+        );
         signal.throwIfAborted();
-        markPhase("status-validation");
-        expect(status.code, status.stdout + "\n" + status.stderr).toBe(0);
-        expect(JSON.parse(status.stdout).startupMigrationWarning).toBeUndefined();
+        markPhase("repair-validation");
+        const doctorOutput = `${doctor.stdout}\n${doctor.stderr}`;
+        expect(doctor.code, doctorOutput).toBe(0);
+        expect(doctorOutput).not.toContain("Building Control UI assets");
+        expect(doctorOutput).not.toContain("Left plugin-state sidecar in place");
         expect(fs.readFileSync(sidecarPath)).toEqual(preservedSidecar);
-      } finally {
-        markCleanup("gateway-stop");
-        await instance.stopGateway();
-        markCleanup("gateway-stopped");
-      }
-      markPhase("canonical-state-validation");
-      expect(readCanonicalPluginState()).toEqual({ value_json: '{"ok":false}', created_at: 2_000 });
+        expect(readCanonicalPluginState()).toEqual({
+          value_json: '{"ok":false}',
+          created_at: 2_000,
+        });
+        const backupNames = fs
+          .readdirSync(path.dirname(databasePath))
+          .filter(
+            (name) => name.startsWith("openclaw.sqlite.doctor-cron-") && name.endsWith(".bak"),
+          );
+        expect(backupNames.length).toBeGreaterThan(0);
+        const backup = new DatabaseSync(
+          path.join(path.dirname(databasePath), backupNames.toSorted()[0]!),
+          {
+            readOnly: true,
+          },
+        );
+        try {
+          expect(backup.prepare("SELECT job_id FROM cron_jobs ORDER BY sort_order").all()).toEqual([
+            { job_id: "valid-job" },
+            { job_id: "invalid-state-job" },
+            { job_id: "invalid-trigger-job" },
+          ]);
+        } finally {
+          backup.close();
+        }
 
-      const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, env);
-      expect(loaded.store.jobs.map((entry) => entry.id)).toContain("valid-job");
-      // SQLite config decoding quarantines the trigger before Doctor validates runtime state.
-      expect(
-        (await loadCronQuarantinedJobs(storePath, env)).map((entry) => ({
-          sourceIndex: entry.sourceIndex,
-          reason: entry.reason,
-          id: entry.job?.id,
-        })),
-      ).toEqual([
-        { sourceIndex: 2, reason: "invalid-trigger", id: "invalid-trigger-job" },
-        { sourceIndex: 1, reason: "invalid-state", id: "invalid-state-job" },
-      ]);
-      expect(fs.existsSync(storePath)).toBe(false);
-      markPhase("complete");
-    } finally {
-      await cleanupInstance();
-    }
-  }, getCliProcessTestTimeout(30_000, 30_000, 30_000));
+        try {
+          markPhase("gateway-start");
+          await instance.startGateway();
+          markPhase("gateway-readiness");
+          const response = await fetch(`http://127.0.0.1:${port}/readyz`, { signal });
+          await expect(response.json()).resolves.toMatchObject({ ready: true, failing: [] });
+          const logs = instance.logs();
+          expect(logs).not.toContain("Left plugin-state sidecar in place");
+          expect(logs).not.toContain(STARTUP_REFUSAL);
+          markPhase("gateway-status");
+          const status = await instance.cli(["gateway", "call", "status", "--json"], {
+            execPath: nodeExecutable,
+          });
+          signal.throwIfAborted();
+          markPhase("status-validation");
+          expect(status.code, status.stdout + "\n" + status.stderr).toBe(0);
+          expect(JSON.parse(status.stdout).startupMigrationWarning).toBeUndefined();
+          expect(fs.readFileSync(sidecarPath)).toEqual(preservedSidecar);
+        } finally {
+          markCleanup("gateway-stop");
+          await instance.stopGateway();
+          markCleanup("gateway-stopped");
+        }
+        markPhase("canonical-state-validation");
+        expect(readCanonicalPluginState()).toEqual({
+          value_json: '{"ok":false}',
+          created_at: 2_000,
+        });
+
+        const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, env);
+        expect(loaded.store.jobs.map((entry) => entry.id)).toContain("valid-job");
+        // SQLite config decoding quarantines the trigger before Doctor validates runtime state.
+        expect(
+          (await loadCronQuarantinedJobs(storePath, env)).map((entry) => ({
+            sourceIndex: entry.sourceIndex,
+            reason: entry.reason,
+            id: entry.job?.id,
+          })),
+        ).toEqual([
+          { sourceIndex: 2, reason: "invalid-trigger", id: "invalid-trigger-job" },
+          { sourceIndex: 1, reason: "invalid-state", id: "invalid-state-job" },
+        ]);
+        expect(fs.existsSync(storePath)).toBe(false);
+        markPhase("complete");
+      } finally {
+        await cleanupInstance();
+      }
+    },
+    getCliProcessTestTimeout(30_000, 30_000, 30_000),
+  );
 
   it("admits stable upgrade state after Doctor repairs config, schema, and device identity", async () => {
     const root = await fs.promises.realpath(

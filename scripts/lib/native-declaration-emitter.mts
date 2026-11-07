@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { API, EmitOutputFile } from "typescript/async";
+import type { FileSystemCallbacks } from "typescript/fs";
 import { createDeclarationInputBoundary, resolveRepoToolBinPath } from "./local-check-runtime.mts";
 import { createDeclarationFileSystem } from "./native-declaration-filesystem.mts";
 import {
@@ -33,11 +34,18 @@ type NativeCompiler = {
   executable: string;
   packageJson: string;
   module: NativeApiModule;
-  fakeStat: unknown;
+  fakeStat: FileSystemCallbacks["stat"] | undefined;
 };
 
-function resolveFakeStat(module: unknown): unknown {
-  return isRecord(module) && isRecord(module.serverFS) ? module.serverFS.fakeStat : undefined;
+function resolveFakeStat(module: unknown): FileSystemCallbacks["stat"] | undefined {
+  if (!isRecord(module) || !isRecord(module.serverFS)) {
+    return undefined;
+  }
+  const candidate = module.serverFS.fakeStat;
+  if (typeof candidate !== "function" && typeof candidate !== "symbol") {
+    return undefined;
+  }
+  return candidate as FileSystemCallbacks["stat"];
 }
 
 function resolveTypeScriptPackage(compilerRoot: string) {

@@ -185,15 +185,20 @@ export class BoundaryInputSnapshot extends CompilerInputSnapshot {
         value.result &&
         typeof value.result === "object" &&
         !Array.isArray(value.result) &&
-        Object.keys(value.result).length === 2 &&
+        Object.keys(value.result).length === 3 &&
         "files" in value.result &&
         "directories" in value.result &&
+        "symlinks" in value.result &&
         names(value.result.files) &&
-        names(value.result.directories)
+        names(value.result.directories) &&
+        names(value.result.symlinks)
       ) {
-        const { files, directories } = value.result;
-        if (files.every((name) => !directories.includes(name))) {
-          return { kind: value.kind, path: file, result: { files, directories } };
+        const { files, directories, symlinks } = value.result;
+        if (
+          files.every((name) => !directories.includes(name)) &&
+          symlinks.every((name) => files.includes(name) || directories.includes(name))
+        ) {
+          return { kind: value.kind, path: file, result: { files, directories, symlinks } };
         }
       }
       throw new Error(`Invalid bounded compiler lookup result: ${receipt}`);

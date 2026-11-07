@@ -19,7 +19,8 @@ export async function prepareConfigFileWrite(
     assertCurrent?: () => void;
     destinationHardlinks?: "reject";
     durable?: boolean;
-    dirMode?: number;    requireBackup?: boolean;
+    dirMode?: number;
+    requireBackup?: boolean;
   } & Pick<ReplaceFileAtomicSyncOptions, "assertBeforeMutation" | "onDestinationState">,
 ) {
   const { configPath, fsModule } = params;

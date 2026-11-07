@@ -230,11 +230,7 @@ function selectNativeTasks(
     query = query.where((eb) =>
       eb.or([
         eb("run_id", "=", taskId),
-        eb(
-          jsonExtractText(database.db, eb.ref("payload_json"), "taskRunId"),
-          "=",
-          taskId,
-        ),
+        eb(jsonExtractText(database.db, eb.ref("payload_json"), "taskRunId"), "=", taskId),
       ]),
     );
   }

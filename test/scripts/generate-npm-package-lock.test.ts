@@ -38,47 +38,71 @@ describe("generate-npm-package-lock", () => {
     return path.relative(process.cwd(), value).replaceAll("\\", "/");
   }
 
-  it.each([undefined, true, { proofSha256: "f".repeat(64) }, {
-    artifact: { name: "npm", version: "12.2.1", spec: "file:./derived.tgz", integrity: "sha512-Zm9yZ2Vk" },
-  }])("does not admit unpatched bundled Glob from caller metadata (%j)", (forgedContext) => {
-    const lock = { packages: {
-      "": { dependencies: { npm: "12.2.1" } },
-      "node_modules/npm": {
-        version: "12.2.1", integrity: "sha512-Zm9yZ2Vk", resolved: "file:derived.tgz",
+  it.each([
+    undefined,
+    true,
+    { proofSha256: "f".repeat(64) },
+    {
+      artifact: {
+        name: "npm",
+        version: "12.2.1",
+        spec: "file:./derived.tgz",
+        integrity: "sha512-Zm9yZ2Vk",
       },
-      "node_modules/npm/node_modules/glob": { version: "13.0.6", inBundle: true },
-    } };
+    },
+  ])("does not admit unpatched bundled Glob from caller metadata (%j)", (forgedContext) => {
+    const lock = {
+      packages: {
+        "": { dependencies: { npm: "12.2.1" } },
+        "node_modules/npm": {
+          version: "12.2.1",
+          integrity: "sha512-Zm9yZ2Vk",
+          resolved: "file:derived.tgz",
+        },
+        "node_modules/npm/node_modules/glob": { version: "13.0.6", inBundle: true },
+      },
+    };
     const findings = Reflect.apply(collectOverrideViolations, undefined, [
-      lock, { glob: "14.0.2" }, forgedContext,
+      lock,
+      { glob: "14.0.2" },
+      forgedContext,
     ]);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.path).toBe("node_modules/npm/node_modules/glob");
   });
 
   const backportPolicyCases: Array<[string | undefined, string | undefined, boolean]> = [
-    ["14.0.2", undefined, true], ["14.0.2", "glob", true],
-    ["14.0.3", undefined, false], ["99.0.0", undefined, false],
-    ["^14.0.2", undefined, false], ["14.0.2", "other-glob", false],
+    ["14.0.2", undefined, true],
+    ["14.0.2", "glob", true],
+    ["14.0.3", undefined, false],
+    ["99.0.0", undefined, false],
+    ["^14.0.2", undefined, false],
+    ["14.0.2", "other-glob", false],
     [undefined, undefined, false],
   ];
-  it.each(backportPolicyCases)("keeps the backport bound to its exact reviewed override policy (%s/%s)",
+  it.each(backportPolicyCases)(
+    "keeps the backport bound to its exact reviewed override policy (%s/%s)",
     (spec, packageName, approved) => {
       expect(isNpmGlobBackportPolicy(spec, packageName)).toBe(approved);
-    });
+    },
+  );
 
   function attributionFixture() {
     const packages: Record<string, Record<string, unknown>> = {
       "": { dependencies: { npm: "12.2.0" } },
       "node_modules/npm": {
-        version: "12.2.0", integrity: "sha512-Zml4dHVyZQ==",
+        version: "12.2.0",
+        integrity: "sha512-Zml4dHVyZQ==",
         dependencies: { "make-fetch-happen": "16.0.1" },
       },
       "node_modules/npm/node_modules/make-fetch-happen": {
-        version: "16.0.1", inBundle: true,
+        version: "16.0.1",
+        inBundle: true,
         dependencies: { "http-cache-semantics": "^4.2.0" },
       },
       "node_modules/npm/node_modules/http-cache-semantics": {
-        version: "4.2.0", inBundle: true,
+        version: "4.2.0",
+        inBundle: true,
       },
     };
     const lock = { packages };
@@ -98,28 +122,46 @@ describe("generate-npm-package-lock", () => {
     expect(result.generatedLockSha256).toBe(createHash("sha256").update(raw).digest("hex"));
     expect(result.graphAuthority).toBe("generated_lock_unverified");
     expect(result.npmParent).toEqual({
-      version: "12.2.0", declaredIntegrity: "sha512-Zml4dHVyZQ==",
+      version: "12.2.0",
+      declaredIntegrity: "sha512-Zml4dHVyZQ==",
       tarballAuthentication: "not_reached",
     });
-    expect(result.violations[0]?.incoming).toEqual([{
-      parent: {
-        path: "node_modules/npm/node_modules/make-fetch-happen", version: "16.0.1",
-        inBundle: true, hasShrinkwrap: null,
+    expect(result.violations[0]?.incoming).toEqual([
+      {
+        parent: {
+          path: "node_modules/npm/node_modules/make-fetch-happen",
+          version: "16.0.1",
+          inBundle: true,
+          hasShrinkwrap: null,
+        },
+        dependencyName: "http-cache-semantics",
+        requestedSpec: "^4.2.0",
       },
-      dependencyName: "http-cache-semantics", requestedSpec: "^4.2.0",
-    }]);
-    expect(result.violations[0]?.configured).toEqual([{
-      selectors: ["make-fetch-happen@16.0.1", "http-cache-semantics"], spec: "4.3.0",
-    }]);
-    expect(collectOverrideViolations(lock, { "http-cache-semantics": "4.3.0" })).toEqual(violations);
+    ]);
+    expect(result.violations[0]?.configured).toEqual([
+      {
+        selectors: ["make-fetch-happen@16.0.1", "http-cache-semantics"],
+        spec: "4.3.0",
+      },
+    ]);
+    expect(collectOverrideViolations(lock, { "http-cache-semantics": "4.3.0" })).toEqual(
+      violations,
+    );
     expect(violations).toHaveLength(1);
     expect(JSON.stringify(lock)).toBe(raw);
   });
 
   it.each(["../private", "/private", "https://token@example.test", "a\\b", "secret\nvalue"])(
-    "does not export an unsafe managed-package label (%s)", (label) => {
+    "does not export an unsafe managed-package label (%s)",
+    (label) => {
       const { lock, violations, overrides } = attributionFixture();
-      const result = createNpmLockOverrideAttribution(label, JSON.stringify(lock), lock, violations, overrides);
+      const result = createNpmLockOverrideAttribution(
+        label,
+        JSON.stringify(lock),
+        lock,
+        violations,
+        overrides,
+      );
       expect(result.packageDir).toBeNull();
       expect(JSON.stringify(result)).not.toContain(label);
     },
@@ -129,13 +171,23 @@ describe("generate-npm-package-lock", () => {
     const { lock, violations, overrides } = attributionFixture();
     const canary = "https://user:private-canary@example.test/private.tgz";
     lock.packages["node_modules/npm"] = {
-      version: "private-canary", integrity: canary, resolved: canary, _authToken: "private-canary",
+      version: "private-canary",
+      integrity: canary,
+      resolved: canary,
+      _authToken: "private-canary",
     };
     lock.packages["node_modules/npm/node_modules/make-fetch-happen"] = {
-      version: "16.0.1", dependencies: { "http-cache-semantics": canary },
+      version: "16.0.1",
+      dependencies: { "http-cache-semantics": canary },
     };
     const raw = JSON.stringify(lock);
-    const result = createNpmLockOverrideAttribution("extensions/example", raw, lock, violations, overrides);
+    const result = createNpmLockOverrideAttribution(
+      "extensions/example",
+      raw,
+      lock,
+      violations,
+      overrides,
+    );
     expect(result.npmParent.version).toBeNull();
     expect(result.npmParent.declaredIntegrity).toBeNull();
     expect(result.violations[0]?.incoming[0]?.requestedSpec).toBeNull();
@@ -148,14 +200,22 @@ describe("generate-npm-package-lock", () => {
     const overrides: Record<string, unknown> = {};
     for (let i = 0; i < 12; i++) {
       lock.packages[`node_modules/parent-${i}`] = {
-        version: "1.0.0", dependencies: { "http-cache-semantics": "^4" },
+        version: "1.0.0",
+        dependencies: { "http-cache-semantics": "^4" },
       };
       overrides[`parent-${i}`] = { "http-cache-semantics": "4.3.0" };
     }
     lock.packages["node_modules/http-cache-semantics"] = { version: "4.2.0" };
-    const globalViolation = collectOverrideViolations(lock, { "http-cache-semantics": "4.3.0" })
-      .filter((entry) => entry.path === "node_modules/http-cache-semantics");
-    const result = createNpmLockOverrideAttribution(".", JSON.stringify(lock), lock, globalViolation, overrides);
+    const globalViolation = collectOverrideViolations(lock, {
+      "http-cache-semantics": "4.3.0",
+    }).filter((entry) => entry.path === "node_modules/http-cache-semantics");
+    const result = createNpmLockOverrideAttribution(
+      ".",
+      JSON.stringify(lock),
+      lock,
+      globalViolation,
+      overrides,
+    );
     expect(result.violations[0]?.incomingCount).toBe(12);
     expect(result.violations[0]?.incoming).toHaveLength(8);
     expect(result.violations[0]?.incomingOmitted).toBe(4);
@@ -173,8 +233,13 @@ describe("generate-npm-package-lock", () => {
       };
     }
     const raw = JSON.stringify(lock);
-    const result = createNpmLockOverrideAttribution(".", raw, lock,
-      [...violations, ...violations, ...violations, ...violations], overrides);
+    const result = createNpmLockOverrideAttribution(
+      ".",
+      raw,
+      lock,
+      [...violations, ...violations, ...violations, ...violations],
+      overrides,
+    );
     expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(16 * 1024);
     expect(result.truncatedForSize).toBe(true);
     expect(result.violationCount).toBe(4);
@@ -939,15 +1004,13 @@ describe("generate-npm-package-lock", () => {
     });
   });
 
-  it.each(
-    [
-      ...[{ name: "minimatch", version: "10.2.5", required: "10.2.6" }].flatMap((entry) =>
-        ["11.20.0", "12.1.0", "12.2.0"].map((npmVersion) => Object.assign({ npmVersion }, entry)),
-      ),
-      { npmVersion: "12.2.1", name: "minimatch", version: "10.2.5", required: "10.2.6" },
-      { npmVersion: "12.2.1", name: "ip-address", version: "10.7.2", required: "10.7.4" },
-    ],
-  )(
+  it.each([
+    ...[{ name: "minimatch", version: "10.2.5", required: "10.2.6" }].flatMap((entry) =>
+      ["11.20.0", "12.1.0", "12.2.0"].map((npmVersion) => Object.assign({ npmVersion }, entry)),
+    ),
+    { npmVersion: "12.2.1", name: "minimatch", version: "10.2.5", required: "10.2.6" },
+    { npmVersion: "12.2.1", name: "ip-address", version: "10.7.2", required: "10.7.4" },
+  ])(
     "limits the npm@$npmVersion bundled exception for $name to its approved occurrence",
     ({ name, version, required, npmVersion }) => {
       for (const change of [
@@ -1004,18 +1067,21 @@ describe("generate-npm-package-lock", () => {
   it.each([
     { name: "minimatch", version: "10.2.5", required: "10.2.6" },
     { name: "ip-address", version: "10.7.2", required: "10.7.4" },
-  ])("requires a bundle marker for the npm@12.2.1 $name occurrence", ({ name, version, required }) => {
-    const childPath = `node_modules/npm/node_modules/${name}`;
-    const lockfile = {
-      packages: {
-        "node_modules/npm": { version: "12.2.1" },
-        [childPath]: { version },
-      },
-    };
-    expect(collectOverrideViolations(lockfile, { [name]: required }).map((entry) => entry.path)).toEqual([
-      childPath,
-    ]);
-  });
+  ])(
+    "requires a bundle marker for the npm@12.2.1 $name occurrence",
+    ({ name, version, required }) => {
+      const childPath = `node_modules/npm/node_modules/${name}`;
+      const lockfile = {
+        packages: {
+          "node_modules/npm": { version: "12.2.1" },
+          [childPath]: { version },
+        },
+      };
+      expect(
+        collectOverrideViolations(lockfile, { [name]: required }).map((entry) => entry.path),
+      ).toEqual([childPath]);
+    },
+  );
 
   it.each(["4.2.0", "4.3.0"])(
     "keeps the http-cache-semantics4.3.0 requirement for npm@12.2.1 (actual=%s)",
@@ -1068,9 +1134,9 @@ describe("generate-npm-package-lock", () => {
         hashes = integrities,
       ) => collectPnpmLockViolations(value, pins, hashes, [], tarball);
       expect(check()).toEqual([]);
-      expect(collectPnpmLockViolations(lockfile, pins, integrities).map((entry) => entry.path)).toEqual([
-        childPath,
-      ]);
+      expect(
+        collectPnpmLockViolations(lockfile, pins, integrities).map((entry) => entry.path),
+      ).toEqual([childPath]);
       for (const parent of [
         { version: npmVersion },
         { version: "99.0.0", integrity },

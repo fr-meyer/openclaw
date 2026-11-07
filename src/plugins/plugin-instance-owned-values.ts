@@ -48,7 +48,9 @@ export class PluginCallToken extends PluginHostObject {
 }
 
 /** Installed once in the shared instance singleton, including its private-field brand. */
-export function createPluginValueInstances<TInstance extends object>(): PluginValueInstances<TInstance> {
+export function createPluginValueInstances<
+  TInstance extends object,
+>(): PluginValueInstances<TInstance> {
   // Private fields are installed on the returned object without invoking Proxy traps.
   // They cannot be discovered through reflection or forwarded by a foreign Proxy.
   class OwnedValue extends PluginHostObject {

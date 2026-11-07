@@ -115,15 +115,15 @@ jobs:
       - name: Setup pinned Node and pnpm without install or cache
         uses: ./.github/actions/setup-node-env
         with:
-          node-version: '24.22.1'
-          install-bun: 'false'
-          install-deps: 'false'
+          node-version: "24.22.1"
+          install-bun: "false"
+          install-deps: "false"
           cache-mode: off
 
       - name: Frozen dependency admission without install scripts
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
         run: |
           set -euo pipefail
           test "$(pnpm -v)" = '12.15.0'
@@ -139,7 +139,7 @@ jobs:
       - name: Diagnose ACP SDK npm mirror placement
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
         run: |
           set -euo pipefail
           node --import ./scripts/tsx.mjs --input-type=module <<'NODE'
@@ -180,7 +180,7 @@ jobs:
       - name: Test TypeScript beta adapter and peer override guards
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
         run: |
           set -euo pipefail
           pnpm test test/scripts/native-declaration-boundary.test.ts test/scripts/native-typescript.test.ts test/scripts/eager-import-closure.test.ts test/scripts/check-coercion-helper-declarations.test.ts test/scripts/check-coercion-helper-declarations.io.test.ts test/scripts/check-dependency-pins.test.ts test/scripts/generate-npm-package-lock-peers.test.ts test/scripts/generate-npm-package-lock.test.ts src/tasks/managed-task-flow-host.test.ts src/plugins/plugin-instance-invocation.test.ts src/plugins/runtime/gateway-request-scope.test.ts --maxWorkers=1
@@ -188,7 +188,7 @@ jobs:
       - name: Test module-label updater, release and standalone consumers
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
           TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
           OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
         run: |
@@ -199,7 +199,7 @@ jobs:
       - name: Test runtime module-label fixture before full build
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
           TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
           OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
         run: |
@@ -210,7 +210,7 @@ jobs:
       - name: Test native invalid-source preservation before full build
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
           TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
           OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
         run: |
@@ -228,7 +228,7 @@ jobs:
       - name: Check peers, patches, pins and npm mirrors independently
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
         run: |
           set -euo pipefail
           peer=0; patches=0; pins=0; mirrors=0
@@ -244,8 +244,8 @@ jobs:
       - name: Build package and declarations on GitHub
         shell: bash
         env:
-          CI: 'true'
-          OPENCLAW_BUILD_CACHE: '0'
+          CI: "true"
+          OPENCLAW_BUILD_CACHE: "0"
         run: |
           set -euo pipefail
           pnpm build
@@ -254,7 +254,7 @@ jobs:
         if: ${{ failure() }}
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
         run: |
           set -euo pipefail
           node --import ./scripts/tsx.mjs --input-type=module <<'NODE'
@@ -306,7 +306,7 @@ jobs:
       - name: Verify built update bridge and compatibility tests
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
           TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
           OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
         run: |
@@ -318,7 +318,7 @@ jobs:
       - name: Test tsdown wrapper on GitHub
         shell: bash
         env:
-          CI: 'true'
+          CI: "true"
           TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
           OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
         run: |

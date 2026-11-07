@@ -1822,7 +1822,10 @@ describe("runTsdownBuildInvocation", () => {
         tsconfig: path.join(rootDir, "tsconfig.json"),
       };
       const dtsOptions = '{ generator: "tsgo", emitDtsOnly: true, tsgo: { path: getExePath() } }';
-      const boundaryUrl = new URL("../../scripts/lib/tsdown-declaration-boundary.mts", import.meta.url).href;
+      const boundaryUrl = new URL(
+        "../../scripts/lib/tsdown-declaration-boundary.mts",
+        import.meta.url,
+      ).href;
       const script = [
         'import { build } from "tsdown";',
         `import { createDeclarationBoundaryHooks } from ${JSON.stringify(boundaryUrl)};`,

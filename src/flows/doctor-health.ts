@@ -1,11 +1,11 @@
 import { collectNestedErrorCandidates } from "@openclaw/normalization-core/error-coercion";
 import { measureGatewayBootstrapStep } from "../cli/startup-trace.js";
 import type { BackupSqliteSnapshotFact } from "../commands/backup-resource-inventory.js";
+import type { DoctorDatabasePreflight } from "../commands/doctor-database-preflight.js";
 import {
   DOCTOR_BACKUP_REUSE_ENV,
   parseReviewedDoctorBackupReuse,
 } from "../commands/doctor-migration-backup-reuse.js";
-import type { DoctorDatabasePreflight } from "../commands/doctor-database-preflight.js";
 import type { DoctorOptions } from "../commands/doctor-prompter.js";
 import {
   isDoctorUpdateRepairMode,

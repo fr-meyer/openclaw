@@ -132,9 +132,11 @@ describe("native TypeScript semantic overlays", () => {
           path.join(root, "alias.ts").split(path.sep).join("/"),
         );
         expect(
-          program.getSourceFileNames().some((name) =>
-            program.getSourceFile(name)?.getText().includes("export const linked = 2;"),
-          ),
+          program
+            .getSourceFileNames()
+            .some((name) =>
+              program.getSourceFile(name)?.getText().includes("export const linked = 2;"),
+            ),
         ).toBe(true);
       } finally {
         linked.close();

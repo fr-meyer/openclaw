@@ -144,11 +144,9 @@ it.each([
 );
 
 it("session cleanup joins terminal controller disposal after its resolver is cleared", async () => {
-  const target = await seedExecutionTarget(
-    "terminal-disposal",
-    "retain physical cleanup",
-    { lifecycleRevision: "original-revision" },
-  );
+  const target = await seedExecutionTarget("terminal-disposal", "retain physical cleanup", {
+    lifecycleRevision: "original-revision",
+  });
   const registration = registerChatAbortController({
     chatAbortControllers: target.context.chatAbortControllers,
     runId: target.runId,

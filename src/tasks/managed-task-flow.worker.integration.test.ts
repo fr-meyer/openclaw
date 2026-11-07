@@ -568,11 +568,7 @@ it("persists managed flows and unknown native runs through the schema-22 state w
       await expect(
         executeManagedTaskFlowFixtureWrite(
           context,
-          killWrite(
-            "retired-native-generation",
-            claim,
-            killRow,
-          ),
+          killWrite("retired-native-generation", claim, killRow),
         ),
       ).rejects.toThrow("Managed flow kill claim native generation changed");
       expect(await readCancelState()).toEqual(replacedCancelState);

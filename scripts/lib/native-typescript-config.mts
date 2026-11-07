@@ -65,7 +65,10 @@ export function readNativeTypeScriptConfig(options: {
       fileExists: view?.filesystem.fileExists ?? serverFS.useOS,
       directoryExists: view?.filesystem.directoryExists ?? serverFS.useOS,
       getAccessibleEntries: view
-        ? (directory) => ({ ...view.filesystem.getAccessibleEntries(directory), symlinks: undefined })
+        ? (directory) => ({
+            ...view.filesystem.getAccessibleEntries(directory),
+            symlinks: undefined,
+          })
         : serverFS.useOS,
       realpath: view?.filesystem.realpath ?? serverFS.useOS,
       stat: serverFS.fakeStat,

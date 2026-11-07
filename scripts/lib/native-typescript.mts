@@ -2,11 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { SourceFile } from "typescript/ast";
-import {
-  serverFS,
-  type FileSystemCallbacks,
-  type FileSystemEntries,
-} from "typescript/fs";
+import { serverFS, type FileSystemCallbacks, type FileSystemEntries } from "typescript/fs";
 import {
   API,
   type CreateSnapshotParams,
@@ -122,9 +118,7 @@ function completeFileSystem(base: FileSystem): FileSystemCallbacks {
     directoryExists: base.directoryExists
       ? (directory) => base.directoryExists?.(directory) ?? serverFS.useOS
       : serverFS.useOS,
-    realpath: base.realpath
-      ? (file) => base.realpath?.(file) ?? serverFS.identity
-      : serverFS.useOS,
+    realpath: base.realpath ? (file) => base.realpath?.(file) ?? serverFS.identity : serverFS.useOS,
     getAccessibleEntries: base.getAccessibleEntries
       ? (directory) => base.getAccessibleEntries?.(directory) ?? emptyDirectoryEntries()
       : serverFS.useOS,
@@ -151,8 +145,7 @@ function overlayFileSystem(
         : base.readFile
           ? base.readFile(file)
           : serverFS.useOS,
-    fileExists: (file) =>
-      hasFile(file) ? true : (base.fileExists?.(file) ?? serverFS.useOS),
+    fileExists: (file) => (hasFile(file) ? true : (base.fileExists?.(file) ?? serverFS.useOS)),
     directoryExists: (directory) =>
       virtual.directoryExists(directory)
         ? true

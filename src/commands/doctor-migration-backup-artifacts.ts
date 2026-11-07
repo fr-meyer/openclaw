@@ -49,7 +49,9 @@ export function recordDoctorMigrationBackups(
   ): MigrationArtifactIdentity | undefined => {
     const verified = reuse.verifiedBackupIdentities?.get(source);
     if (verification && archivePath !== `${source}.pre-startup-migration-${archiveBackupId}.bak`) {
-      throw new Error(`Cross-build backup path differs from the reviewed full group: ${archivePath}`);
+      throw new Error(
+        `Cross-build backup path differs from the reviewed full group: ${archivePath}`,
+      );
     }
     if (verification && !verified) {
       throw new Error(`Cross-build backup identity missing: ${archivePath}`);

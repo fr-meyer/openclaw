@@ -25,10 +25,10 @@ import { list as listTar } from "tar";
 import { parse as parseYaml } from "yaml";
 import { isRecord } from "../packages/normalization-core/src/record-coerce.ts";
 import { listChangedPathsFromGit, listStagedChangedPaths } from "./changed-lanes.mts";
-import { pnpmLockfileDocuments, resolveSnapshot } from "./lib/pnpm-lockfile-documents.mjs";
-import { isAuditedPeerOverride } from "./lib/peer-override-policy.mts";
-import { resolveNpmRunner } from "./npm-runner.mts";
 import { prepareNpmVendorArtifact } from "./lib/npm-vendor-delivery.mjs";
+import { isAuditedPeerOverride } from "./lib/peer-override-policy.mts";
+import { pnpmLockfileDocuments, resolveSnapshot } from "./lib/pnpm-lockfile-documents.mjs";
+import { resolveNpmRunner } from "./npm-runner.mts";
 
 type UnknownRecord = Record<string, unknown>;
 type OverrideMap = Record<string, unknown>;
@@ -453,9 +453,7 @@ function resolvePnpmLockOverridePlan(lockfile: unknown) {
       // exact version. Parse that context before deriving the npm child pin.
       const resolved = parsePnpmPackageKey(`${dependencyName}@${String(dependencySpec)}`);
       const version =
-        resolved?.name === dependencyName
-          ? exactVersionFromOverrideSpec(resolved.version)
-          : null;
+        resolved?.name === dependencyName ? exactVersionFromOverrideSpec(resolved.version) : null;
       if (!version || !versionsByName.get(dependencyName)?.has(version)) {
         continue;
       }
@@ -1150,17 +1148,20 @@ type OverrideViolation = {
 // Trusted release tooling validates frozen targets as well as current main. Keep each
 // reviewed npm tarball exact here until no supported frozen target can reference it.
 const NPM_BUNDLED_DEPENDENCY_POLICIES = new Map([
-  ...["11.20.0", "12.1.0", "12.2.0"].map((version) => [
-    version,
-    {
-      allowMissingBundleMarker: version === "11.20.0",
-      exceptions: new Map([
-        ["node_modules/npm/node_modules/minimatch", "10.2.5"],
-        ["node_modules/npm/node_modules/brace-expansion", "5.0.9"],
-        ["node_modules/npm/node_modules/ip-address", "10.5.0"],
-      ]),
-    },
-  ] as const),
+  ...["11.20.0", "12.1.0", "12.2.0"].map(
+    (version) =>
+      [
+        version,
+        {
+          allowMissingBundleMarker: version === "11.20.0",
+          exceptions: new Map([
+            ["node_modules/npm/node_modules/minimatch", "10.2.5"],
+            ["node_modules/npm/node_modules/brace-expansion", "5.0.9"],
+            ["node_modules/npm/node_modules/ip-address", "10.5.0"],
+          ]),
+        },
+      ] as const,
+  ),
   [
     "12.2.1",
     {
@@ -1176,8 +1177,10 @@ const NPM_BUNDLED_DEPENDENCY_POLICIES = new Map([
 // Only the reviewed Glob14.0.2 security policy is satisfied by this exact
 // authenticated13.0.6 backport. Future version/alias policies require new review.
 function isNpmGlobBackportPolicy(expectedSpec?: string | null, expectedPackageName?: string) {
-  return expectedSpec === "14.0.2" &&
-    (expectedPackageName === undefined || expectedPackageName === "glob");
+  return (
+    expectedSpec === "14.0.2" &&
+    (expectedPackageName === undefined || expectedPackageName === "glob")
+  );
 }
 
 function isApprovedNpmBundledDependency(
@@ -1192,13 +1195,16 @@ function isApprovedNpmBundledDependency(
   const expectedVersion = policy?.exceptions.get(lockPath);
   const dependency = recordAt(packages, lockPath);
   if (
-    npmVendor && authenticatedNpmVendors.has(npmVendor) &&
+    npmVendor &&
+    authenticatedNpmVendors.has(npmVendor) &&
     isNpmGlobBackportPolicy(overridePolicy?.expectedSpec, overridePolicy?.expectedPackageName) &&
     lockPath === "node_modules/npm/node_modules/glob" &&
-    npmVersion === "12.2.1" && (npm?.name === undefined || npm.name === "npm") &&
+    npmVersion === "12.2.1" &&
+    (npm?.name === undefined || npm.name === "npm") &&
     npm?.integrity === npmVendor.artifact.integrity &&
     npm.resolved === npmVendor.artifact.spec.replace(/^file:\.\//u, "file:") &&
-    dependency?.version === "13.0.6" && dependency.inBundle === true &&
+    dependency?.version === "13.0.6" &&
+    dependency.inBundle === true &&
     (dependency.name === undefined || dependency.name === "glob")
   ) {
     return true;
@@ -1240,7 +1246,12 @@ function collectOverrideViolations(
       isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
     const actualPackageName =
       isRecord(metadata) && typeof metadata.name === "string" ? metadata.name : packageName;
-    if (isApprovedNpmBundledDependency(packages, lockPath, npmVendor, { expectedSpec, expectedPackageName })) {
+    if (
+      isApprovedNpmBundledDependency(packages, lockPath, npmVendor, {
+        expectedSpec,
+        expectedPackageName,
+      })
+    ) {
       continue;
     }
     if (
@@ -1499,7 +1510,8 @@ function collectUnallowedOverrideViolations(
       if (
         matched.expectedSpec &&
         !isApprovedNpmBundledDependency(packages, dependencyPath, npmVendor, {
-          expectedSpec: matched.expectedSpec, expectedPackageName: matched.expectedPackageName,
+          expectedSpec: matched.expectedSpec,
+          expectedPackageName: matched.expectedPackageName,
         }) &&
         (installedVersion === undefined ||
           !semver.satisfies(installedVersion, matched.expectedSpec, { includePrerelease: true }) ||
@@ -1570,7 +1582,12 @@ function disableDependencyShrinkwrapOverrideConflictSources(
     return [];
   }
   const disabled = new Set<string>();
-  for (const violation of collectUnallowedOverrideViolations(lockfile, overrideRules, overrides, npmVendor)) {
+  for (const violation of collectUnallowedOverrideViolations(
+    lockfile,
+    overrideRules,
+    overrides,
+    npmVendor,
+  )) {
     for (const source of violation.shrinkwrapSources) {
       const sourceMetadata = packages[source];
       if (isRecord(sourceMetadata)) {
@@ -1611,15 +1628,19 @@ export function createNpmLockOverrideAttribution(
   const safePath = (value: unknown) =>
     typeof value === "string" &&
     value.length <= 240 &&
-    (value === "" || value === "." ||
+    (value === "" ||
+      value === "." ||
       (/^[A-Za-z0-9@._+/-]+$/u.test(value) &&
         !value.split("/").some((part) => part === ".." || part === "." || part === "")))
       ? value
       : null;
   const safeSpec = (value: unknown) =>
-    typeof value === "string" && value.length <= 96 &&
+    typeof value === "string" &&
+    value.length <= 96 &&
     /^[A-Za-z0-9@._+*^~<>=| -]+$/u.test(value) &&
-    versionRangeFromOverrideSpec(value) !== null ? value : null;
+    versionRangeFromOverrideSpec(value) !== null
+      ? value
+      : null;
   const safeSelector = (value: string) =>
     value.length <= 240 && /^[A-Za-z0-9@._+/*^~<>=| -]+$/u.test(value) ? value : null;
   const packages = recordAt(lockfile, "packages") ?? {};
@@ -1649,14 +1670,19 @@ export function createNpmLockOverrideAttribution(
         ...recordAt(parent, "optionalDependencies"),
       };
       for (const [name, spec] of Object.entries(dependencies)) {
-        if (name !== violation.packageName ||
-            resolveLockDependencyPath(packages, parentPath, name) !== violation.path) {
+        if (
+          name !== violation.packageName ||
+          resolveLockDependencyPath(packages, parentPath, name) !== violation.path
+        ) {
           continue;
         }
         incomingCount++;
         if (incoming.length < 8) {
-          incoming.push({ parent: metadata(parentPath), dependencyName: safePath(name),
-            requestedSpec: safeSpec(spec) });
+          incoming.push({
+            parent: metadata(parentPath),
+            dependencyName: safePath(name),
+            requestedSpec: safeSpec(spec),
+          });
         }
       }
     }
@@ -1674,8 +1700,10 @@ export function createNpmLockOverrideAttribution(
         } else if ((parsePnpmPackageKey(selector)?.name ?? selector) === violation.packageName) {
           configuredCount++;
           if (configured.length < 8) {
-            configured.push({ selectors: [...selectors, selector].map(safeSelector),
-              spec: safeSpec(spec) });
+            configured.push({
+              selectors: [...selectors, selector].map(safeSelector),
+              spec: safeSpec(spec),
+            });
           }
         }
       }
@@ -1683,14 +1711,20 @@ export function createNpmLockOverrideAttribution(
     visit(overrides);
     const parentPaths = violation.packagePath.slice(0, -1);
     return {
-      path: safePath(violation.path), packageName: safePath(violation.packageName),
-      actualVersion: safeSpec(violation.actualVersion), expectedSpec: safeSpec(violation.expectedSpec),
+      path: safePath(violation.path),
+      packageName: safePath(violation.packageName),
+      actualVersion: safeSpec(violation.actualVersion),
+      expectedSpec: safeSpec(violation.expectedSpec),
       physicalParentCount: parentPaths.length,
       physicalParentsOmitted: Math.max(0, parentPaths.length - 6),
       physicalParents: parentPaths.slice(-6).map((item) => metadata(item.path)),
-      incomingCount, incomingOmitted: Math.max(0, incomingCount - incoming.length), incoming,
-      configuredCount, configuredOmitted: Math.max(0, configuredCount - configured.length),
-      unvisitedPolicyBranches, configured,
+      incomingCount,
+      incomingOmitted: Math.max(0, incomingCount - incoming.length),
+      incoming,
+      configuredCount,
+      configuredOmitted: Math.max(0, configuredCount - configured.length),
+      unvisitedPolicyBranches,
+      configured,
     };
   });
   const npm = recordAt(packages, "node_modules/npm");
@@ -1707,8 +1741,12 @@ export function createNpmLockOverrideAttribution(
     violations: projected,
     npmParent: {
       version: safeSpec(npm?.version),
-      declaredIntegrity: typeof integrity === "string" && integrity.length <= 256 &&
-        /^sha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}$/u.test(integrity) ? integrity : null,
+      declaredIntegrity:
+        typeof integrity === "string" &&
+        integrity.length <= 256 &&
+        /^sha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}$/u.test(integrity)
+          ? integrity
+          : null,
       tarballAuthentication: "not_reached",
     },
     truncatedForSize: false,
@@ -1741,7 +1779,10 @@ function installNpmPackageLock(
     const npmLockText = readFileSync(npmLockPath, "utf8");
     const npmLock = parseJsonObject(npmLockText);
     const remaining = collectUnallowedOverrideViolations(
-      npmLock, overrideRules, enforcedOverrides, npmVendor,
+      npmLock,
+      overrideRules,
+      enforcedOverrides,
+      npmVendor,
     );
     if (remaining.length === 0) {
       // npm can assign nested override sets differently on a fresh tree than when it
@@ -1774,9 +1815,17 @@ function installNpmPackageLock(
     if (newSources.length === 0) {
       const suffix =
         disabledPaths.size > 0 ? ` after disabling ${[...disabledPaths].join(", ")}` : "";
-      console.error(JSON.stringify(createNpmLockOverrideAttribution(
-        packageLabel(packageDir), npmLockText, parseJsonObject(npmLockText), remaining, enforcedOverrides,
-      )));
+      console.error(
+        JSON.stringify(
+          createNpmLockOverrideAttribution(
+            packageLabel(packageDir),
+            npmLockText,
+            parseJsonObject(npmLockText),
+            remaining,
+            enforcedOverrides,
+          ),
+        ),
+      );
       throw new Error(
         `generated package-lock.json violates workspace overrides${suffix}: ${describeOverrideViolations(remaining)}`,
       );
@@ -1894,7 +1943,11 @@ export function generateNpmPackageLock(packageDir: string, options: NpmLockOptio
       ),
     );
     const npmVersion = recordAt(recordAt(generated, "packages"), "node_modules/npm")?.version;
-    if (!npmVendor && typeof npmVersion === "string" && NPM_BUNDLED_DEPENDENCY_POLICIES.has(npmVersion)) {
+    if (
+      !npmVendor &&
+      typeof npmVersion === "string" &&
+      NPM_BUNDLED_DEPENDENCY_POLICIES.has(npmVersion)
+    ) {
       runNpm(
         ["pack", `npm@${npmVersion}`, "--ignore-scripts", "--pack-destination", tempDir],
         tempDir,
@@ -1932,12 +1985,17 @@ function verifiedNpmBundlePackages(
   const npmVersion = typeof npm?.version === "string" ? npm.version : undefined;
   const policy = npmVersion ? NPM_BUNDLED_DEPENDENCY_POLICIES.get(npmVersion) : undefined;
   const integrity = `sha512-${createHash("sha512").update(tarball).digest("base64")}`;
-  const verifiedBackport = npmVendor && authenticatedNpmVendors.has(npmVendor) &&
-    npmVersion === "12.2.1" && npm?.integrity === npmVendor.artifact.integrity &&
+  const verifiedBackport =
+    npmVendor &&
+    authenticatedNpmVendors.has(npmVendor) &&
+    npmVersion === "12.2.1" &&
+    npm?.integrity === npmVendor.artifact.integrity &&
     npm.resolved === npmVendor.artifact.spec.replace(/^file:\.\//u, "file:") &&
     integrity === npmVendor.originalIntegrity;
   if (
-    !policy || !npm || (npm.name !== undefined && npm.name !== "npm") ||
+    !policy ||
+    !npm ||
+    (npm.name !== undefined && npm.name !== "npm") ||
     (!verifiedBackport && npm.integrity !== integrity) ||
     !pnpmIntegrities.get(`npm@${npmVersion}`)?.has(integrity)
   ) {

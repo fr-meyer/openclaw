@@ -47,9 +47,7 @@ describe("managed TaskFlow host admission", () => {
       flows.capacitySnapshot({
         ownerSessionKeys: ["agent:main:publisher", "agent:main:foreign"],
       }),
-    ).toThrow(
-      /foreign session owner/u,
-    );
+    ).toThrow(/foreign session owner/u);
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -85,26 +83,25 @@ describe("managed TaskFlow host admission", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it.each([
-    undefined,
-    [],
-    ["agent:main:foreign"],
-    ["agent:main:publisher", "agent:main:publisher"],
-    ["agent:main:publisher", " agent:main:foreign"],
-    ["agent:main:publisher", "not-a-session-key"],
-    ["agent:main:publisher", "agent:main:subagent:incognito-private"],
-    ["agent:main:publisher", ...Array.from({ length: 64 }, (_, i) => `agent:main:owner-${i}`)],
-  ].map((ownerSessionKeys) => ({ ownerSessionKeys })))(
-    "rejects a malformed capacity selection before transport: %j",
-    ({ ownerSessionKeys }) => {
+  it.each(
+    [
+      undefined,
+      [],
+      ["agent:main:foreign"],
+      ["agent:main:publisher", "agent:main:publisher"],
+      ["agent:main:publisher", " agent:main:foreign"],
+      ["agent:main:publisher", "not-a-session-key"],
+      ["agent:main:publisher", "agent:main:subagent:incognito-private"],
+      ["agent:main:publisher", ...Array.from({ length: 64 }, (_, i) => `agent:main:owner-${i}`)],
+    ].map((ownerSessionKeys) => ({ ownerSessionKeys })),
+  )("rejects a malformed capacity selection before transport: %j", ({ ownerSessionKeys }) => {
     const { host, execute } = createBoundHost();
     const flows = host.managedFlows.bindSession({ sessionKey: "agent:main:publisher" });
     // Exercise malformed JavaScript/plugin input at the public method, without
     // inventing a second untyped transport or retaining the removed worker guard.
     expect(() => Reflect.apply(flows.capacitySnapshot, flows, [{ ownerSessionKeys }])).toThrow();
     expect(execute).not.toHaveBeenCalled();
-    },
-  );
+  });
 
   it.each([undefined, null, "", " ", 42])(
     "rejects empty or non-string lookup identities before dispatch: %j",

@@ -175,7 +175,9 @@ export function createManagedTaskFlowHost(options: {
             new Set(owners).size !== owners.length ||
             !owners.every(isCanonicalOwner)
           ) {
-            throw new Error("Capacity snapshot requires 1–64 unique canonical owners including its owner");
+            throw new Error(
+              "Capacity snapshot requires 1–64 unique canonical owners including its owner",
+            );
           }
           const ownerSessionKeys = [...fields.ownerSessionKeys];
           assertCurrent();

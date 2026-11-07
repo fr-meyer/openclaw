@@ -79,8 +79,8 @@ import {
 import { createGatewayCrashLoopRecovery } from "./crash-loop-recovery.js";
 import { enforceGatewayRunFutureConfigGuard } from "./future-config-guard.js";
 import { getGatewayStartGuardErrors } from "./pre-bootstrap.js";
-import { runGatewayLoop } from "./run-loop.js";
 import type { GatewayRunLoopStartOptions } from "./run-loop-startup.js";
+import { runGatewayLoop } from "./run-loop.js";
 import { resolveGatewayPasswordOption, toOptionString } from "./run-option-values.js";
 import type { GatewayRunOpts } from "./run-options.js";
 import type { GatewayRunRuntimeHooks } from "./runtime-hooks.js";
@@ -884,7 +884,10 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
       completeBoot,
       onProcessResourcesSettled: hooks.onProcessResourcesSettled,
       onRestartStartupFailure: triageStartupFailure,
-      start: async ({ requestHotReloadRecovery, ...startupOptions }: GatewayRunLoopStartOptions = {}) => {
+      start: async ({
+        requestHotReloadRecovery,
+        ...startupOptions
+      }: GatewayRunLoopStartOptions = {}) => {
         const snapshotPreparation = await import("../../config/io.snapshot-preparation.js");
         const startupConfigSnapshotReadForThisStart = startupConfigSnapshotReadForNextStart;
         startupConfigSnapshotReadForNextStart = undefined;

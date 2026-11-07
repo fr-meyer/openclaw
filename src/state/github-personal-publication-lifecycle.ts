@@ -54,17 +54,15 @@ export async function preparePersonalGitHubSessionReceiptDeletion(params: {
     { assertCurrent: params.assertCurrent, existingOnly: true },
   )) ?? { personal: [], repository: [] };
   params.assertCurrent?.();
-  return async (
-    {
-      assertCurrent,
-      sessionEntryCurrent,
-      retainedSessionKeys,
-    }: {
-      assertCurrent?: () => void;
-      sessionEntryCurrent?: SessionEntryCurrentCheck;
-      retainedSessionKeys?: ReadonlySet<string>;
-    } = {},
-  ) => {
+  return async ({
+    assertCurrent,
+    sessionEntryCurrent,
+    retainedSessionKeys,
+  }: {
+    assertCurrent?: () => void;
+    sessionEntryCurrent?: SessionEntryCurrentCheck;
+    retainedSessionKeys?: ReadonlySet<string>;
+  } = {}) => {
     const selectedKeys = new Set(input.sessionKeys.filter((key) => !retainedSessionKeys?.has(key)));
     if (selectedKeys.size === 0) {
       return;

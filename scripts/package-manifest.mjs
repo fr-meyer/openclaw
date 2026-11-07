@@ -23,7 +23,8 @@ function preparedPackageManifest(content, platformOptionals = {}) {
   let changed = false;
   if (isNpmVendorBackportConfigured(packageJson)) {
     const bundles = packageJson.bundleDependencies ?? packageJson.bundledDependencies ?? [];
-    if (!Array.isArray(bundles)) throw new Error("npm vendor delivery requires explicit bundle names");
+    if (!Array.isArray(bundles))
+      throw new Error("npm vendor delivery requires explicit bundle names");
     if (!bundles.includes("npm")) {
       packageJson.bundleDependencies = [...bundles, "npm"];
       delete packageJson.bundledDependencies;
@@ -111,7 +112,11 @@ export async function preparePackageManifest(cwd = process.cwd()) {
     try {
       restoreNpmVendorForPack(cwd);
     } catch (restoreError) {
-      throw new AggregateError([error, restoreError], "npm vendor package preparation failed and recovery is incomplete", { cause: error });
+      throw new AggregateError(
+        [error, restoreError],
+        "npm vendor package preparation failed and recovery is incomplete",
+        { cause: error },
+      );
     }
     throw error;
   }

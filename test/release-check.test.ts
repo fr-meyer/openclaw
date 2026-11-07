@@ -296,11 +296,14 @@ describe("collectForbiddenPackPaths", () => {
           `${label} extensions/qa-lab/src/runtime-api.ts\n`,
           "utf8",
         );
-        writeFileSync(join(tempRoot, "CHANGELOG.md"), "local QA notes mention extensions/qa-lab/\n");
-
-        expect(collectForbiddenPackContentPaths(["dist/entry.js", "CHANGELOG.md"], tempRoot)).toEqual(
-          ["dist/entry.js"],
+        writeFileSync(
+          join(tempRoot, "CHANGELOG.md"),
+          "local QA notes mention extensions/qa-lab/\n",
         );
+
+        expect(
+          collectForbiddenPackContentPaths(["dist/entry.js", "CHANGELOG.md"], tempRoot),
+        ).toEqual(["dist/entry.js"]);
       } finally {
         rmSync(tempRoot, { recursive: true, force: true });
       }

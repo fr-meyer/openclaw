@@ -429,16 +429,9 @@ function isExternallyProducedClass(className: string): boolean {
 
 function selectorClasses(selector: Selector): ClassName[] {
   const classes: ClassName[] = [];
-  const pending: selectorParser.Node[] = [...selector.nodes].reverse();
-  while (pending.length > 0) {
-    const node = pending.pop()!;
-    if (node.type === "class") {
-      classes.push(node);
-    }
-    if ("nodes" in node && Array.isArray(node.nodes)) {
-      pending.push(...[...node.nodes].reverse());
-    }
-  }
+  // TS 7.1 cannot expand the parser's recursive Container/Node overload here.
+  const walker = selector as unknown as { walkClasses(visit: (node: ClassName) => void): void };
+  walker.walkClasses((classNode) => classes.push(classNode));
   return classes;
 }
 

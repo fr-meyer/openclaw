@@ -42,11 +42,7 @@ describe("coercion helper declaration AST guard", () => {
     using retainedSource = parser.createSourceFile("src/example.ts", source);
 
     expect(
-      findBannedCoercionHelperDeclarations(
-        source,
-        "src/example.ts",
-        retainedSource.sourceFile,
-      ),
+      findBannedCoercionHelperDeclarations(source, "src/example.ts", retainedSource.sourceFile),
     ).toEqual([
       { file: "src/example.ts", kind: "function", line: 1, name: "readString" },
       { file: "src/example.ts", kind: "variable", line: 2, name: "isRecord" },
@@ -80,11 +76,7 @@ describe("coercion helper declaration AST guard", () => {
     using retainedSource = parser.createSourceFile("src/example.ts", source);
 
     expect(
-      findBannedCoercionHelperDeclarations(
-        source,
-        "src/example.ts",
-        retainedSource.sourceFile,
-      ),
+      findBannedCoercionHelperDeclarations(source, "src/example.ts", retainedSource.sourceFile),
     ).toEqual([]);
   });
 
@@ -187,10 +179,7 @@ describe("coercion helper declaration AST guard", () => {
 
     using retainedSource = parser.createSourceFile("src/owner.ts", source);
 
-    expect(findExportedCallableNames(retainedSource.sourceFile)).toEqual([
-      "alias",
-      "canonical",
-    ]);
+    expect(findExportedCallableNames(retainedSource.sourceFile)).toEqual(["alias", "canonical"]);
   });
 
   it("reports unclassified exports and stale, duplicate, or blank deferred entries", () => {

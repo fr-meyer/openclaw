@@ -51,9 +51,7 @@ describe("persisted Workboard claim generations", () => {
   ])("rejects malformed claim snapshots at the owned launch boundary %#", (snapshot) => {
     // Raw metadata cannot issue a launch in the engine-worker store. Validate
     // the host-owned launch once, rather than revalidate trusted rows on updates.
-    expect(
-      normalizeLaunchState({ ...identity, phase: "prepared", ...snapshot }),
-    ).toBeUndefined();
+    expect(normalizeLaunchState({ ...identity, phase: "prepared", ...snapshot })).toBeUndefined();
   });
 
   it.each([
