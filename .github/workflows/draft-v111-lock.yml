@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 51074618cb954f5e74d155a6a28c3872fa29ab43
-          test "$(git rev-parse HEAD^^)" = 149e34a4cb56ed6ac0b96d5cfc26bf2e2126e3b9
+          test "$(git rev-parse HEAD^)" = a42f89c3bbed0f01514d9e9bd0b8afcda528b214
+          test "$(git rev-parse HEAD^^)" = 37a7a6aa1814100dad85b54126827311d83bfe32
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -66,7 +66,7 @@ jobs:
           test "$(git rev-parse HEAD:scripts/openclaw-npm-postpublish-verify.ts)" = 0ab29a4a42f54ea921b72b2612477ea90254bad0
           test "$(git rev-parse HEAD:scripts/openclaw-npm-release-check.ts)" = 43d5cc0b4e2f1d5247fb5ec059df12a9b85be976
           test "$(git rev-parse HEAD:scripts/release-check.ts)" = 168fb579b75a750f15a6ec2c818c375866d8f174
-          test "$(git rev-parse HEAD:test/scripts/runtime-postbuild.test.ts)" = c2f9f052348b4be33fa28cb64956a7008caed0f3
+          test "$(git rev-parse HEAD:test/scripts/runtime-postbuild.test.ts)" = 2745df40033413ebb7553b37480c02050a85e33c
           test "$(git rev-parse HEAD:test/scripts/update-compat-external-bindings.test.ts)" = 5baf5de783207607a8e5c33872a51cd106e71735
           test "$(git rev-parse HEAD:test/openclaw-npm-postpublish-verify.test.ts)" = 192dbc8224b214eecc686245f3c14b548b59f9ba
           test "$(git rev-parse HEAD:test/openclaw-npm-release-check.test.ts)" = 190723a9630c96ee4238cac2cd3930a64abd151f
@@ -194,6 +194,17 @@ jobs:
           set -euo pipefail
           mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
           pnpm test test/scripts/update-compat-external-bindings.test.ts test/openclaw-npm-postpublish-verify.test.ts test/openclaw-npm-release-check.test.ts test/release-check.test.ts test/scripts/bun-standalone-codegen.test.ts --maxWorkers=1
+
+      - name: Test runtime module-label fixture before full build
+        shell: bash
+        env:
+          CI: 'true'
+          TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
+          OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
+          pnpm test test/scripts/runtime-postbuild.test.ts --maxWorkers=1 -t "does not treat source-owned implementations as runtime wrappers"
 
       - name: Check TypeScript AST guard entrypoints
         shell: bash
