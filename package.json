@@ -2423,7 +2423,7 @@
     "tree-sitter-bash": "0.25.1",
     "tsdown": "0.23.2",
     "tsx": "4.23.15",
-    "typescript": "7.1.0-dev.20260922.1",
+    "typescript": "7.1.0-beta",
     "unrun": "0.3.1",
     "vite": "8.3.3",
     "vitest": "5.0.5"

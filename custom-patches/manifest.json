@@ -42,7 +42,7 @@
   "integrationBasis": {
     "kind": "explicit_fork_delta_transplant",
     "provedGitAncestryMerge": false,
-    "combinedLock": "REVIEWED_SMITHY_PEER_LOCK_FROZEN_PENDING_UNQUALIFIED",
+    "combinedLock": "PENDING_APPROVED_TS_BETA_CI_REDERIVATION",
     "applicationValidation": "UNRUN"
   }
 }
