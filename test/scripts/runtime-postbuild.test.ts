@@ -853,13 +853,18 @@ describe("runtime postbuild static assets", () => {
   it.each(["//#region", "//"])(
     "does not treat source-owned implementations as runtime wrappers (%s)",
     async (label) => {
-      const f = await runtimeFixture({
+      const rootDir = createTempDir("openclaw-runtime-postbuild-");
+      const distDir = path.join(rootDir, "dist");
+      await fs.mkdir(distDir, { recursive: true });
+      for (const [filename, contents] of Object.entries({
         "owner.runtime-Impl123.mjs": `import { value } from "./owner.runtime-Other456.mjs";\n${label} src/infra/owner.ts\nexport const current = value;\n`,
         "owner.runtime-Other456.mjs": "export const value = true;\n",
         "owner.runtime.js": 'export * from "./owner.runtime-Stale.js";\n',
-      });
-      f.aliases();
-      await expectPathMissing(f.file("owner.runtime.js"));
+      })) {
+        await fs.writeFile(path.join(distDir, filename), contents, "utf8");
+      }
+      writeStableRootRuntimeAliases({ rootDir });
+      await expectPathMissing(path.join(distDir, "owner.runtime.js"));
     },
   );
 
