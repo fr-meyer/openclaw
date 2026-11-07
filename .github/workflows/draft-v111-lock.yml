@@ -1,4 +1,4 @@
-name: Diagnose 11.1 TypeScript AST traversal
+name: Qualify 11.1 TypeScript AST source leases
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
   dependency-admission:
     if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-source-qualification'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 84544b900abe82f736cc5d9a737619db470f9879
-          test "$(git rev-parse HEAD^^)" = d5783ec4c9c8de96f6d072205197872c68272fad
+          test "$(git rev-parse HEAD^)" = fe5c67f988e03079782db98cf44dfd629a99b565
+          test "$(git rev-parse HEAD^^)" = af297160aeda24e9ab776b06aa8f8bf848395a8b
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -40,7 +40,7 @@ jobs:
               exit "$grep_status"
             fi
           fi
-          test "$(git rev-parse HEAD:scripts/lib/native-typescript.mts)" = ccd6d873a2c4afdca109eb5931a5fbde47838b5f
+          test "$(git rev-parse HEAD:scripts/lib/native-typescript.mts)" = 404853c16496115740a4da95c147e39d55605d86
           test "$(git rev-parse HEAD:packages/ai/src/transports/openai-responses-websocket.ts)" = 1cb0ce682bbd7714349cb8d4c8d0ed2c303d2d87
           test "$(git rev-parse HEAD:src/gateway/project-github-search.ts)" = b4dd4bdeadde8ffc0614f5b5ea65d9ac6c8cf63c
           test "$(git rev-parse HEAD:src/gateway/worktree-maintenance.ts)" = 9634f36a286c047c641d9043ca1ae87418529af9
@@ -51,6 +51,11 @@ jobs:
           test "$(git rev-parse HEAD:src/plugins/runtime/execution-frame.ts)" = 925b70c3835ba5fc62ef565ce108f28c8a5d3a48
           test "$(git rev-parse HEAD:scripts/lib/native-typescript-config.mts)" = 821c244aafd92d80b23c62d99a4fc077571070bd
           test "$(git rev-parse HEAD:test/scripts/native-declaration-boundary.test.ts)" = 6e64084a57caeb21b6c17692f1e6bc2d6f59a76c
+          test "$(git rev-parse HEAD:scripts/lib/runtime-import-closure.mts)" = 77b3d8c7e4dd35ea3a2d1edff1f9b774d276f74b
+          test "$(git rev-parse HEAD:scripts/check-plugin-sdk-subpath-exports.mts)" = 284b947f16c64c7d34743b2f744a32f229c5f245
+          test "$(git rev-parse HEAD:scripts/lib/tsdown-declaration-generator-inputs.mts)" = 9a9602625df3096590b78057ea54eb4333c01553
+          test "$(git rev-parse HEAD:scripts/check-coercion-helper-declarations.mts)" = b6393dd3f06fc7ec4a2c6e11784459e0c18f58c6
+          test "$(git rev-parse HEAD:test/scripts/check-coercion-helper-declarations.test.ts)" = 2a5020b0400b189508182bd4264c702660572565
           test "$(git rev-parse HEAD:test/scripts/native-typescript.test.ts)" = 4abb28603af08cbea222b2901413bbb9d865d118
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 9a8fad5519c62064cd3e9b8960d5225ce207f895
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
@@ -154,52 +159,53 @@ jobs:
           NODE
           node scripts/generate-npm-package-lock.mjs --package-dir extensions/acpx
 
-      - name: Probe TypeScript AST node traversal
+      - name: Test TypeScript beta adapter and peer override guards
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          pnpm test test/scripts/native-declaration-boundary.test.ts test/scripts/native-typescript.test.ts test/scripts/eager-import-closure.test.ts test/scripts/check-coercion-helper-declarations.test.ts test/scripts/check-coercion-helper-declarations.io.test.ts test/scripts/check-dependency-pins.test.ts test/scripts/generate-npm-package-lock-peers.test.ts test/scripts/generate-npm-package-lock.test.ts src/tasks/managed-task-flow-host.test.ts src/plugins/plugin-instance-invocation.test.ts src/plugins/runtime/gateway-request-scope.test.ts --maxWorkers=1
+
+      - name: Check TypeScript AST guard entrypoints
         shell: bash
         run: |
           set -euo pipefail
-          node --import ./scripts/tsx.mjs --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import path from 'node:path';
-          import { API } from 'typescript/sync';
-          import * as ts from 'typescript/ast';
-          import { visitModuleSpecifiers } from './scripts/lib/ts-guard-utils.mts';
-          const api = new API({ cwd: process.cwd() });
-          try {
-            const probes = [
-              ['minimal', 'import value from "./value.js"; export { value };'],
-              ['runtime-import-closure', readFileSync('scripts/lib/runtime-import-closure.mts', 'utf8')],
-            ];
-            for (const [name, sourceText] of probes) {
-              const source = api.createSourceFile(path.resolve(name + '.ts'), sourceText);
-              let count = 0;
-              let bad;
-              function walk(node, depth) {
-                count++;
-                if (typeof node?.forEachChild !== 'function') {
-                  bad = { depth, kind: node?.kind, keys: Object.keys(node ?? {}).slice(0, 8) };
-                  return;
-                }
-                if (bad || count > 200000) return;
-                node.forEachChild((child) => { if (!bad) walk(child, depth + 1); });
-              }
-              walk(source, 0);
-              console.log(name + '-shape=' + JSON.stringify({
-                nodes: count, bad, rootForEachChild: typeof source.forEachChild,
-                firstForEachChild: typeof source.statements?.[0]?.forEachChild,
-                moduleForEachChild: typeof source.statements?.[0]?.moduleSpecifier?.forEachChild,
-                exportedForEachChild: typeof ts.forEachChild,
-              }));
-              try {
-                let references = 0;
-                visitModuleSpecifiers(source, () => { references++; });
-                console.log(name + '-visit=ok references=' + references);
-              } catch (error) {
-                console.log(name + '-visit=' + String(error));
-              }
-              source.dispose?.();
-            }
-          } finally {
-            api.close();
-          }
-          NODE
+          pnpm check:coercion-helpers
+          pnpm lint:plugins:plugin-sdk-subpaths-exported
+
+      - name: Check peers, patches, pins and npm mirrors independently
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          peer=0; patches=0; pins=0; mirrors=0
+          pnpm peers check || peer=$?
+          pnpm deps:patches:check || patches=$?
+          pnpm deps:pins:check || pins=$?
+          pnpm deps:npm-lock:check || mirrors=$?
+          echo "RESULT peers=$peer patches=$patches pins=$pins npm_mirrors=$mirrors"
+          if (( peer || patches || pins || mirrors )); then
+            exit 1
+          fi
+
+      - name: Build package and declarations on GitHub
+        shell: bash
+        env:
+          CI: 'true'
+          OPENCLAW_BUILD_CACHE: '0'
+        run: |
+          set -euo pipefail
+          pnpm build
+
+      - name: Test tsdown wrapper on GitHub
+        shell: bash
+        env:
+          CI: 'true'
+          TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
+          OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
+          pnpm test test/scripts/tsdown-build.test.ts --maxWorkers=1
