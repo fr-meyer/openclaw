@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { serverFS } from "typescript/fs";
 import { API, type Diagnostic } from "typescript/sync";
 import { createDeclarationFileSystem } from "./native-declaration-filesystem.mts";
 import { formatNativeTypeScriptDiagnostics } from "./native-typescript-diagnostics.mts";
@@ -29,10 +30,9 @@ export function readNativeTypeScriptConfig(options: {
   const api = new API({
     cwd,
     fs: {
-      ...view?.filesystem,
       readFile(file) {
         if (view && !view.filesystem.fileExists(file)) {
-          return null;
+          return undefined;
         }
         const cached = contents.get(file);
         if (cached !== undefined) {
@@ -45,9 +45,10 @@ export function readNativeTypeScriptConfig(options: {
         }
         try {
           const text = readFile(file);
-          if (text !== null) {
-            contents.set(file, text);
+          if (text === null) {
+            return undefined;
           }
+          contents.set(file, text);
           return text;
         } catch (error) {
           if (
@@ -55,12 +56,21 @@ export function readNativeTypeScriptConfig(options: {
             "code" in error &&
             (error.code === "ENOENT" || error.code === "ENOTDIR")
           ) {
-            return null;
+            return undefined;
           }
           readFailure ??= error instanceof Error ? error : new Error(String(error));
-          return null;
+          return undefined;
         }
       },
+      fileExists: view?.filesystem.fileExists ?? serverFS.useOS,
+      directoryExists: view?.filesystem.directoryExists ?? serverFS.useOS,
+      getAccessibleEntries: view
+        ? (directory) => ({ ...view.filesystem.getAccessibleEntries(directory), symlinks: undefined })
+        : serverFS.useOS,
+      realpath: view?.filesystem.realpath ?? serverFS.useOS,
+      stat: serverFS.fakeStat,
+      writeFile: serverFS.noop,
+      removeFile: serverFS.noop,
     },
   });
   try {

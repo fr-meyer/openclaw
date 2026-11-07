@@ -64,6 +64,31 @@ it("keeps test-only ambient augmentation out of declaration roots but in test gr
   }
 });
 
+it("discovers config roots through an admitted in-root symlink", () => {
+  const root = fs.realpathSync.native(roots.make("native-config-symlink-"));
+  writeNativeFixtureFile(
+    root,
+    "tsconfig.json",
+    JSON.stringify({ compilerOptions: { types: [] }, include: ["alias/**/*.ts"] }),
+  );
+  writeNativeFixtureFile(root, "src/entry.ts", "export const entry = true;\n");
+  fs.symlinkSync(path.join(root, "src"), path.join(root, "alias"), "junction");
+  const boundary = createDeclarationInputBoundary(root);
+
+  const parsed = readNativeTypeScriptConfig({
+    cwd: root,
+    configFileName: "tsconfig.json",
+    assertInput: (file) => boundary.assert(file),
+  });
+
+  expect(parsed.fileNames).toHaveLength(1);
+  const [entry] = parsed.fileNames;
+  if (!entry) {
+    throw new Error("Native config did not discover the symlinked source");
+  }
+  expect(fs.realpathSync.native(entry)).toBe(path.join(root, "src/entry.ts"));
+});
+
 it.each(["missing"] as const)(
   "rechecks a previously resolved %s declaration path after its parent becomes a symlink",
   () => {
