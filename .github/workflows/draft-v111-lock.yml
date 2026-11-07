@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = e004aebfa5eb9023259a993349b8d3d7bda95fbf
-          test "$(git rev-parse HEAD^^)" = d2affe9540c5af39adcfc6d53856f55ac05d222a
+          test "$(git rev-parse HEAD^)" = 46a20c3b1ebaa47b40831b1cfe66c35041ab14de
+          test "$(git rev-parse HEAD^^)" = e004aebfa5eb9023259a993349b8d3d7bda95fbf
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -233,6 +233,7 @@ jobs:
           const parser = createNativeTypeScriptParser({ cwd: process.cwd() });
           try {
             const graph = new ModuleGraph(parser);
+            let detailCount = 0;
             for (const file of [...new Set([named, ...matches])].slice(0, 15)) {
               if (!fs.existsSync(file)) continue;
               const source = fs.readFileSync(file, "utf8");
@@ -240,6 +241,14 @@ jobs:
               const names = graph.names(file);
               const bindings = names.map((name) => ({ name, binding: graph.binding(file, name) })).filter(({ name, binding }) => name === symbol || binding?.origin?.module === "src/daemon/inspect.ts");
               console.log(JSON.stringify({ file: path.relative(dist, file), regions: regions.filter((name) => name.includes("daemon/inspect")).slice(0, 8), names: names.filter((name) => name.includes("findSystem") || name.includes("GatewayServices")), bindings }));
+              const relative = path.relative(dist, file);
+              if (detailCount < 2 && (relative === "daemon/inspect.js" || relative.startsWith("inspect-"))) {
+                detailCount += 1;
+                const markerLines = source.split(String.fromCharCode(10)).map((line, index) => ({ line: index + 1, text: line.trim().slice(0, 160) })).filter(({ text }) => text.includes("#region"));
+                const info = graph.info(file);
+                const symbolIndex = source.indexOf(symbol);
+                console.log(JSON.stringify({ file: relative, sourceLength: source.length, firstSymbolIndex: symbolIndex, firstSymbolContext: source.slice(Math.max(0, symbolIndex - 80), symbolIndex + 120), markerCount: markerLines.length, markerSamples: markerLines.slice(0, 10), precedingMarkerOffset: source.lastIndexOf("#region", symbolIndex), followingMarkerOffset: source.indexOf("#region", symbolIndex + symbol.length), declarationPresent: info.declarations.has(symbol), declarationOrigin: info.declarations.get(symbol) ?? null, directExport: info.exports.get(symbol) ?? null }));
+              }
             }
           } finally {
             parser[Symbol.dispose]();
