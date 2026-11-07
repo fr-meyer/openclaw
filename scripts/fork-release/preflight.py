@@ -187,6 +187,10 @@ def history_commits(inventory, manifest=None):
         source = manifest["source"]
         identities.update((source["baseCommit"], source["commit"],
                            source["merge"]["forkCommit"], source["merge"]["commonCommit"]))
+        if source["merge"].get("schema") == "openclaw.fork-source-merge.v3":
+            merge = source["merge"]
+            identities.update(item["commit"] for item in
+                              [merge["integration"], merge["securitySource"], *merge["successors"]])
     return sorted(identities)
 
 def inventory_at(path, manifest, manifest_hash, source_dir=None, check_head=True):

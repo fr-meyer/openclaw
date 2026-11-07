@@ -1,0 +1,18 @@
+{
+  "schema": "openclaw.upstream-tag-observation.v1",
+  "repository": "openclaw/openclaw",
+  "tag": "v2026.10.7",
+  "tagObject": "5c101ce5a0637df375c5f6ae49d44d0d27cc26b1",
+  "object": {
+    "sha": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+    "type": "commit",
+    "url": "https://api.github.com/repos/openclaw/openclaw/git/commits/157d8c2bc3ea2fa183afdc11088e69690bf8e64e"
+  },
+  "githubVerification": {
+    "verified": true,
+    "reason": "valid",
+    "signature": "-----BEGIN PGP SIGNATURE-----\n\niQJPBAABCAA5FiEE34XJCL/VYcBAIDEbTvv5zAHZcZEFAmrcU5IbFIAAAAAABAAO\nbWFudTIsMi41KzEuMTIsMCwzAAoJEE77+cwB2XGRVOwP/397RpvxEfJ8U8I6wzqk\ncX8AyVrw4fdig3YG0yVUlwrlH3vMg1JzkM62NaN/oyZlidbHoLGVvQbI8U80xb3o\nmG+RAFHofG4ACSnbpUqiiLDVJjujCn2LZtqzfG+eWaALqxSCGxyXHi6QBkxrF2mq\nJSTBGo5JjCxrRCVDLnPMY0YiB9L0qFNnjTItNaFs+CIJ+pRjdIdLj8QPR0d9ZWH8\n3zboODofkPV025RGngIIoo0thWcOcgT3hSoEZXs6X6zUGHS/vrWTqFGUAWzybDrr\ngNpnZkF5KsdwEV7HGsw9fgviseaC5N7nTNWWyPs9lUxOjwBnAHzN9SgNOBo825cg\nyat0e52mgqsT8Nis8UMbVbpNCjggG8O8Uw1U9YcDSM6+H3VD6dd3aqng7Pizf/kv\nugWKAaieBz+EJq97axIVcXmq5tteXItIX5U+WjY4ZzZhIrujv/kUismIMU2q0edJ\nzq92HTu52hMo5amQsVKalNfVQtUFj+qfjEZ7um7t7vG7xF4kpQKBqpgUEhltF/CU\nvtPL36KpUPywbvseY467HSMotNn4qLXysgqJyTLQrmiEwUFcdOgHk+qSyWd4oMOO\npeOfCKF+NiGlG1F+HKFmKg1fK0Yubbegi4N52YY8Sj+UpbtBM4A/jC46XhaNrC2n\nGUot+OvoXwkTdkXBxhpeiQiO\n=4mt1\n-----END PGP SIGNATURE-----\n",
+    "payload": "object 157d8c2bc3ea2fa183afdc11088e69690bf8e64e\ntype commit\ntag v2026.10.7\ntagger Dallin Romney <dallinromney@gmail.com> 1792824210 -0700\n\nopenclaw 2026.10.7\n",
+    "verified_at": "2026-10-24T06:43:43Z"
+  }
+}

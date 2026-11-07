@@ -1,0 +1,47 @@
+{
+  "schema": "openclaw.fork-source-validation-request.v3",
+  "campaignId": "future-v108-source-validation-20261027",
+  "round": 3,
+  "profiles": [
+    "dependency",
+    "types-production",
+    "types-tests",
+    "types-scripts",
+    "workboard-1",
+    "workboard-2",
+    "models-1",
+    "models-2",
+    "sqlite",
+    "doctor-1",
+    "doctor-2",
+    "doctor-3",
+    "memory",
+    "pipeline-contracts",
+    "compatibility"
+  ],
+  "sourceSha": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+  "sourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+  "firstSourceSha": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+  "firstSourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+  "sourceAuthorization": "future-v108-remediation-20261028T0433Z",
+  "manifestSha256": "802abd7c85ee123621d7cc96796ffcd0cf40d58c0d4db60f5f32304802a11f0b",
+  "inventorySha256": "876afa1cf8c6398b1fe3f5cdaa031bf1796d96b3e3307352e5a5571b8e3a296e",
+  "settledUsageSha256": "002a360df2b4b65024e60647637841e5444bea828bb6e8a93780ef58b7eb6e2c",
+  "priorRunIds": [
+    "40607329263",
+    "40609889437",
+    "40616416909",
+    "40639374411"
+  ],
+  "sourceWitness": null,
+  "initialResume": {
+    "schema": "openclaw.v108.initial-resume.v1",
+    "priorRunId": "40639374411",
+    "priorPipelineHead": "95df4eb49204150c8aaaa9da8e2abd3112fa5972",
+    "sourceSha": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+    "sourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+    "manifestSha256": "802abd7c85ee123621d7cc96796ffcd0cf40d58c0d4db60f5f32304802a11f0b",
+    "inventorySha256": "876afa1cf8c6398b1fe3f5cdaa031bf1796d96b3e3307352e5a5571b8e3a296e",
+    "priorRequestSha256": "c7d63de47231fc368477635cc0f28e7b8e015129ebed8987b76ce01a636b83d1"
+  }
+}

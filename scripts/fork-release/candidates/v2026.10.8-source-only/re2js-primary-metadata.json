@@ -1,0 +1,104 @@
+{
+  "schema": "openclaw.v108.re2js-primary-metadata-proof.v1",
+  "checkedAt": "2026-10-29T07:52:00.075300+00:00",
+  "target": {
+    "name": "re2js",
+    "version": "2.8.7",
+    "publishedAt": "2026-10-17T19:21:18.170Z",
+    "ageMinutes": 16590.698421666668,
+    "minimumAgeMinutes": 10080,
+    "agePassed": true,
+    "gitHead": "6ba840014b192668365271d7b1c4d2d24a4b5f83",
+    "dist": {
+      "shasum": "7c16e45ba6842b7078c739a6d2046c07eae93e21",
+      "tarball": "https://registry.npmjs.org/re2js/-/re2js-2.8.7.tgz",
+      "fileCount": 8,
+      "integrity": "sha512-bRSL/vn3KAmlGfGNoVpcsBXLaVvl6AbuvMMWbz0m3vBj60nj+p2/biozfBUOSBP+5XTduF6mr6IO/ZVjmqqkVQ==",
+      "signatures": [
+        {
+          "sig": "MEUCIFZUFLLBS7TTxV1BC4TsHqQ9dHr5rVTGJlGY98hTWcxZAiEAhw1mKackWomMLyWqA6BxdUGLeRjVWu9KbrsTdTcMy3Y=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        },
+        {
+          "sig": "MEQCICCvBfqguBakcFmiG1UK3iwKPWAvxBJWHp9A34r+z6OzAiBZ+qSJeqXYBvV36a8PBos4hL6gs0gTQkoeLo2sPcvc+A==",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/re2js@2.8.7",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 902719
+    },
+    "engines": {
+      "node": ">=20.0.0"
+    },
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./build/index.d.ts",
+          "default": "./build/index.js"
+        },
+        "require": {
+          "types": "./build/index.d.cts",
+          "default": "./build/index.cjs"
+        }
+      }
+    }
+  },
+  "parent": {
+    "name": "@openclaw/crabline",
+    "version": "0.1.29",
+    "re2jsRange": "2.8.6",
+    "engines": {
+      "node": ">=22"
+    },
+    "gitHead": null,
+    "dist": {
+      "shasum": "162b1bd22b49609d599368db6849124cc90cc724",
+      "tarball": "https://registry.npmjs.org/@openclaw/crabline/-/crabline-0.1.29.tgz",
+      "fileCount": 264,
+      "integrity": "sha512-x7kkvSsAkjUSoeFjvtaBDg6W7gYNIIIo2iOVrI6JG6LjbOHXuGQjHRECKh46iJdZKyc67BUUVRA8HF961yRMxg==",
+      "signatures": [
+        {
+          "sig": "MEYCIQDdX2j/wfGLDoE9p3Y+fP615gtdJKRzySHrpMFBxCtUzgIhAKQa8fSJAj6AHp17UsQAepf7/654j1sINH4P1DoDZC2v",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        },
+        {
+          "sig": "MEUCIQCA3k7WKOmdFcXksWRZEoxfLc2YlXcc+ShkseXGasSXywIgLMJpgjYdp+XFNudJImrXPPFYsKuS40UjssOJOlzw3zc=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@openclaw%2fcrabline@0.1.29",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 4770017
+    }
+  },
+  "consistentVersionManifestAndFullPackument": true,
+  "rawFilePins": [
+    {
+      "file": "re2js-packument.json",
+      "bytes": 142965,
+      "sha256": "4e70ad2cab060e548516a7a5d328b0a0b275c9d12ff76b786f27324779617d2d"
+    },
+    {
+      "file": "re2js-2.8.7.json",
+      "bytes": 3348,
+      "sha256": "b0fd5505b8beae902756ffafdbdc583d46cea4b95b151e233688c205559ba15a"
+    },
+    {
+      "file": "crabline-0.1.29.json",
+      "bytes": 3986,
+      "sha256": "c22e6cf64dd5e62ad0247fff31fbe7af566f6144aeaf49b1702fa32344630703"
+    }
+  ],
+  "trust": "DirectHTTPS registry.npmjs.org with normalTLS; exactmanifest/packument agreement and officialreleasegitHead. No tarballdownload/execution or standalonepublisher-signatureverification claimed. CI must freshlyrepeatmetadata/age checks and compareSRI withresolvedlock.",
+  "packageOrApplicationExecution": false,
+  "registryCredential": false
+}

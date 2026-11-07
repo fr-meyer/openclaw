@@ -1,0 +1,122 @@
+{
+  "schema": "openclaw.fork-release.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": "v2026.10.8-source-only",
+  "productionEligible": false,
+  "source": {
+    "baseCommit": "dc2523e5a5c7a309517fd7fa834add938231d526",
+    "baseTree": "8e87ea041d88f72b77d83806b9ad05aa4f176d59",
+    "commit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+    "tree": "318a14351a7049d9d613a928edb0cfe69311d201",
+    "patches": [
+      {
+        "commit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+        "tree": "318a14351a7049d9d613a928edb0cfe69311d201"
+      }
+    ],
+    "merge": {
+      "schema": "openclaw.fork-source-merge.v3",
+      "commonCommit": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+      "commonTree": "0885f6473945093107db1406d9a2ad5259db10e7",
+      "forkCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
+      "forkTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
+      "integration": {
+        "commit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
+        "tree": "416a77f6b89110883c41652f64c602ab989662d7"
+      },
+      "successors": [
+        {
+          "commit": "2691ebb4610d5ff9f836c1587be3d6a9703a23e1",
+          "tree": "51c0dbf2ea2bd80f09a7069296d132f564febcf4"
+        },
+        {
+          "commit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+          "tree": "c4b245211ceaab98b397945bb0177770f1052c90"
+        },
+        {
+          "commit": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+          "tree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4"
+        },
+        {
+          "commit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
+          "tree": "b5905b54f4b70f45ea58ace4feccd30031200864"
+        },
+        {
+          "commit": "5ee477cf16b11325bca69423392a455859cd7862",
+          "tree": "cdd806366c79cffa5cad995af021bed54d5d80ed"
+        },
+        {
+          "commit": "76522eaa2dd93a4933b5c87f7451eab1d458f8be",
+          "tree": "28adf129927ab5f4589f90f599fe6b76d790a015"
+        },
+        {
+          "commit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+          "tree": "318a14351a7049d9d613a928edb0cfe69311d201"
+        }
+      ],
+      "securitySource": {
+        "commit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+        "tree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+      },
+      "reconciliation": {
+        "path": "custom-patches/reconciliation-2026.10.8.json",
+        "blob": "d4a2d9ec916848d7b0bcb98605d7a95cfbe1ab7c",
+        "sha256": "3fc1c483e77b36fef60b939fa9a797008cab3644d53b0fb3a22f70bd4337a71e"
+      }
+    }
+  },
+  "gates": {
+    "patchLifecycle": [
+      "extensions/workboard/src/cli.test.ts",
+      "extensions/workboard/src/gateway.test.ts",
+      "extensions/workboard/src/dispatcher-exact-dispatch.test.ts",
+      "extensions/workboard/src/store-exact-dispatch.test.ts",
+      "extensions/workboard/src/store-claim-generation.test.ts",
+      "extensions/workboard/src/lifecycle-sync.test.ts",
+      "src/commands/doctor-migration-backup.test.ts",
+      "src/commands/doctor/shared/config-migration-result.provenance.test.ts",
+      "src/state/openclaw-agent-db-lease.exited-owner.test.ts",
+      "src/state/agent-database-startup.lock-retry.test.ts",
+      "src/state/agent-database-admission.test.ts",
+      "extensions/codex/src/migration/native-assignment-repair.test.ts",
+      "src/agents/subagents/spawn/subagent-spawn-child-plan.sandbox-cli.test.ts",
+      "test/v108-remediation-security.test.mjs",
+      "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+      "src/commands/doctor-config-preflight.process.test.ts",
+      "ui/src/components/markdown-mermaid.test.ts",
+      "ui/src/components/markdown-mermaid-native.browser.test.ts",
+      "ui/src/components/markdown-mermaid.runtime.browser.test.ts",
+      "ui/src/e2e/chat-mermaid-load-errors.e2e.test.ts",
+      "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts"
+    ],
+    "producerConsumer": [
+      "test/body-parser-security.test.mjs",
+      "test/undici-security.test.mjs",
+      "test/zod-container-bounds.test.mjs",
+      "test/a2ui-native-zod-regression.test.mjs",
+      "test/discord-native-zod-regression.test.mjs",
+      "test/msal-parent-compat.test.mjs",
+      "test/mcp-nowistay-schema-compatibility.test.mjs",
+      "test/mcp-nowistay-sdk-regression.test.mjs",
+      "test/http-cache-semantics-compat.test.mjs",
+      "src/plugins/loader.gateway-bindings.test.ts",
+      "src/plugins/loader.native-module-loader.test.ts",
+      "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+      "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
+      "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+      "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "src/agents/embedded-agent-runner/result-fallback-classifier.test.ts",
+      "src/agents/model-fallback.terminal-boundary.test.ts",
+      "src/agents/model-fallback.chain-stop.test.ts",
+      "src/agents/utility-completion.runtime.test.ts",
+      "src/agents/model-catalog-scope.test.ts",
+      "extensions/codex/src/app-server/provider-capabilities.test.ts",
+      "extensions/codex/src/app-server/inference-routing.test.ts",
+      "test/scripts/generate-npm-package-lock.test.ts"
+    ]
+  },
+  "image": {
+    "architecture": "amd64",
+    "extensions": "codex,workboard"
+  }
+}

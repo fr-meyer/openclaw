@@ -1,0 +1,20 @@
+{
+  "schema": "openclaw.future107.candidate-preparation.v1",
+  "status": "SOURCE_ONLY_UNQUALIFIED",
+  "source": {
+    "commit": "ea99d608de6921c328d44d32c91a27f89323945f",
+    "tree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf"
+  },
+  "pipelineBase": "c5f6ea725b69740582e8051c974a798feda792ba",
+  "ledgerPaths": 223,
+  "inventoryPaths": 225,
+  "upstreamTagObject": "5c101ce5a0637df375c5f6ae49d44d0d27cc26b1",
+  "upstreamTagObjectSha256": "46c4a2918ca62578d6dcccd8669a6a246b27671a5d4f959f413d1adc70f43617",
+  "upstreamTagTarget": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+  "upstreamSignatureVerification": "Retained GitHub verified-tag observation matches exact local annotated tag bytes; no local GPG verification performed.",
+  "buildExecuted": false,
+  "activation": false,
+  "historicalReceiptsTransferred": false,
+  "upstreamVerificationSha256": "bcf86980fea62a344cc6f9e4f5e25e7ed5c37afcba0c32227371d5b476999d9d",
+  "upstreamGithubVerifiedAt": "2026-10-24T06:43:43Z"
+}

@@ -1,0 +1,33 @@
+{
+  "schema": "openclaw.v108.npm-lock-derivation.v1",
+  "status": "derived_only",
+  "sourceSha": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+  "sourceTree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4",
+  "pipelineHead": "e96941f0c8c05a45d7df32ca7e45758e12609be7",
+  "runId": "40804517284",
+  "runAttempt": 1,
+  "sourcePackageSha256": "289d42988293d8afd6a7ca133b0ffbbde7c0a466592dfe7b08565371bbcd60a4",
+  "sourceLockSha256": "bfaafb73d19b61f0b5124791c05ae8c65a7436f0d6c9ef1dd6f79358e9c35334",
+  "packageSha256": "d5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1",
+  "lockSha256": "5e631697caa53422d40dde5ae04a7ee0d84321921891062a4f580ca11b55fc50",
+  "npmVersion": "12.2.1",
+  "npmIntegrity": "sha512-bKCmFRVT/BB+YPEYbZwQ1XUI3N5t4xKSpU1MxOjo7z3iWzKBJ0ZXRC1xFdEN+TC7N5TdywaBzf2dMXGJq/e2PQ==",
+  "nodeVersion": "24.22.1",
+  "pnpmVersion": "12.15.0",
+  "workspaceSha256": "6e00354044a5c9c05c87217e1fc0fad1efaebdb0606bcf040d79664e5fca8c17",
+  "changedPaths": [
+    "package.json",
+    "pnpm-lock.yaml"
+  ],
+  "gitDiffSha256": "06c5d2b9dc9f1b6ae91e2f682419a1c9b5c709e4c005891af9ab383e913ecc69",
+  "allOtherTrackedEntriesUnchanged": true,
+  "startedAt": "2026-10-29T02:09:10.825853Z",
+  "finishedAt": "2026-10-29T02:09:22.195409Z",
+  "commandSeconds": 11.369557123999982,
+  "exitCode": 0,
+  "timedOut": false,
+  "cleanupSettled": null,
+  "qualified": false,
+  "imageBuilt": false,
+  "productionAuthorized": false
+}

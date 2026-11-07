@@ -1,0 +1,54 @@
+{
+  "schema": "openclaw.v109.preparation-intake-failure.v1",
+  "repository": "fr-meyer/openclaw",
+  "runId": "41003661031",
+  "runAttempt": 1,
+  "pipelineHead": "409704dd078c83d2f41ed709660633c619b172be",
+  "requestSha256": "5c4f7d4a56d959ba21d77dd00ca6868a49eb18519ada393e639d002fe68ae5ff",
+  "workflow": ".github/workflows/future-v109-source-validation.yml",
+  "runName": "future-v109-grouped-validation-20261030",
+  "headBranch": "task/v107-source-binding",
+  "event": "pull_request",
+  "runConclusion": "failure",
+  "source": {
+    "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
+    "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
+    "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
+    "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
+    "fileSha256": {
+      "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+      "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
+      "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+      "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591"
+    }
+  },
+  "preparationAttempt": 2,
+  "jobId": 123893555647,
+  "jobName": "lock-preparation",
+  "jobConclusion": "failure",
+  "nativeStartedAt": "2026-10-30T04:34:39Z",
+  "nativeCompletedAt": "2026-10-30T04:40:43Z",
+  "failedStep": "Exact public admission and cumulative accounting",
+  "failureCode": "v9.closed_provider_jobs_changed",
+  "skippedCandidateSteps": [
+    "Checkout exact admitted source",
+    "Pinned public Node runtime",
+    "Verify and acquire local public closure",
+    "Derive lock only with secretless pinned pnpm",
+    "Retain exact lock derivation for review"
+  ],
+  "artifactCount": 0,
+  "sourceCheckoutPerformed": false,
+  "lockGenerationExecuted": false,
+  "generationProduced": false,
+  "nativeImageExecuted": false,
+  "productionAuthorized": false,
+  "producerRuntimeSha256": "8d734768690be68e8b02f49096631bf37d68619a7ed46edb5512a675bd1cf0a7",
+  "producerWorkflowSha256": "8741d7bb20253276ed13967ab61147d4b61a4520268c1fd41440005d020878c6",
+  "nativeEvidenceSha256": {
+    "run": "f1688b4b5f37d1ecb2d91ba5e88b6eeae5313f342c06d3348d614ea9e60c9d05",
+    "jobs": "a864632cb11c5eb41bbf78c0d8a956c386db11bebce9948f8dac7b80f8c04543",
+    "artifacts": "244563f989470892c537c9a4622920af0d228ee4528f7d00c64a06d6cd95856c",
+    "log": "2285c1ea2dcc71cf91a4a04e95acc029f8bd618ed6b11e6e539a334a92f57f1d"
+  }
+}

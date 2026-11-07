@@ -1,0 +1,74 @@
+{
+  "schema": "openclaw.fork-source-validation-request.v8",
+  "campaignId": "future-v108-source-validation-20261027",
+  "profilePolicy": "crabline-fixture-successor-v1",
+  "sourceAuthorization": "future-v108-crabline-successor-20261029T1432Z",
+  "stageRound": 1,
+  "lifetimeOperatorRound": 12,
+  "profiles": [
+    "dependency",
+    "types-production",
+    "types-tests",
+    "types-scripts",
+    "workboard-1",
+    "workboard-2",
+    "models-1",
+    "models-2",
+    "sqlite",
+    "doctor-1",
+    "doctor-2",
+    "doctor-3",
+    "memory",
+    "pipeline-contracts",
+    "compatibility"
+  ],
+  "sourceSha": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+  "sourceTree": "318a14351a7049d9d613a928edb0cfe69311d201",
+  "manifestSha256": "8f4bbce1f53bbe8d81462a14fe7c7118433844c506a8286062e01985040bb4a1",
+  "inventorySha256": "2f6f23348b029b1de52bef8a40fcfaee67a1fef8c2bd8cb6a4bcf9ff481d6a5d",
+  "settledUsageSha256": "2188800522988ac5837c554db7d4be01186f1031a86bd782deab839765919fd8",
+  "priorRunIds": [
+    "40616416909",
+    "40609889437",
+    "40607329263",
+    "40639374411",
+    "40647629182",
+    "40681376480",
+    "40688279536",
+    "40706982753",
+    "40804517284",
+    "40808362032",
+    "40816927196",
+    "40851844749",
+    "40856125444"
+  ],
+  "lockPreparation": {
+    "artifactId": 12887657070,
+    "artifactSha256": "e446f3c0e775362ebe622c88a88f3feec72f588394edf382756a0a7eb0603f0c",
+    "generationReceiptSha256": "aab54ccb07d2c0bb2dc55e3cf86929d73eae50adfe81f9f25fce3ea4c6bed1d1",
+    "lockSha256": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+    "packageSha256": "d5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1",
+    "pipelineHead": "1b26975c3c38b264632a1bc26577a71039cc23ae",
+    "runId": "40851844749"
+  },
+  "sourceWitness": {
+    "schema": "openclaw.v108.crabline-source-equivalence.v1",
+    "scope": "approved-crabline-locator-and-age-hygiene-only",
+    "closedBaselineSha256": "2188800522988ac5837c554db7d4be01186f1031a86bd782deab839765919fd8",
+    "hops": [
+      {
+        "sourceSha": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+        "sourceTree": "318a14351a7049d9d613a928edb0cfe69311d201",
+        "step": {
+          "parentSha": "76522eaa2dd93a4933b5c87f7451eab1d458f8be",
+          "parentTree": "28adf129927ab5f4589f90f599fe6b76d790a015",
+          "changedPaths": [
+            "pnpm-workspace.yaml",
+            "test/v108-remediation-security.test.mjs"
+          ],
+          "unchangedTreeSha256": "c2e70ede5490be963a54e6aea479149fff222bd7611003337d43807d2c0decd4"
+        }
+      }
+    ]
+  }
+}

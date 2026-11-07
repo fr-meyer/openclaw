@@ -1,0 +1,64 @@
+{
+  "budgetAmendmentSha256": "fabe093988e258a99b7cccc83e812d274200880cc300f78a73f795905e507f6e",
+  "campaignId": "future-v109-grouped-validation-20261030",
+  "directPatchMaturityEvidenceSha256": "74df7e0a33b6937f8abb70b70257828fcaf5b9a5cabc89169a710321d2c4b14f",
+  "exactDependencyPins": {
+    "follow-redirects": "1.16.2",
+    "glob": "14.0.2",
+    "joi": "18.3.1",
+    "minimatch": "11.0.1"
+  },
+  "expiresAt": "2026-11-06T03:14:21Z",
+  "maximumAdditionalNeededWorkflowAttempts": 1000,
+  "maximumConcurrentSourceJobs": 3,
+  "maximumDiagnosticsBytes": 67108864,
+  "maximumLifetimePhysicalImagesUnchanged": 1,
+  "maximumLockDiffBytes": 2097152,
+  "maximumMaterialSourceGenerations": 3,
+  "maximumNewRunnerMinutesTotal": 25000,
+  "maximumRelatedMaterialCorrections": 2,
+  "maximumStageRunnerMinutesIncludingCarried230": 3700,
+  "maximumTotalUSDIncludingTaxAllowance": "25.00",
+  "minimumAgeException": false,
+  "minimumReleaseAgeMinutes": 10080,
+  "minimumReleaseAgeStrict": true,
+  "neededCiRunGrantSha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
+  "newAccessGcpRuntimeMergeProductionAuthority": false,
+  "notBeforeIsConservativeRoundedDirectPatchFloorNotFullClosureAgeProof": true,
+  "notBeforePackageUse": "2026-11-04T09:59:50Z",
+  "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
+  "priorUsageAndLimitsHistoryPreserved": true,
+  "privateAuthorizationSha256": "8df97c688f5273be12a4dad408b282660df2473bdbd1e02260c5613d04958446",
+  "schema": "openclaw.v109.public-h3-material-source-amendment.v4",
+  "scope": "four-dependency-source-successor-and-future-lane-time",
+  "selectedExcludedAgeProof": {
+    "path": "scripts/fork-release/candidates/v2026.10.9-source-only/h3-selected-excluded-ages.json",
+    "sha256": "373061e725f14fbe9df627f06f69023836f47621630dad006c700da7582e7a05"
+  },
+  "stagePrefix": {
+    "additionalAttemptsUsedSinceImmutable42": 251,
+    "familyBase": {
+      "sourceSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+      "sourceTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"
+    },
+    "lastSourceExecutionSequence": 11,
+    "lastSourceRun": {
+      "pipelineHead": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "requestSha256": "8ad6e9ebff2ae2e2ffe12182a04c7bf3dcb0fa2efc81c71496685af9791b35d8",
+      "runId": "41154711378"
+    },
+    "ledgerSha256": "56f29f04c138fd06ea1ecfbd38ab27acfd24e99a48269066f7e2f57ad7a1043b",
+    "nativeJobs": 1150,
+    "newRunnerMinutes": 2215,
+    "workflowRecords": 293
+  },
+  "stagePrefixProof": {
+    "path": "scripts/fork-release/candidates/v2026.10.9-source-only/h3-stage-prefix.json",
+    "sha256": "f06d0031f82f06b155ca9e1c93e60da1fb5bc3bd88dc9ca218a2ed9fea3b7153"
+  },
+  "supersedesProjectionSha256": "ec495392a886e69687a7bf2b8b80071757ee622aaa1e458320deef2995ec4c3f",
+  "targetPackageMetadataProof": {
+    "path": "scripts/fork-release/candidates/v2026.10.9-source-only/h3-target-package-metadata.json",
+    "sha256": "d2eef1b346c05bd69f133e47b28f2f8767f797e407a7210410e3c0f4df7930ed"
+  }
+}
