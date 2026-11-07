@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = f81cca4c40fa0b6760795f74a520bcf5b22f281f
-          test "$(git rev-parse HEAD^^)" = 4678fb5fbb1f88d269c181b26c6082ce0aade703
+          test "$(git rev-parse HEAD^)" = 531e1599dcab50df282cc1f630ce5e39849d76c3
+          test "$(git rev-parse HEAD^^)" = 5067960d6c2386751bfda7113f7d48201beb8ca4
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -40,7 +40,7 @@ jobs:
               exit "$grep_status"
             fi
           fi
-          test "$(git rev-parse HEAD:scripts/lib/native-typescript.mts)" = 1304ea7a647858f64286d21e9c0022a681ab6d55
+          test "$(git rev-parse HEAD:scripts/lib/native-typescript.mts)" = ccd6d873a2c4afdca109eb5931a5fbde47838b5f
           test "$(git rev-parse HEAD:test/scripts/native-typescript.test.ts)" = 4abb28603af08cbea222b2901413bbb9d865d118
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 9a8fad5519c62064cd3e9b8960d5225ce207f895
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
