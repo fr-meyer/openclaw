@@ -138,10 +138,19 @@ export function readOpenClawStateDatabaseCommand(
   metadataRead: ReturnType<typeof prepareAcpSessionMetadataRead> | undefined,
 ): OpenClawStateReadResult {
   if (isManagedTaskFlowReadCommand(command)) {
-    return {
-      type: command.type,
-      value: executeManagedTaskFlowReadCommand({ db, path: input.databasePath }, command),
-    };
+    const context = { db, path: input.databasePath };
+    switch (command.type) {
+      case "tasks.managedFlows.capacitySnapshot":
+        return { type: command.type, value: executeManagedTaskFlowReadCommand(context, command) };
+      case "tasks.managedFlows.get":
+        return { type: command.type, value: executeManagedTaskFlowReadCommand(context, command) };
+      case "tasks.managedFlows.list":
+        return { type: command.type, value: executeManagedTaskFlowReadCommand(context, command) };
+      case "tasks.runs.get":
+        return { type: command.type, value: executeManagedTaskFlowReadCommand(context, command) };
+      case "tasks.runs.list":
+        return { type: command.type, value: executeManagedTaskFlowReadCommand(context, command) };
+    }
   }
   if (command.type === "claws.packageOwnership") {
     const install =

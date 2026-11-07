@@ -429,9 +429,16 @@ function isExternallyProducedClass(className: string): boolean {
 
 function selectorClasses(selector: Selector): ClassName[] {
   const classes: ClassName[] = [];
-  selector.walkClasses((classNode) => {
-    classes.push(classNode);
-  });
+  const pending: selectorParser.Node[] = [...selector.nodes].reverse();
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    if (node.type === "class") {
+      classes.push(node);
+    }
+    if ("nodes" in node && Array.isArray(node.nodes)) {
+      pending.push(...[...node.nodes].reverse());
+    }
+  }
   return classes;
 }
 

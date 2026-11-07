@@ -1,0 +1,94 @@
+name: Qualify 11.1 static source repair
+
+on:
+  push:
+    branches:
+      - prep/v2026.11.1-static-repair
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualify-v111-static-repair-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  static-source:
+    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-static-repair'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify pinned source and unqualified status
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = b07b2a03fad23cf530d1bb72f56e487744702fa3
+          test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 9a8fad5519c62064cd3e9b8960d5225ce207f895
+          test "$(git rev-parse HEAD:custom-patches/manifest.json)" = 91c3232e601f96d2dc5bf346065a6650f1766d09
+          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = 41e318361b737665c117d3d9c16f71c6a583c9a7e60cbdf0455dc541b0c28a7f
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('custom-patches/manifest.json', 'utf8'));
+          if (pkg.version !== '2026.11.1' ||
+              manifest.status !== 'LOCAL_INTEGRATION_DRAFT_UNQUALIFIED' ||
+              manifest.productionEligible !== false) {
+            throw new Error('11.1 source identity or admission status changed');
+          }
+          NODE
+          while IFS= read -r file; do
+            case "$file" in
+              .github/workflows/draft-v111-static-repair.yml|extensions/file-transfer/src/workspace-service.test-support.ts|scripts/audit-control-ui-dead-css.mts|scripts/lib/control-ui-icon-grid-fit.mts|scripts/lib/database-worker-compat.mts|scripts/lib/extension-boundary-projects.mts|scripts/lib/native-declaration-emitter.mts|scripts/lib/native-declaration-filesystem.mts|scripts/lib/runtime-import-closure.mts|src/agents/embedded-agent-runner/run.timeout-triggered-compaction.test-support.ts|src/state/openclaw-state-read-handlers.ts|src/state/openclaw-state.worker.ts) ;;
+              *) echo "Unexpected source path: $file" >&2; exit 1 ;;
+            esac
+          done < <(git diff --name-only HEAD^ HEAD)
+
+      - name: Setup pinned Node and pnpm without cache
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: '24.22.1'
+          install-bun: 'false'
+          install-deps: 'false'
+          cache-mode: off
+
+      - name: Frozen install without scripts
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          test "$(pnpm -v)" = '12.15.0'
+          pnpm install --frozen-lockfile --ignore-scripts
+          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = 41e318361b737665c117d3d9c16f71c6a583c9a7e60cbdf0455dc541b0c28a7f
+
+      - name: Check types, workflows and format independently
+        shell: bash
+        env:
+          CI: 'true'
+          OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-static-repair-state
+        run: |
+          set -uo pipefail
+          mkdir -p "$OPENCLAW_STATE_DIR"
+          prod=0; scripts=0; workflows=0; format=0; focused=0
+          pnpm tsgo:prod || prod=$?
+          pnpm tsgo:scripts || scripts=$?
+          pnpm check:workflows || workflows=$?
+          pnpm format:check || format=$?
+          pnpm exec vitest run test/scripts/extension-boundary-cache.test.ts test/scripts/extension-boundary-selection.test.ts test/scripts/native-typescript.test.ts || focused=$?
+          echo "RESULT prod_types=$prod script_types=$scripts workflows=$workflows format=$format focused=$focused"
+          if (( format )); then
+            pnpm exec oxfmt
+            echo FORMAT_PATCH_GZIP_BASE64_BEGIN
+            git diff --binary | gzip -9 | base64 -w 120
+            echo FORMAT_PATCH_GZIP_BASE64_END
+          fi
+          if (( prod || scripts || workflows || format || focused )); then
+            exit 1
+          fi

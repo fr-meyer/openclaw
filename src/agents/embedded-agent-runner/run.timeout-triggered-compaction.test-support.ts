@@ -231,7 +231,7 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
     fixture = session;
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     mockedResolveAuthProfileOrder.mockReturnValue(["profile-a", "profile-b"]);
-    mockedGetApiKeyForModel.mockImplementation(async ({ profileId } = {}) => ({
+    mockedGetApiKeyForModel.mockImplementation(async ({ profileId }: { profileId?: string } = {}) => ({
       apiKey: "fixture",
       profileId: profileId ?? "profile-a",
       source: "test",

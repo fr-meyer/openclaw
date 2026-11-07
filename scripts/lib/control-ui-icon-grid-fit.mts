@@ -89,7 +89,7 @@ function geometryRules(root: Root): GeometryRule[] {
                   node.replaceWith(
                     ...selectorParser()
                       .astSync(prefix)
-                      .nodes[0]!.nodes.map((part) => part.clone()),
+                      .nodes[0]!.nodes.map((part: selectorParser.Node) => part.clone()),
                   );
                 }),
               ).processSync(child);

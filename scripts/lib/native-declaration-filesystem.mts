@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { FileSystem } from "typescript/fs";
+import { serverFS, type FileSystemCallbacks, type FileSystemEntries } from "typescript/fs";
 import { createDeclarationInputBoundary } from "./local-check-runtime.mts";
 
 export type DeclarationLookup =
@@ -8,7 +8,7 @@ export type DeclarationLookup =
   | {
       kind: "getAccessibleEntries";
       path: string;
-      result: { files: string[]; directories: string[] };
+      result: FileSystemEntries;
     }
   | { kind: "realpath"; path: string; result: string };
 
@@ -95,10 +95,10 @@ export function createDeclarationFileSystem(
     }
   };
   const physical = {
-    readFile(file) {
+    readFile(file: string) {
       const accepted = local(file);
       if (accepted === undefined) {
-        return null;
+        return undefined;
       }
       const virtual = virtualFiles.get(accepted);
       if (virtual !== undefined) {
@@ -110,25 +110,29 @@ export function createDeclarationFileSystem(
         return text;
       } catch (error) {
         if (missing(error)) {
-          return null;
+          return undefined;
         }
         reject(error);
-        return null;
+        return undefined;
       }
     },
-    fileExists(file) {
+    fileExists(file: string) {
       const accepted = local(file);
       return (
         accepted !== undefined && (virtualFiles.has(accepted) || stat(accepted)?.isFile() === true)
       );
     },
-    directoryExists(directory) {
+    directoryExists(directory: string) {
       const accepted = local(directory);
       return accepted !== undefined && stat(accepted)?.isDirectory() === true;
     },
-    getAccessibleEntries(directory) {
+    getAccessibleEntries(directory: string): FileSystemEntries {
       const accepted = local(directory);
-      const entries = { files: [] as string[], directories: [] as string[] };
+      const entries = {
+        files: [] as string[],
+        directories: [] as string[],
+        symlinks: [] as string[],
+      } satisfies FileSystemEntries;
       if (accepted === undefined) {
         return entries;
       }
@@ -138,10 +142,17 @@ export function createDeclarationFileSystem(
           if (entry.isSymbolicLink() && file === undefined) {
             continue;
           }
+          if (entry.isSymbolicLink()) {
+            entries.symlinks.push(entry.name);
+          }
           const isDirectory = file === undefined ? entry.isDirectory() : stat(file)?.isDirectory();
           (isDirectory ? entries.directories : entries.files).push(entry.name);
         }
-        return { files: entries.files.toSorted(), directories: entries.directories.toSorted() };
+        return {
+          files: entries.files.toSorted(),
+          directories: entries.directories.toSorted(),
+          symlinks: entries.symlinks.toSorted(),
+        };
       } catch (error) {
         if (missing(error)) {
           return entries;
@@ -150,7 +161,7 @@ export function createDeclarationFileSystem(
         return entries;
       }
     },
-    realpath(file) {
+    realpath(file: string) {
       const accepted = local(file);
       // Returning undefined delegates to the host filesystem, including outside
       // paths. Missing paths retain their spelling instead of escaping the view.
@@ -173,11 +184,12 @@ export function createDeclarationFileSystem(
     writeFile(this: void) {
       reject(new Error("Native declarations must be emitted in memory"));
     },
-  } satisfies FileSystem;
+    stat: serverFS.fakeStat,
+  } satisfies FileSystemCallbacks;
   const filesystem = {
     readFile(file: string) {
       const result = physical.readFile(file);
-      observe({ kind: "readFile", path: file, result: result !== null });
+      observe({ kind: "readFile", path: file, result: result !== undefined });
       return result;
     },
     fileExists(file: string) {
@@ -202,7 +214,8 @@ export function createDeclarationFileSystem(
     },
     removeFile: physical.removeFile,
     writeFile: physical.writeFile,
-  } satisfies FileSystem;
+    stat: physical.stat,
+  } satisfies FileSystemCallbacks;
   return {
     filesystem,
     inputs,

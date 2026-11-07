@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { serverFS } from "typescript/fs";
 import {
   isTypeScriptPackageEntry,
   listBuiltRuntimeEntryCandidates,
@@ -71,7 +72,7 @@ export function prepareExtensionBoundaryProjects(rootDir: string, extensionIds: 
       ...exportTargets(pkg.main),
     ]);
     // Ambient module declarations need roots even when there is no import edge to them.
-    const roots = new Set(declarations);
+    const roots = new Set<string>(declarations);
     for (const target of targets) {
       if (!/\.[cm]?[jt]sx?$/u.test(target)) {
         continue;
@@ -212,11 +213,10 @@ export async function resolveExtensionBoundaryPreparation(
         readFile(file) {
           // The first pass never consumes cache contents. A later pass follows only
           // the SDK tree just validated by its owner, discovering further producers.
-          return owned(file) && !currentSdkDeclaration(file)
-            ? declaration(file)
-              ? ""
-              : null
-            : undefined;
+          if (!owned(file) || currentSdkDeclaration(file)) {
+            return serverFS.useOS;
+          }
+          return declaration(file) ? "" : undefined;
         },
         directoryExists(directory) {
           if (!owned(directory)) {
@@ -235,14 +235,14 @@ export async function resolveExtensionBoundaryPreparation(
             return undefined;
           }
           if (boundary.resolve(directory) === pluginOutput) {
-            return { files: [], directories: [...producerIds] };
+            return { files: [], directories: [...producerIds], symlinks: [] };
           }
           const location = sourceLocation(directory);
           if (
             !location ||
             !fs.statSync(location.source, { throwIfNoEntry: false })?.isDirectory()
           ) {
-            return { files: [], directories: [] };
+            return { files: [], directories: [], symlinks: [] };
           }
           const entries = fs.readdirSync(location.source, { withFileTypes: true });
           return {
@@ -260,6 +260,7 @@ export async function resolveExtensionBoundaryPreparation(
               ),
             ],
             directories: entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name),
+            symlinks: [],
           };
         },
         realpath(file) {

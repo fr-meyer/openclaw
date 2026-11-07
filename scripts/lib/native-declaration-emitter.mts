@@ -140,18 +140,17 @@ export async function compileNativeProject({
     const manifestFile = admit(path.join(root, "package.json"));
     const manifestText = view.filesystem.readFile(manifestFile);
     view.assertValid();
-    if (manifestText === null && assertInput) {
+    if (manifestText === undefined && assertInput) {
       throw new Error(`Missing declaration package manifest: ${manifestFile}`);
     }
-    if (manifestText !== null) {
+    if (manifestText !== undefined) {
       const manifest: unknown = JSON.parse(manifestText);
       if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
         throw new Error(`Invalid declaration package manifest: ${manifestFile}`);
       }
     }
     const filesystem = view.filesystem;
-    // Earlier clients use null for missing files; the stable callback API uses
-    // undefined. Keep the missing-file result local instead of requesting OS fallback.
+    // Keep the missing-file result local instead of requesting OS fallback.
     const compilerFileSystem =
       compiler.fakeStat === undefined
         ? filesystem

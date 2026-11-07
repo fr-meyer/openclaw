@@ -224,7 +224,11 @@ function createSharedStateWorkerBackend(
     );
   const writeAdmitted: WorkerWriteOperationContext["writeAdmitted"] = (
     operation,
-    { receipt, transactionEnvironment, ...options } = {},
+    {
+      receipt,
+      transactionEnvironment,
+      ...options
+    }: NonNullable<Parameters<WorkerWriteOperationContext["writeAdmitted"]>[1]> = {},
   ) => {
     const openedDatabase = open();
     return write(

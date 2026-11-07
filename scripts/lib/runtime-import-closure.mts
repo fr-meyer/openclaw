@@ -219,7 +219,7 @@ export function createRuntimeImportGraph(
     parser.close();
   };
   return {
-    compilerOptions: project.compilerOptions,
+    compilerOptions: options,
     dependencies(file: string) {
       const absolute = resolve(root, file);
       let source = project.program.getSourceFile(absolute);

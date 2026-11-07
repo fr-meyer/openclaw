@@ -364,10 +364,10 @@ export function inspectDatabaseWorkerBoundaries(
     configFileName: config,
     files,
     fs: {
-      readFile: () => null,
+      readFile: () => undefined,
       fileExists: () => false,
       directoryExists: () => false,
-      getAccessibleEntries: () => ({ files: [], directories: [] }),
+      getAccessibleEntries: () => ({ files: [], directories: [], symlinks: [] }),
       realpath: (file) => file,
     },
   });
