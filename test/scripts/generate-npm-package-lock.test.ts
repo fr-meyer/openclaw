@@ -549,6 +549,44 @@ describe("generate-npm-package-lock", () => {
     });
   });
 
+  it("pins nested runtime versions from decorated pnpm snapshot references", () => {
+    const plan = resolvePnpmLockOverridePlan({
+      packages: {
+        "@agentclientprotocol/claude-agent-acp@0.95.0": {},
+        "@agentclientprotocol/codex-acp@2.1.1": {},
+        "@agentclientprotocol/sdk@1.7.0": {},
+        "@agentclientprotocol/sdk@2.0.1": {},
+        "acpx@0.19.4": {},
+      },
+      snapshots: {
+        "@agentclientprotocol/claude-agent-acp@0.95.0": {
+          dependencies: { "@agentclientprotocol/sdk": "2.0.1(zod@4.6.7)" },
+        },
+        "@agentclientprotocol/codex-acp@2.1.1": {
+          dependencies: {
+            "@agentclientprotocol/sdk": "1.7.0(zod@4.6.6(patch_hash=abc))",
+          },
+        },
+        "acpx@0.19.4": {
+          dependencies: { "@agentclientprotocol/sdk": "1.7.0(zod@4.6.6(patch_hash=abc))" },
+        },
+        "@agentclientprotocol/sdk@1.7.0(zod@4.6.6(patch_hash=abc))": {},
+        "@agentclientprotocol/sdk@2.0.1(zod@4.6.7)": {},
+      },
+    });
+
+    expect(plan.scopedVersionOverrides["@agentclientprotocol/codex-acp@2.1.1"]).toEqual({
+      "@agentclientprotocol/sdk": "1.7.0",
+    });
+    expect(plan.scopedVersionOverrides["acpx@0.19.4"]).toEqual({
+      "@agentclientprotocol/sdk": "1.7.0",
+    });
+    expect(plan.scopedVersionOverrides["@agentclientprotocol/claude-agent-acp@0.95.0"]).toEqual({
+      "@agentclientprotocol/sdk": "2.0.1",
+    });
+    expect(plan.versionOverrides["@agentclientprotocol/sdk"]).toBeUndefined();
+  });
+
   it("parses nested scoped package paths", () => {
     expect(
       parseLockPackagePath("node_modules/@openclaw/codex/node_modules/@anthropic-ai/sdk"),

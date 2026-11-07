@@ -449,7 +449,13 @@ function resolvePnpmLockOverridePlan(lockfile: unknown) {
       ) {
         continue;
       }
-      const version = exactVersionFromOverrideSpec(String(dependencySpec));
+      // Snapshot references can include pnpm peer and patch contexts after the
+      // exact version. Parse that context before deriving the npm child pin.
+      const resolved = parsePnpmPackageKey(`${dependencyName}@${String(dependencySpec)}`);
+      const version =
+        resolved?.name === dependencyName
+          ? exactVersionFromOverrideSpec(resolved.version)
+          : null;
       if (!version || !versionsByName.get(dependencyName)?.has(version)) {
         continue;
       }
