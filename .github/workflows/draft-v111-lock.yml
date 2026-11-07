@@ -1,4 +1,4 @@
-name: Qualify 11.1 module-label compatibility
+name: Diagnose 11.1 native declaration failure
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
   dependency-admission:
     if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-source-qualification'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = a42f89c3bbed0f01514d9e9bd0b8afcda528b214
-          test "$(git rev-parse HEAD^^)" = 37a7a6aa1814100dad85b54126827311d83bfe32
+          test "$(git rev-parse HEAD^)" = b7f486d8dde72c3e7b5b0f35744c0532062b6fe0
+          test "$(git rev-parse HEAD^^)" = a42f89c3bbed0f01514d9e9bd0b8afcda528b214
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -134,6 +134,118 @@ jobs:
           grep -q '^  tsdown@0.23.2:' pnpm-lock.yaml
           grep -q '^  typescript@7.1.0-beta:' pnpm-lock.yaml
           grep -q "^  '@lancedb/lancedb@0.41.0':" pnpm-lock.yaml
+
+      - name: Diagnose native declaration invalid-source handling
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { spawnSync } from "node:child_process";
+          import { createHash } from "node:crypto";
+          import fs from "node:fs";
+          import os from "node:os";
+          import path from "node:path";
+          
+          const nativePackage = import.meta.resolve("typescript/package.json");
+          const { default: getExePath } = await import(new URL("lib/getExePath.js", nativePackage).href);
+          const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-tsgo-invalid-"));
+          const report = [];
+          
+          function declaration(pathname) {
+            if (!fs.existsSync(pathname)) {
+              return { exists: false };
+            }
+            const bytes = fs.readFileSync(pathname);
+            return {
+              exists: true,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              text: bytes.toString("utf8").slice(0, 400),
+            };
+          }
+          
+          try {
+            for (const noCheck of [true, false]) {
+              for (const runner of ["tsgo", "tsdown"]) {
+                const dir = path.join(root, `${runner}-${noCheck}`);
+                const sourcePath = path.join(dir, "index.ts");
+                const outputPath =
+                  runner === "tsgo" ? path.join(dir, "index.d.ts") : path.join(dir, "dist", "index.d.ts");
+                const configPath = path.join(dir, "tsconfig.json");
+                fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(path.join(dir, "package.json"), '{"type":"module"}\n');
+                fs.writeFileSync(
+                  configPath,
+                  JSON.stringify({
+                    compilerOptions: {
+                      target: "ESNext",
+                      module: "ESNext",
+                      moduleResolution: "Bundler",
+                      declaration: true,
+                      emitDeclarationOnly: true,
+                      noCheck,
+                      noEmitOnError: false,
+                      rootDir: dir,
+                    },
+                    files: [sourcePath],
+                  }),
+                );
+                const buildOptions = {
+                  clean: false,
+                  config: false,
+                  cwd: dir,
+                  entry: [sourcePath],
+                  fixedExtension: false,
+                  format: "esm",
+                  logLevel: "error",
+                  outDir: path.join(dir, "dist"),
+                  platform: "node",
+                  report: false,
+                  tsconfig: configPath,
+                };
+                const script = [
+                  'import { build } from "tsdown";',
+                  'const nativePackage = import.meta.resolve("typescript/package.json");',
+                  'const { default: getExePath } = await import(new URL("lib/getExePath.js", nativePackage).href);',
+                  `await build({ ...${JSON.stringify(buildOptions)}, dts: { generator: "tsgo", emitDtsOnly: true, tsgo: { path: getExePath() } } });`,
+                ].join("\n");
+                const command = runner === "tsgo" ? getExePath() : process.execPath;
+                const args =
+                  runner === "tsgo"
+                    ? ["--project", configPath, "--pretty", "false"]
+                    : ["--input-type=module", "-e", script];
+                const run = (source) => {
+                  fs.writeFileSync(sourcePath, source);
+                  const child = spawnSync(command, args, {
+                    cwd: process.cwd(),
+                    env: { ...process.env, TMPDIR: dir, TMP: dir, TEMP: dir },
+                    encoding: "utf8",
+                    timeout: 30_000,
+                    maxBuffer: 512 * 1024,
+                  });
+                  const combined = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
+                  return {
+                    status: child.status,
+                    signal: child.signal,
+                    error: child.error?.message ?? null,
+                    ts1109: combined.includes("TS1109"),
+                    output: combined.slice(-1_200),
+                    declaration: declaration(outputPath),
+                  };
+                };
+                const healthy = run('export const broken = "healthy";\n');
+                const invalid = run("export const broken = ;\n");
+                report.push({ runner, noCheck, healthy, invalid });
+              }
+            }
+            console.log("TSGO_INVALID_SOURCE_DIAGNOSTIC=" + JSON.stringify(report));
+          } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+          }
+          NODE
+          echo "Diagnostic only; qualification remains blocked" >&2
+          exit 1
 
       - name: Diagnose ACP SDK npm mirror placement
         shell: bash
