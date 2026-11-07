@@ -1,7 +1,13 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import vm from "node:vm";
 import { parse } from "acorn";
-import { describe, expect, it } from "vitest";
-import { createStandaloneCodegenTransform } from "../../scripts/lib/bun-standalone-codegen.mjs";
+import { describe, expect, it, vi } from "vitest";
+import {
+  createStandaloneCodegenAdapter,
+  createStandaloneCodegenTransform,
+} from "../../scripts/lib/bun-standalone-codegen.mjs";
 
 const program = {
   signature: "SOURCE\nreturn value + prefix;",
@@ -10,6 +16,72 @@ const program = {
 };
 
 describe("standalone fixed code generation", () => {
+  it.each(["//#region", "//"])(
+    "recognizes bundled source owners and receiver (%s)",
+    async (label) => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-standalone-label-"));
+      const runtimeRoot = path.join(root, "runtime");
+      const distRoot = path.join(runtimeRoot, "dist");
+      fs.mkdirSync(path.join(distRoot, "worker"), { recursive: true });
+      const owners = [
+        ["staged-inputs", "src/media/staged-inputs.ts"],
+        ["sandbox-workspace-paths", "src/shared/sandbox-workspace-paths.ts"],
+        ["workspace-manifest", "src/gateway/worker-environments/workspace-path-exclusions.ts"],
+        ["workspace-hash-memo", "src/gateway/worker-environments/workspace-hash-memo.ts"],
+        [
+          "workspace-manifest-script.runtime",
+          "src/gateway/worker-environments/workspace-manifest-script.runtime.ts",
+        ],
+        ["workspace-seed-retention", "src/worker/workspace-seed-retention.ts"],
+      ];
+      for (const [entry, owner] of owners) {
+        fs.writeFileSync(path.join(distRoot, `${entry}-fixture.mjs`), `${label} ${owner}\n`);
+      }
+      const receiver = path.join(distRoot, "worker", "workspace-rsync-receiver.mjs");
+      fs.writeFileSync(
+        receiver,
+        `import { compileFunction } from "node:vm";
+const REMOTE_WORKSPACE_ACCEPTED_RSYNC_RECEIVER_JS = "return 41;";
+const REMOTE_WORKSPACE_RSYNC_RECEIVER_JS = "return 42;";
+${label} src/worker/workspace-rsync-receiver.ts
+export const select = (accepted) => compileFunction(accepted ? REMOTE_WORKSPACE_ACCEPTED_RSYNC_RECEIVER_JS : REMOTE_WORKSPACE_RSYNC_RECEIVER_JS, ["require"]);`,
+      );
+      let capturedReceiver = "";
+      vi.stubGlobal("Bun", {
+        build: async ({ plugins }: { plugins: Array<{ setup: (build: unknown) => void }> }) => {
+          let onLoad: ((input: { path: string }) => Promise<{ contents: string }>) | undefined;
+          const plugin = plugins[0];
+          if (!plugin) {
+            throw new Error("Missing standalone capture plugin");
+          }
+          plugin.setup({
+            onLoad: (_filter: unknown, callback: typeof onLoad) => {
+              onLoad = callback;
+            },
+          });
+          if (!onLoad) {
+            throw new Error("Missing standalone capture loader");
+          }
+          capturedReceiver = (await onLoad({ path: receiver })).contents;
+          return { success: false, logs: [] };
+        },
+      });
+      try {
+        await expect(
+          createStandaloneCodegenAdapter({
+            runtimeRoot,
+            outputRoot: path.join(root, "output"),
+            parse,
+          }),
+        ).rejects.toThrow("Static program capture build failed");
+        expect(capturedReceiver).toContain("__openclawCaptureStaticFunction");
+      } finally {
+        vi.unstubAllGlobals();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("emits an executable lexical function and respects a shadowed compiler binding", () => {
     const transform = createStandaloneCodegenTransform({ programs: [program], parse });
     const source = `import { compileFunction as compile } from "node:vm";

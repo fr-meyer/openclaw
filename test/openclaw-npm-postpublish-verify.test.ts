@@ -611,6 +611,38 @@ describe("collectInstalledRootDependencyManifestErrors", () => {
     expect(legacyErrors()).toStrictEqual([]);
   });
 
+  it("accepts Rolldown qualified plugin ownership labels", () => {
+    const source = legacyCompanionSource
+      .replaceAll("//#region ", "// ")
+      .replaceAll("//#endregion", "");
+    const { packageRoot, legacyErrors } = makeLegacyFixture(source);
+    expect(collectInstalledRootDependencyManifestErrors(packageRoot)).toEqual([
+      expect.stringContaining("@discordjs/voice"),
+    ]);
+    expect(legacyErrors()).toStrictEqual([]);
+  });
+
+  it("does not infer plugin ownership from qualified labels inside strings", () => {
+    const source =
+      "const text = `\n// extensions/discord/src/voice/sdk-runtime.ts\nconst harmless = true;\n`;\n" +
+      'require("@discordjs/voice");';
+    const { legacyErrors } = makeLegacyFixture(source);
+    expect(legacyErrors()).toEqual([expect.stringContaining("@discordjs/voice")]);
+  });
+
+  it("ends qualified plugin ownership at the next module label", () => {
+    const source = [
+      'import { createRequire } from "node:module";',
+      "// extensions/discord/src/runtime.ts",
+      "const load = createRequire(import.meta.url);",
+      'load("@discordjs/voice");',
+      "// src/root.ts",
+      'load("@discordjs/voice");',
+    ].join("\n");
+    const { legacyErrors } = makeLegacyFixture(source);
+    expect(legacyErrors()).toEqual([expect.stringContaining("@discordjs/voice")]);
+  });
+
   it("preserves plugin ownership through hoisted static imports", () => {
     const { packageRoot, legacyErrors } = makeLegacyFixture();
     writeFileSync(

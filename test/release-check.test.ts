@@ -284,44 +284,50 @@ describe.skipIf(process.platform === "win32")("collectSkillShellScriptExecutable
 });
 
 describe("collectForbiddenPackPaths", () => {
-  it("blocks root dist chunks that still reference private qa lab sources", () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), "openclaw-release-private-qa-"));
+  it.each(["//#region", "//"])(
+    "blocks root dist chunks that still reference private qa lab sources (%s)",
+    (label) => {
+      const tempRoot = mkdtempSync(join(tmpdir(), "openclaw-release-private-qa-"));
 
-    try {
-      mkdirSync(join(tempRoot, "dist"), { recursive: true });
-      writeFileSync(
-        join(tempRoot, "dist", "entry.js"),
-        "//#region extensions/qa-lab/src/runtime-api.ts\n",
-        "utf8",
-      );
-      writeFileSync(join(tempRoot, "CHANGELOG.md"), "local QA notes mention extensions/qa-lab/\n");
+      try {
+        mkdirSync(join(tempRoot, "dist"), { recursive: true });
+        writeFileSync(
+          join(tempRoot, "dist", "entry.js"),
+          `${label} extensions/qa-lab/src/runtime-api.ts\n`,
+          "utf8",
+        );
+        writeFileSync(join(tempRoot, "CHANGELOG.md"), "local QA notes mention extensions/qa-lab/\n");
 
-      expect(collectForbiddenPackContentPaths(["dist/entry.js", "CHANGELOG.md"], tempRoot)).toEqual(
-        ["dist/entry.js"],
-      );
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
+        expect(collectForbiddenPackContentPaths(["dist/entry.js", "CHANGELOG.md"], tempRoot)).toEqual(
+          ["dist/entry.js"],
+        );
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
-  it("blocks root plugin SDK declarations that still reference private test helpers", () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), "openclaw-release-private-sdk-"));
+  it.each(["//#region", "//"])(
+    "blocks root plugin SDK declarations that still reference private test helpers (%s)",
+    (label) => {
+      const tempRoot = mkdtempSync(join(tmpdir(), "openclaw-release-private-sdk-"));
 
-    try {
-      mkdirSync(join(tempRoot, "dist", "plugin-sdk"), { recursive: true });
-      writeFileSync(
-        join(tempRoot, "dist", "plugin-sdk", "channel-test-helpers.d.ts"),
-        "//#region src/plugin-sdk/test-helpers/session.ts\n",
-        "utf8",
-      );
+      try {
+        mkdirSync(join(tempRoot, "dist", "plugin-sdk"), { recursive: true });
+        writeFileSync(
+          join(tempRoot, "dist", "plugin-sdk", "channel-test-helpers.d.ts"),
+          `${label} src/plugin-sdk/test-helpers/session.ts\n`,
+          "utf8",
+        );
 
-      expect(
-        collectForbiddenPackContentPaths(["dist/plugin-sdk/channel-test-helpers.d.ts"], tempRoot),
-      ).toEqual(["dist/plugin-sdk/channel-test-helpers.d.ts"]);
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
+        expect(
+          collectForbiddenPackContentPaths(["dist/plugin-sdk/channel-test-helpers.d.ts"], tempRoot),
+        ).toEqual(["dist/plugin-sdk/channel-test-helpers.d.ts"]);
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("packed install verification", () => {

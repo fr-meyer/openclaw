@@ -99,3 +99,75 @@ it.each([
     }),
   ).toThrow("Cannot trace surface-abcdefgh.mjs export external to its release source");
 });
+
+it("bridges Rolldown module labels without trusting a same-named export in a string", async () => {
+  const root = createTempDir("update-compat-module-labels-");
+  fs.writeFileSync(path.join(root, "package.json"), '{"type":"module"}');
+  writeUpdateCompatibilityBuildFixture(root);
+  const distDir = path.join(root, "dist");
+  for (const file of fs.readdirSync(distDir)) {
+    if (!file.startsWith("candidate-")) {
+      continue;
+    }
+    const target = path.join(distDir, file);
+    fs.writeFileSync(target, fs.readFileSync(target, "utf8").replaceAll("//#region ", "// "));
+  }
+  const origin = chunk.exports[0]!.origin;
+  fs.writeFileSync(
+    path.join(distDir, "unrelated-worker.mjs"),
+    "// src/infra/unrelated.ts\nconst example = `\n// " +
+      origin.module +
+      "\n`;\nfunction " +
+      origin.symbol +
+      '() { return "wrong owner"; }\nexport { ' +
+      origin.symbol +
+      " };\n",
+  );
+  writeUpdateCompatibilityChunks({
+    distDir,
+    sourceDir: root,
+    inventory: previousReleaseInventory,
+  });
+  const legacy = await import(pathToFileURL(path.join(distDir, chunk.path)).href);
+  for (const { exported, origin: expected } of chunk.exports) {
+    expect(await legacy[exported]()).toBe(expected.symbol);
+  }
+});
+
+it("records updater imports and export origins from Rolldown module labels", () => {
+  const root = createTempDir("update-compat-record-labels-");
+  const distDir = path.join(root, "dist");
+  fs.mkdirSync(distDir, { recursive: true });
+  fs.writeFileSync(path.join(root, "package.json"), '{"name":"openclaw","version":"2026.10.1"}');
+  fs.writeFileSync(
+    path.join(distDir, "build-info.json"),
+    JSON.stringify({ version: "2026.10.1", buildId: "fixture", commit: "0".repeat(40) }),
+  );
+  fs.writeFileSync(
+    path.join(distDir, "command.mjs"),
+    '// src/cli/update-cli/update-command-service-command.ts\nexport async function restart() { return (await import("./surface-abcdefgh.mjs")).owned(); }\n',
+  );
+  fs.writeFileSync(
+    path.join(distDir, "surface-abcdefgh.mjs"),
+    '// src/daemon/inspect.ts\nexport function owned() { return "owned"; }\n',
+  );
+  const recorded = recordUpdateCompatibilityRelease({
+    packageDir: root,
+    integrity: "sha512-Zml4dHVyZQ==",
+  });
+  expect(recorded.chunks).toEqual([
+    {
+      path: "surface-abcdefgh.mjs",
+      imports: [
+        {
+          importer: "command.mjs",
+          owner: "src/cli/update-cli/update-command-service-command.ts",
+          exports: ["owned"],
+        },
+      ],
+      exports: [
+        { exported: "owned", origin: { module: "src/daemon/inspect.ts", symbol: "owned" } },
+      ],
+    },
+  ]);
+});
