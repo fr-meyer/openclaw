@@ -21,6 +21,24 @@ class RunnerTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='image-runner-synthetic-');self.base=Path(self.tmp.name).resolve()
  def tearDown(self):self.tmp.cleanup()
+ def test_outputs_accept_fixed_admission_and_build_names_with_digits(self):
+  path=self.base/'github-output'
+  values={'enabled':'true','source_sha':'a'*40,'source_tree':'b'*40,
+          'built_at':'2026-11-07T01:00:00Z','request_sha256':'c'*64,
+          'upload_deadline_epoch':'1794016800','version':'2026.10.9',
+          'build_timeout_minutes':'90','archive_sha256':'d'*64,'archive_bytes':'42'}
+  with patch.dict(os.environ,{'GITHUB_OUTPUT':str(path)}):r.outputs(values)
+  self.assertEqual(path.read_text(),''.join(k+'='+v+'\n' for k,v in values.items()))
+ def test_outputs_still_refuse_invalid_keys_and_values_without_writing(self):
+  path=self.base/'github-output'
+  bad=[('9leading','safe'),('bad-key','safe'),('bad\nkey','safe'),('','safe'),
+       ('valid',''),('valid','line\nbreak'),('valid','return\r'),('valid','nonascii-é')]
+  for key,value in bad:
+   with self.subTest(key=key,value=value):
+    path.write_text('sentinel\n')
+    with patch.dict(os.environ,{'GITHUB_OUTPUT':str(path)}):
+     with self.assertRaises(c.Refusal):r.outputs({key:value})
+    self.assertEqual(path.read_text(),'sentinel\n')
  def test_disarmed_never_reads_source_calls_api_or_child(self):
   with patch.object(r,'image_request',return_value=(c.encode(c.disarmed_request()),c.disarmed_request())),patch.object(r,'source_inputs',side_effect=AssertionError),patch.object(r.subprocess,'run',side_effect=AssertionError),patch.object(r,'outputs')as output:
    self.assertEqual(r.admission()['status'],'disarmed');output.assert_called_once_with({'enabled':'false'})

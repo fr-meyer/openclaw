@@ -141,6 +141,7 @@ def expected_object(source):
 # A third workflow is not authorized by either earlier approval. Bind the
 # exact genuine finite new approval only in a reviewed future successor.
 THIRD_IMAGE_WORKFLOW_APPROVAL_SHA256 = "6c54eba6116180c5e79c750d78ed0d7a3c21104eca9d2a620e6d2bd254417877"
+FOURTH_IMAGE_WORKFLOW_APPROVAL_SHA256 = "de40653e91b6ba399dfaa37d08a5856e09d7e517752b71ebecf856720a7ab994"
 
 
 def validate_request(value, active=False, now=None):
@@ -149,9 +150,11 @@ def validate_request(value, active=False, now=None):
     successor = type(value) is dict and "sourceStage" in value
     retry = type(value) is dict and "retryAfterFailedAdmission" in value
     third = type(value) is dict and "retryAfterSecondFailedAdmission" in value
+    fourth = type(value) is dict and "retryAfterThirdFailedAdmission" in value
     fields(value, (*template, *(("sourceBudgetCeilingAmendmentSha256",) if amended else ()),
         *(("sourceStage",) if successor else ()), *(("retryAfterFailedAdmission",) if retry else ()),
-        *(("retryAfterSecondFailedAdmission",) if third else ())), "image.request_fields")
+        *(("retryAfterSecondFailedAdmission",) if third else ()),
+        *(("retryAfterThirdFailedAdmission",) if fourth else ())), "image.request_fields")
     for key in ("schema", "campaignId", "repository", "workflow", "workflowBranch", "operationId"):
         need(value[key] == template[key], "image.fixed_scope")
     need(value["state"] in ("DISARMED", "PREPARED_BUILD", "APPROVED_BUILD"), "image.state")
@@ -197,6 +200,13 @@ def validate_request(value, active=False, now=None):
             need(value["state"] == "APPROVED_BUILD" and pin(THIRD_IMAGE_WORKFLOW_APPROVAL_SHA256) and
                 approval == THIRD_IMAGE_WORKFLOW_APPROVAL_SHA256,
                 "image.third_workflow_new_approval_unresolved")
+    if fourth:
+        need(third and retry and value["state"] == "APPROVED_BUILD" and
+            value["retryAfterThirdFailedAdmission"] == {
+                "runId": "42325611737", "head": "59960de8265b7bb378194d1269f035ef497f9ed6",
+                "admissionConclusion": "failure", "buildConclusion": "skipped",
+                "approvalSha256": FOURTH_IMAGE_WORKFLOW_APPROVAL_SHA256},
+            "image.exact_third_failed_admission_and_fourth_approval")
     stage = source_stage(value["sourceStage"]) if successor else None
     need(not successor or amended, "image.source_stage_budget_link")
     need(all(pin(value[k], True) for k in ("preparationSourceSha", "previousPipelineHead", "sourceSha", "sourceTree")),
@@ -235,6 +245,12 @@ def validate_request(value, active=False, now=None):
         (("sourceStageSha256",) if successor else ()), "image.authorization_fields")
     need(auth["schema"] == "openclaw.v109.private-image-authorization.v1" and pin(auth["approvalScopeSha256"]) and
         pin(auth["actionTimeAccessApprovalSha256"]), "image.action_time_approval_binding")
+    if third and not fourth:
+        need(auth["actionTimeAccessApprovalSha256"] == THIRD_IMAGE_WORKFLOW_APPROVAL_SHA256,
+            "image.third_action_time_approval")
+    if fourth:
+        need(auth["actionTimeAccessApprovalSha256"] == FOURTH_IMAGE_WORKFLOW_APPROVAL_SHA256,
+            "image.fourth_action_time_approval")
     start, end = utc(auth["approvedAt"]), utc(auth["expiresAt"])
     if successor:
         need(auth["approvedAt"] == AMENDED_APPROVED_AT and auth["expiresAt"] == stage["expiresAt"] and
@@ -266,7 +282,8 @@ def validate_context(context, request, now):
         "before", "after", "created", "deleted", "forced"), "image.context_fields")
     need(context["repository"] == REPOSITORY and context["actor"] == ACTOR and context["event"] == "push" and
         context["ref"] == REF and pin(context["sha"], True) and context["sha"] == context["workflowSha"] == context["after"] and
-        context["before"] == (request["retryAfterSecondFailedAdmission"]["head"] if "retryAfterSecondFailedAdmission" in request else
+        context["before"] == (request["retryAfterThirdFailedAdmission"]["head"] if "retryAfterThirdFailedAdmission" in request else
+            request["retryAfterSecondFailedAdmission"]["head"] if "retryAfterSecondFailedAdmission" in request else
             request["retryAfterFailedAdmission"]["head"] if "retryAfterFailedAdmission" in request else
             request["previousPipelineHead"]) and type(context["runId"]) is str and RUN.fullmatch(context["runId"]) and
         type(context["attempt"]) is int and context["attempt"] == 1 and context["created"] is False and
@@ -338,6 +355,8 @@ def validate_source_snapshot(request, run, jobs, artifacts, zip_raw, result_vali
 
 def validate_image_history(request, context, runs, jobs_by_run):
     """Any previously admitted physical job, pending outcome or retry refuses."""
+    if "retryAfterThirdFailedAdmission" in request:
+        return validate_fourth_workflow_history(request, context, runs, jobs_by_run)
     if "retryAfterSecondFailedAdmission" in request:
         return validate_third_workflow_history(request, context, runs, jobs_by_run)
     need(type(runs) is dict and type(runs.get("total_count")) is int and
@@ -425,6 +444,58 @@ def validate_third_workflow_history(request, context, runs, jobs_by_run):
                     "runner_name" in job and job["runner_name"] in (None, ""),
                     "image.physical_attempt_already_consumed")
     need(found and seen == set(prior), "image.third_current_and_both_priors_required")
+    return True
+
+
+def validate_fourth_workflow_history(request, context, runs, jobs_by_run):
+    """Only three exact failed admissions and one new current workflow."""
+    validate_request(request)
+    need(type(context.get("runId")) is str and RUN.fullmatch(context["runId"]) and pin(context.get("sha"), True),
+        "image.fourth_current_pin")
+    prior = {"42239007307": "ccca07e2156a06ab5cd90badbf289442376d0ddf",
+             "42256250335": "f10e39a8995b4b7a8012d36757369641c6ca27c9",
+             "42325611737": "59960de8265b7bb378194d1269f035ef497f9ed6"}
+    need(type(runs) is dict and type(runs.get("total_count")) is int and runs["total_count"] == 4 and
+        type(runs.get("workflow_runs")) is list and len(runs["workflow_runs"]) == 4 and
+        len({r.get("id") for r in runs["workflow_runs"]}) == 4,
+        "image.fourth_exact_four_run_history")
+    need(type(jobs_by_run) is dict and set(jobs_by_run) == set(prior),
+        "image.fourth_exact_prior_job_pages")
+    found = False
+    seen = set()
+    for run in runs["workflow_runs"]:
+        rid = str(run.get("id"))
+        need(run.get("path") == WORKFLOW and run.get("event") == "push" and run.get("head_branch") == BRANCH and
+            type(run.get("run_attempt")) is int and run["run_attempt"] == 1 and
+            run.get("actor", {}).get("login") == ACTOR and run.get("triggering_actor", {}).get("login") == ACTOR,
+            "image.history_identity")
+        if rid == context["runId"]:
+            need(not found and run.get("head_sha") == context["sha"] and run.get("status") in ("queued", "in_progress"),
+                "image.current_run_identity")
+            found = True
+            continue
+        need(rid in prior and rid not in seen and run.get("head_sha") == prior[rid] and
+            run.get("status") == "completed" and run.get("conclusion") == "failure",
+            "image.fourth_exact_prior_failed_run")
+        seen.add(rid)
+        page = jobs_by_run[rid]
+        need(type(page) is dict and page.get("total_count") == len(page.get("jobs", [])) == 2 and
+            {j.get("name") for j in page["jobs"]} == {"image-admission", "build-private-image"} and
+            len({j.get("id") for j in page["jobs"]}) == 2 and
+            all(type(j.get("id")) is int and j["id"] > 0 for j in page["jobs"]),
+            "image.prior_jobs_complete")
+        for job in page["jobs"]:
+            need(job.get("status") == "completed" and str(job.get("run_id")) == rid,
+                "image.prior_job_unsettled")
+            if job.get("name") == "image-admission":
+                need(job.get("conclusion") == "failure", "image.prior_admission_refusal")
+            else:
+                need(job.get("conclusion") == "skipped" and "steps" in job and
+                    (job["steps"] is None or type(job["steps"]) is list and job["steps"] == []) and
+                    "runner_id" in job and (job["runner_id"] is None or type(job["runner_id"]) is int and job["runner_id"] == 0) and
+                    "runner_name" in job and job["runner_name"] in (None, ""),
+                    "image.physical_attempt_already_consumed")
+    need(found and seen == set(prior), "image.fourth_current_and_three_priors_required")
     return True
 
 

@@ -1,6 +1,6 @@
 {
   "authorization": {
-    "actionTimeAccessApprovalSha256": "6c54eba6116180c5e79c750d78ed0d7a3c21104eca9d2a620e6d2bd254417877",
+    "actionTimeAccessApprovalSha256": "de40653e91b6ba399dfaa37d08a5856e09d7e517752b71ebecf856720a7ab994",
     "approvalScopeSha256": "69dcd09207630f091b1ae306b7f7d5aa9d992b3c62f8bf606a0df52349f60b2d",
     "approvedAt": "2026-10-30T03:14:21Z",
     "budgetCeilingAmendmentSha256": "fabe093988e258a99b7cccc83e812d274200880cc300f78a73f795905e507f6e",
@@ -50,6 +50,13 @@
     "buildConclusion": "skipped",
     "head": "f10e39a8995b4b7a8012d36757369641c6ca27c9",
     "runId": "42256250335"
+  },
+  "retryAfterThirdFailedAdmission": {
+    "admissionConclusion": "failure",
+    "approvalSha256": "de40653e91b6ba399dfaa37d08a5856e09d7e517752b71ebecf856720a7ab994",
+    "buildConclusion": "skipped",
+    "head": "59960de8265b7bb378194d1269f035ef497f9ed6",
+    "runId": "42325611737"
   },
   "schema": "openclaw.v109.private-image-request.v1",
   "sourceBindingsSha256": "5726aac943f27f1bea3c804fc91d89e7bd4fe8ecec50ecaf13f2d677bd9c2190",

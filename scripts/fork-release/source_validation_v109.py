@@ -1769,8 +1769,9 @@ IMAGE_UNKNOWN_HELD_MINUTES = 28
 IMAGE_FAILED_ADMISSION_DEBITS = (
     ("42239007307", "ccca07e2156a06ab5cd90badbf289442376d0ddf", 5, 10),
     ("42256250335", "f10e39a8995b4b7a8012d36757369641c6ca27c9", 5, 9),
+    ("42325611737", "59960de8265b7bb378194d1269f035ef497f9ed6", 13, 9),
 )
-IMAGE_NEXT_PUBLICATION_INCIDENTAL_RESERVE = 22
+IMAGE_NEXT_PUBLICATION_INCIDENTAL_RESERVE = 16
 
 
 def verify_image_source_hold(run, artifacts, diagnostic_value):
@@ -1792,7 +1793,7 @@ def verify_image_source_hold(run, artifacts, diagnostic_value):
 
 
 def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, current_minutes):
-    """Apply the reviewed additional22-minute transfer only to this image lane.
+    """Account for the exact three failed admissions and remaining image lane.
 
     Qualified source inputs keep their original194 incidental cap. This image
     consumer uses234 and reduces preparation310 to270, retaining all source,
@@ -1844,7 +1845,7 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
             prior.get("event")=="push" and prior.get("head_branch")==policy.PIPELINE_BRANCH and
             prior.get("status")=="completed" and prior.get("conclusion")=="failure" and
             facts["run_pools"].get(rid)=="image" and type(native)is int and 0<=native<=15,
-            "v9.image_exact_two_failed_admission_debits")
+            "v9.image_exact_three_failed_admission_debits")
         # A shorter later observation cannot refund the settled five-minute
         # admission. Native work above the floor is still charged in full.
         charges[key]=max(native,image_floor);prior_image_minutes+=charges[key]
@@ -1859,7 +1860,7 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
     current_head=facts["current"].get("head_sha")
     policy.need(type(current_head)is str and policy.SHA.fullmatch(current_head) and
         current_head not in {row[1]for row in IMAGE_FAILED_ADMISSION_DEBITS},
-        "v9.image_fresh_third_publication_head")
+        "v9.image_fresh_fourth_publication_head")
     current_publication_incidental=sum(minutes for (rid,attempt),minutes in charges.items()
         if facts["run_pools"].get(rid)=="incidental" and
         facts["history"].get(rid,{}).get("head_sha")==current_head)
@@ -1887,7 +1888,7 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
         "unresolvedOwnershipHeldMinutes":IMAGE_UNKNOWN_HELD_MINUTES,
         "unresolvedOwnershipAttemptCount":len(IMAGE_UNKNOWN_RUN_IDS),
         "priorFailedAdmissionImageMinutes":prior_image_minutes,
-        "priorFailedPublicationIncidentalFloorMinutes":19,
+        "priorFailedPublicationIncidentalFloorMinutes":28,
         "priorFailedPublicationIncidentalFloorAddedMinutes":incidental_floor_added,
         "currentPublicationIncidentalObservedMinutes":current_publication_incidental,
         "remainingWholePublicationIncidentalReserveMinutes":max(0,
@@ -1925,12 +1926,12 @@ def image_cumulative_booking(pipeline, api_get, bindings, selected, current_id, 
                 job.get("conclusion")=="success","v9.image_admission_success_required")
     current=observed_jobs(jobs,clock,False,{"image-admission":15,"build-private-image":90})[0]
     total,components,pools=image_stage_minute_facts(pipeline,bindings,selected,facts,current_id,current)
-    # Both failed publications remain paid liabilities. The reviewed234 pool
-    # leaves25 after their209-minute conservative incidental prefix. Require
-    # the remaining whole22-minute publication envelope at every admission.
+    # All three failed publications remain paid liabilities. The reviewed
+    # 234-minute pool leaves 16 minutes after the conservative incidentals.
+    # Require the remaining fourth-publication envelope at every admission.
     policy.need(components["remainingIncidentalReserveMinutes"]>=
         components["remainingWholePublicationIncidentalReserveMinutes"],
-        "v9.image_third_publication_requires_reviewed_incidental_allocation")
+        "v9.image_fourth_publication_requires_reviewed_incidental_allocation")
     # The image owner separately reserves image/incidental remainders. Retain
     # the unspent source/preparation pools here rather than releasing them from
     # a missing observation or fewer material generations.

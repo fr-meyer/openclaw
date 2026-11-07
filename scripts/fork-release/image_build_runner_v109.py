@@ -65,7 +65,7 @@ def outputs(values):
     with Path(os.environ['GITHUB_OUTPUT']).open('a')as f:
         for key,value in values.items():
             value=str(value)
-            contract.need(re.fullmatch(r'[a-z_]+',key) and value and all(32<=ord(c)<127 for c in value),"image.output_value")
+            contract.need(re.fullmatch(r'[a-z_][a-z0-9_]*',key) and value and all(32<=ord(c)<127 for c in value),"image.output_value")
             f.write(key+'='+value+'\n')
 
 
