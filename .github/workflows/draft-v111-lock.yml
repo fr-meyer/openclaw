@@ -1,4 +1,4 @@
-name: Qualify 11.1 Linux synthetic storage
+name: Qualify 11.1 final delivery source
 
 on:
   push:
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = ed9e9720c5e96bd706f0c98f47837b8e3ea01f78
-          test "$(git rev-parse HEAD^^)" = 6cef73def3dd534c1fab6d81e2d621f0b04327b4
+          test "$(git rev-parse HEAD^)" = 0836b97eb5fc67691198783256b8de672d14c83e
+          test "$(git rev-parse HEAD^^)" = ed9e9720c5e96bd706f0c98f47837b8e3ea01f78
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 815ecaa51d26e8a6bf49b4e8ba1ed07e0694dae1
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
           test "$(git rev-parse HEAD:scripts/generate-npm-package-lock.mts)" = 733f1c9411fd6163e25721edcc628f2ceb540dbe
@@ -38,6 +38,8 @@ jobs:
           test "$(git rev-parse HEAD:test/scripts/check-dependency-pins.test.ts)" = 3899206d15f874cd7b114e3661c60abdb064660b
           test "$(git rev-parse HEAD:test/scripts/generate-npm-package-lock-peers.test.ts)" = 9da098e88490b33862c6d57749b7bd74fb24c756
           test "$(git rev-parse HEAD:test/scripts/generate-npm-package-lock.test.ts)" = 4c6e53ed7e57e729b0595e86a07750b1ac58f20a
+          test "$(git rev-parse HEAD:src/agents/embedded-agent-subscribe.subscribe-embedded-agent-session.final-answer-delivery.test.ts)" = 2cb533e9a962f75877622fc0d14b4afb3b3a1da3
+          test "$(git rev-parse HEAD:src/agents/agent-harness-completion-delivery.test.ts)" = 1128e6e6b6413144934ac2302f35dacc4dc4e735
           test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = 91ac3d364b4ac945d2f61c3209ac823b68564c84
           test "$(git rev-parse HEAD:package.json)" = 9fbf5eb73aa60cd83cb416041388f6f44b9058b5
           test "$(git rev-parse HEAD:extensions/memory-lancedb/package.json)" = 20b4bf7adff1876b19d7f480fd7d7c0c3e68fb68
@@ -153,7 +155,7 @@ jobs:
             exit 1
           fi
 
-      - name: Check synthetic LanceDB storage on GitHub
+      - name: Check source final delivery on GitHub
         shell: bash
         env:
           CI: 'true'
@@ -162,4 +164,4 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
-          pnpm test extensions/memory-lancedb/lancedb-runtime.test.ts extensions/memory-lancedb/lancedb-store.test.ts extensions/memory-lancedb/lancedb-store.staleness.test.ts --maxWorkers=1
+          pnpm test src/agents/embedded-agent-subscribe.subscribe-embedded-agent-session.final-answer-delivery.test.ts src/agents/agent-harness-completion-delivery.test.ts --maxWorkers=1
