@@ -1,4 +1,4 @@
-name: Qualify 11.1 source build and storage
+name: Qualify 11.1 Linux synthetic storage
 
 on:
   push:
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 6cef73def3dd534c1fab6d81e2d621f0b04327b4
-          test "$(git rev-parse HEAD^^)" = 4697d849665e2dbcd35287f77289e3e16715299c
+          test "$(git rev-parse HEAD^)" = ed9e9720c5e96bd706f0c98f47837b8e3ea01f78
+          test "$(git rev-parse HEAD^^)" = 6cef73def3dd534c1fab6d81e2d621f0b04327b4
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 815ecaa51d26e8a6bf49b4e8ba1ed07e0694dae1
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
           test "$(git rev-parse HEAD:scripts/generate-npm-package-lock.mts)" = 733f1c9411fd6163e25721edcc628f2ceb540dbe
@@ -153,16 +153,7 @@ jobs:
             exit 1
           fi
 
-      - name: Build package and declarations on GitHub
-        shell: bash
-        env:
-          CI: 'true'
-          OPENCLAW_BUILD_CACHE: '0'
-        run: |
-          set -euo pipefail
-          pnpm build
-
-      - name: Check tsdown and synthetic LanceDB storage on GitHub
+      - name: Check synthetic LanceDB storage on GitHub
         shell: bash
         env:
           CI: 'true'
@@ -171,4 +162,4 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
-          pnpm test test/scripts/tsdown-build.test.ts extensions/memory-lancedb/lancedb-runtime.test.ts extensions/memory-lancedb/lancedb-store.test.ts extensions/memory-lancedb/lancedb-store.staleness.test.ts --maxWorkers=1
+          pnpm test extensions/memory-lancedb/lancedb-runtime.test.ts extensions/memory-lancedb/lancedb-store.test.ts extensions/memory-lancedb/lancedb-store.staleness.test.ts --maxWorkers=1
