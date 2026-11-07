@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { isTypeAliasDeclaration } from "typescript/unstable/ast";
+import { isTypeAliasDeclaration } from "typescript/ast";
 import {
   collectNativeTypeScriptDiagnostics,
   formatNativeTypeScriptDiagnostics,

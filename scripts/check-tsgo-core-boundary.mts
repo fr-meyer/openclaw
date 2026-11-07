@@ -249,7 +249,7 @@ export async function inspectCiTsgoCheckGraphs(
   }
   // One immutable compiler snapshot shares parsing and resolution across projects.
   // Membership still comes from each complete compiler program, including type-only edges.
-  const { API } = await import("typescript/unstable/async");
+  const { API } = await import("typescript/async");
   const api = new API({ cwd });
   try {
     const configs = [

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 import { runInNewContext } from "node:vm";
-import * as ts from "typescript/unstable/ast";
+import * as ts from "typescript/ast";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { convertLitToSolid } from "../../scripts/codemods/lit-to-solid.mts";
 import { createNativeTypeScriptParser } from "../../scripts/lib/native-typescript.mts";

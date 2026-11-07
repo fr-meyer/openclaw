@@ -507,7 +507,7 @@ export default [
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { Program } from "typescript/unstable/async";
+import { Program } from "typescript/async";
 import { build } from "tsdown";
 import { createDeclarationBoundaryHooks } from "./scripts/lib/tsdown-declaration-boundary.mts";
 const root = process.cwd();

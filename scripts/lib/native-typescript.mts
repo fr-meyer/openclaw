@@ -1,19 +1,19 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { SourceFile } from "typescript/unstable/ast";
+import type { SourceFile } from "typescript/ast";
 import {
   createVirtualFileSystem,
   type FileSystem,
   type FileSystemEntries,
-} from "typescript/unstable/fs";
+} from "typescript/fs";
 import {
   API,
   type CreateSnapshotParams,
   type Diagnostic,
   type Project,
   type Snapshot,
-} from "typescript/unstable/sync";
+} from "typescript/sync";
 
 export type NativeTypeScriptSource = { fileName: string; text: string };
 export type NativeTypeScriptParser = ReturnType<typeof createNativeTypeScriptParser>;
@@ -130,7 +130,7 @@ export function createNativeTypeScriptProject(options: ProjectOptions) {
 
 /** The async transport keeps its child referenced while close ends the server's input. */
 export async function createNativeTypeScriptProjectAsync(options: ProjectOptions) {
-  const { API: AsyncAPI } = await import("typescript/unstable/async");
+  const { API: AsyncAPI } = await import("typescript/async");
   const cwd = path.resolve(options.cwd);
   const configFileName = compilerFileName(cwd, options.configFileName);
   const api = new AsyncAPI({

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { FileSystem } from "typescript/unstable/fs";
+import type { FileSystem } from "typescript/fs";
 import { createDeclarationInputBoundary } from "./local-check-runtime.mts";
 
 export type DeclarationLookup =

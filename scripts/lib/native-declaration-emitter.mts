@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { API, EmitOutputFile } from "typescript/unstable/async";
+import type { API, EmitOutputFile } from "typescript/async";
 import { createDeclarationInputBoundary, resolveRepoToolBinPath } from "./local-check-runtime.mts";
 import { createDeclarationFileSystem } from "./native-declaration-filesystem.mts";
 import {
@@ -28,7 +28,7 @@ type NativeCompilationOptions = {
   emit?: boolean;
 };
 
-type NativeApiModule = typeof import("typescript/unstable/async");
+type NativeApiModule = typeof import("typescript/async");
 type NativeCompiler = {
   executable: string;
   packageJson: string;
@@ -88,8 +88,8 @@ async function resolveNativeCompiler(compilerRoot: string | undefined): Promise<
   // Roots without TypeScript or with TypeScript 6 predate the native API; they keep
   // the installed compiler.
   const [module, fsModule] = await Promise.all([
-    import("typescript/unstable/async"),
-    import("typescript/unstable/fs"),
+    import("typescript/async"),
+    import("typescript/fs"),
   ]);
   return {
     ...resolveInstalledNativeTypeScriptCompiler(),

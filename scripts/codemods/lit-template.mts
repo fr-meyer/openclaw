@@ -1,6 +1,6 @@
 import { decodeHTML, decodeHTMLAttribute } from "entities";
 import { JSDOM } from "jsdom";
-import * as ts from "typescript/unstable/ast";
+import * as ts from "typescript/ast";
 
 type TemplateBindings = {
   expression: (expression: ts.Expression, attribute: boolean) => string;

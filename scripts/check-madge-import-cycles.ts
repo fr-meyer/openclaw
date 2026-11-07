@@ -3,7 +3,7 @@ import { ChildProcess } from "node:child_process";
 import { channel } from "node:diagnostics_channel";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as ts from "typescript/unstable/ast";
+import * as ts from "typescript/ast";
 import {
   collectSourceFiles,
   collectStronglyConnectedComponents,

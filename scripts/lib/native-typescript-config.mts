@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { API, type Diagnostic } from "typescript/unstable/sync";
+import { API, type Diagnostic } from "typescript/sync";
 import { createDeclarationFileSystem } from "./native-declaration-filesystem.mts";
 import { formatNativeTypeScriptDiagnostics } from "./native-typescript-diagnostics.mts";
 

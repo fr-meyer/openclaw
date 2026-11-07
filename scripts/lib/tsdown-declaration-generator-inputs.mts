@@ -2,8 +2,8 @@ import fs from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as ts from "typescript/unstable/ast";
-import { API } from "typescript/unstable/sync";
+import * as ts from "typescript/ast";
+import { API } from "typescript/sync";
 import { collectModuleReferencesFromSource } from "./guard-inventory-utils.mjs";
 import { isRecord } from "./record-shared.mjs";
 import { createRuntimeImportGraph } from "./runtime-import-closure.mts";
@@ -61,8 +61,8 @@ export function resolveTsdownDeclarationGeneratorInputs(rootDir: string, generat
     throw new Error(`Missing native TypeScript export: ${names.join(" or ")}`);
   };
   const installedPackageImports = new Map([
-    ["typescript/unstable/async", nativeExport("./async", "./unstable/async")],
-    ["typescript/unstable/fs", nativeExport("./fs", "./unstable/fs")],
+    ["typescript/async", nativeExport("./async", "./unstable/async")],
+    ["typescript/fs", nativeExport("./fs", "./unstable/fs")],
   ]);
   // Producers traverse only their own reachable owners. Every reached computed
   // import must still match its exact expression and declared targets.

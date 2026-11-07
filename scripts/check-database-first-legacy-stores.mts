@@ -3,8 +3,8 @@
 // Guards database-first state ownership by blocking legacy store writes in runtime code.
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import * as ts from "typescript/unstable/ast";
-import type { Checker } from "typescript/unstable/sync";
+import * as ts from "typescript/ast";
+import type { Checker } from "typescript/sync";
 import {
   explicitUndefinedLegacyObjectPropertyValue,
   mergeConditionalLegacyObjectPropertyValue,
