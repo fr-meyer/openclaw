@@ -1,4 +1,4 @@
-name: Qualify 11.1 native config callbacks
+name: Diagnose 11.1 TypeScript AST traversal
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
   dependency-admission:
     if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-source-qualification'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = d5783ec4c9c8de96f6d072205197872c68272fad
-          test "$(git rev-parse HEAD^^)" = 9f78909c75c15a667737951b2c05de6d8f1c9498
+          test "$(git rev-parse HEAD^)" = 84544b900abe82f736cc5d9a737619db470f9879
+          test "$(git rev-parse HEAD^^)" = d5783ec4c9c8de96f6d072205197872c68272fad
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -154,46 +154,52 @@ jobs:
           NODE
           node scripts/generate-npm-package-lock.mjs --package-dir extensions/acpx
 
-      - name: Test TypeScript beta adapter and peer override guards
+      - name: Probe TypeScript AST node traversal
         shell: bash
-        env:
-          CI: 'true'
         run: |
           set -euo pipefail
-          pnpm test test/scripts/native-declaration-boundary.test.ts test/scripts/native-typescript.test.ts test/scripts/check-dependency-pins.test.ts test/scripts/generate-npm-package-lock-peers.test.ts test/scripts/generate-npm-package-lock.test.ts src/tasks/managed-task-flow-host.test.ts src/plugins/plugin-instance-invocation.test.ts src/plugins/runtime/gateway-request-scope.test.ts --maxWorkers=1
-
-      - name: Check peers, patches, pins and npm mirrors independently
-        shell: bash
-        env:
-          CI: 'true'
-        run: |
-          set -euo pipefail
-          peer=0; patches=0; pins=0; mirrors=0
-          pnpm peers check || peer=$?
-          pnpm deps:patches:check || patches=$?
-          pnpm deps:pins:check || pins=$?
-          pnpm deps:npm-lock:check || mirrors=$?
-          echo "RESULT peers=$peer patches=$patches pins=$pins npm_mirrors=$mirrors"
-          if (( peer || patches || pins || mirrors )); then
-            exit 1
-          fi
-
-      - name: Build package and declarations on GitHub
-        shell: bash
-        env:
-          CI: 'true'
-          OPENCLAW_BUILD_CACHE: '0'
-        run: |
-          set -euo pipefail
-          pnpm build
-
-      - name: Test tsdown wrapper on GitHub
-        shell: bash
-        env:
-          CI: 'true'
-          TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
-          OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
-        run: |
-          set -euo pipefail
-          mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
-          pnpm test test/scripts/tsdown-build.test.ts --maxWorkers=1
+          node --import ./scripts/tsx.mjs --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { API } from 'typescript/sync';
+          import * as ts from 'typescript/ast';
+          import { visitModuleSpecifiers } from './scripts/lib/ts-guard-utils.mts';
+          const api = new API({ cwd: process.cwd() });
+          try {
+            const probes = [
+              ['minimal', 'import value from "./value.js"; export { value };'],
+              ['runtime-import-closure', readFileSync('scripts/lib/runtime-import-closure.mts', 'utf8')],
+            ];
+            for (const [name, sourceText] of probes) {
+              const source = api.createSourceFile(path.resolve(name + '.ts'), sourceText);
+              let count = 0;
+              let bad;
+              function walk(node, depth) {
+                count++;
+                if (typeof node?.forEachChild !== 'function') {
+                  bad = { depth, kind: node?.kind, keys: Object.keys(node ?? {}).slice(0, 8) };
+                  return;
+                }
+                if (bad || count > 200000) return;
+                node.forEachChild((child) => { if (!bad) walk(child, depth + 1); });
+              }
+              walk(source, 0);
+              console.log(name + '-shape=' + JSON.stringify({
+                nodes: count, bad, rootForEachChild: typeof source.forEachChild,
+                firstForEachChild: typeof source.statements?.[0]?.forEachChild,
+                moduleForEachChild: typeof source.statements?.[0]?.moduleSpecifier?.forEachChild,
+                exportedForEachChild: typeof ts.forEachChild,
+              }));
+              try {
+                let references = 0;
+                visitModuleSpecifiers(source, () => { references++; });
+                console.log(name + '-visit=ok references=' + references);
+              } catch (error) {
+                console.log(name + '-visit=' + String(error));
+              }
+              source.dispose?.();
+            }
+          } finally {
+            api.close();
+          }
+          NODE
