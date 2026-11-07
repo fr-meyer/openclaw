@@ -138,13 +138,20 @@ def expected_object(source):
     return f"oci-quarantine/v2026.10.9/{source}/{OPERATION}/retained-oci.tar"
 
 
+# A third workflow is not authorized by either earlier approval. Bind the
+# exact genuine finite new approval only in a reviewed future successor.
+THIRD_IMAGE_WORKFLOW_APPROVAL_SHA256 = "6c54eba6116180c5e79c750d78ed0d7a3c21104eca9d2a620e6d2bd254417877"
+
+
 def validate_request(value, active=False, now=None):
     template = disarmed_request()
     amended = type(value) is dict and "sourceBudgetCeilingAmendmentSha256" in value
     successor = type(value) is dict and "sourceStage" in value
     retry = type(value) is dict and "retryAfterFailedAdmission" in value
+    third = type(value) is dict and "retryAfterSecondFailedAdmission" in value
     fields(value, (*template, *(("sourceBudgetCeilingAmendmentSha256",) if amended else ()),
-        *(("sourceStage",) if successor else ()), *(("retryAfterFailedAdmission",) if retry else ())), "image.request_fields")
+        *(("sourceStage",) if successor else ()), *(("retryAfterFailedAdmission",) if retry else ()),
+        *(("retryAfterSecondFailedAdmission",) if third else ())), "image.request_fields")
     for key in ("schema", "campaignId", "repository", "workflow", "workflowBranch", "operationId"):
         need(value[key] == template[key], "image.fixed_scope")
     need(value["state"] in ("DISARMED", "PREPARED_BUILD", "APPROVED_BUILD"), "image.state")
@@ -155,11 +162,41 @@ def validate_request(value, active=False, now=None):
         need(value == template and not active, "image.disarmed")
         return value
     if retry:
-        need(value["state"] == "APPROVED_BUILD" and value["retryAfterFailedAdmission"] == {
+        need((value["state"] == "APPROVED_BUILD" or third and value["state"] == "PREPARED_BUILD") and value["retryAfterFailedAdmission"] == {
             "runId": "42239007307", "head": "ccca07e2156a06ab5cd90badbf289442376d0ddf",
             "admissionConclusion": "failure", "buildConclusion": "skipped",
             "approvalSha256": "1da670194d8e018882e90c4daaf45132340c8a4b3c85311af8eca8cdadab218d"},
             "image.exact_failed_admission_retry")
+    if third:
+        need(retry, "image.third_requires_exact_first_failure")
+        approval = value["retryAfterSecondFailedAdmission"].get("approvalSha256") if type(value["retryAfterSecondFailedAdmission"]) is dict else False
+        need(value["retryAfterSecondFailedAdmission"] == {
+            "runId": "42256250335", "head": "f10e39a8995b4b7a8012d36757369641c6ca27c9",
+            "admissionConclusion": "failure", "buildConclusion": "skipped", "approvalSha256": approval},
+            "image.exact_second_failed_admission")
+        need(value["sourceSha"] == "5271dcd47cdd374ea12effb39bd29ba7e219f12f" and
+            value["sourceTree"] == "69991f516f1104a2f0b4d47d8eb54df0c89d656d" and
+            value["previousPipelineHead"] == "3d2fd347db93520418805db8761a034a50810983" and
+            [value[k] for k in ("sourceBindingsSha256", "sourceRequestSha256", "generationReceiptSha256", "manifestSha256", "inventorySha256")] == [
+                "5726aac943f27f1bea3c804fc91d89e7bd4fe8ecec50ecaf13f2d677bd9c2190",
+                "b25f0027a5fad04f8a28b824de23b1d73788cbf445d4f9d43a96580bafeba9b9",
+                "f79e04e2c158658bab0b05c04595eb79f34e62dd513557951ddbdd033f522e41",
+                "81b1a29bbedace21bbfa5b0cbccdd06c7103398388af00b7c0601c3fa1c2a322",
+                "efe053038c7291822cf8c78461baac1ae8aa67e415c96f0ba11058b25ce1830d"] and
+            value["sourceValidation"] == {"runId": "42193171596", "attempt": 1,
+                "pipelineHead": "3d2fd347db93520418805db8761a034a50810983", "phase": "validation",
+                "artifactId": 13503996221, "artifactSha256": "66e2a4e52dcffac27894ae20af32d75a6ef18f76216cdb7606919eb765327d61",
+                "resultSha256": "f2001446af70e85e9e6358c6fe5fce920a7acd203358fb905c3ab752b151c72e"} and
+            amended and successor and source_stage_digest(value["sourceStage"]) ==
+                "d1629ea706296afbbf10b4409e8e38b64563a0f94da89780a74cc07f75c5cefc",
+            "image.third_frozen_source_binding")
+        if value["state"] == "PREPARED_BUILD":
+            need(approval is None and value["authorization"] is None and not active,
+                "image.third_preparation_not_authorized")
+        else:
+            need(value["state"] == "APPROVED_BUILD" and pin(THIRD_IMAGE_WORKFLOW_APPROVAL_SHA256) and
+                approval == THIRD_IMAGE_WORKFLOW_APPROVAL_SHA256,
+                "image.third_workflow_new_approval_unresolved")
     stage = source_stage(value["sourceStage"]) if successor else None
     need(not successor or amended, "image.source_stage_budget_link")
     need(all(pin(value[k], True) for k in ("preparationSourceSha", "previousPipelineHead", "sourceSha", "sourceTree")),
@@ -229,8 +266,9 @@ def validate_context(context, request, now):
         "before", "after", "created", "deleted", "forced"), "image.context_fields")
     need(context["repository"] == REPOSITORY and context["actor"] == ACTOR and context["event"] == "push" and
         context["ref"] == REF and pin(context["sha"], True) and context["sha"] == context["workflowSha"] == context["after"] and
-        context["before"] == (request["retryAfterFailedAdmission"]["head"] if "retryAfterFailedAdmission" in request
-            else request["previousPipelineHead"]) and type(context["runId"]) is str and RUN.fullmatch(context["runId"]) and
+        context["before"] == (request["retryAfterSecondFailedAdmission"]["head"] if "retryAfterSecondFailedAdmission" in request else
+            request["retryAfterFailedAdmission"]["head"] if "retryAfterFailedAdmission" in request else
+            request["previousPipelineHead"]) and type(context["runId"]) is str and RUN.fullmatch(context["runId"]) and
         type(context["attempt"]) is int and context["attempt"] == 1 and context["created"] is False and
         context["deleted"] is False and context["forced"] is False, "image.exact_push_context")
     return context
@@ -300,6 +338,8 @@ def validate_source_snapshot(request, run, jobs, artifacts, zip_raw, result_vali
 
 def validate_image_history(request, context, runs, jobs_by_run):
     """Any previously admitted physical job, pending outcome or retry refuses."""
+    if "retryAfterSecondFailedAdmission" in request:
+        return validate_third_workflow_history(request, context, runs, jobs_by_run)
     need(type(runs) is dict and type(runs.get("total_count")) is int and
         runs["total_count"]==len(runs.get("workflow_runs",[])) and 1<=runs["total_count"]<=64,
         "image.complete_history")
@@ -335,6 +375,56 @@ def validate_image_history(request, context, runs, jobs_by_run):
             if job.get("name")=="build-private-image":
                 need(job.get("conclusion")=="skipped" and not job.get("steps"), "image.physical_attempt_already_consumed")
     need(found and (retry is None or prior_found), "image.current_run_missing")
+    return True
+
+
+def validate_third_workflow_history(request, context, runs, jobs_by_run):
+    """Only the two exact failed admissions and one new current workflow."""
+    validate_request(request)
+    need(type(context.get("runId")) is str and RUN.fullmatch(context["runId"]) and pin(context.get("sha"), True),
+        "image.third_current_pin")
+    prior = {"42239007307": "ccca07e2156a06ab5cd90badbf289442376d0ddf",
+             "42256250335": "f10e39a8995b4b7a8012d36757369641c6ca27c9"}
+    need(type(runs) is dict and type(runs.get("total_count")) is int and runs["total_count"] == 3 and
+        type(runs.get("workflow_runs")) is list and len(runs["workflow_runs"]) == 3 and
+        len({r.get("id") for r in runs["workflow_runs"]}) == 3,
+        "image.third_exact_three_run_history")
+    need(type(jobs_by_run) is dict and set(jobs_by_run) == set(prior), "image.third_exact_prior_job_pages")
+    found = False
+    seen = set()
+    for run in runs["workflow_runs"]:
+        rid = str(run.get("id"))
+        need(run.get("path") == WORKFLOW and run.get("event") == "push" and run.get("head_branch") == BRANCH and
+            type(run.get("run_attempt")) is int and run["run_attempt"] == 1 and
+            run.get("actor", {}).get("login") == ACTOR and run.get("triggering_actor", {}).get("login") == ACTOR,
+            "image.history_identity")
+        if rid == context["runId"]:
+            need(not found and run.get("head_sha") == context["sha"] and run.get("status") in ("queued", "in_progress"),
+                "image.current_run_identity")
+            found = True
+            continue
+        need(rid in prior and rid not in seen and run.get("head_sha") == prior[rid] and
+            run.get("status") == "completed" and run.get("conclusion") == "failure",
+            "image.third_exact_prior_failed_run")
+        seen.add(rid)
+        page = jobs_by_run[rid]
+        need(type(page) is dict and page.get("total_count") == len(page.get("jobs", [])) == 2 and
+            {j.get("name") for j in page["jobs"]} == {"image-admission", "build-private-image"} and
+            len({j.get("id") for j in page["jobs"]}) == 2 and
+            all(type(j.get("id")) is int and j["id"] > 0 for j in page["jobs"]),
+            "image.prior_jobs_complete")
+        for job in page["jobs"]:
+            need(job.get("status") == "completed" and str(job.get("run_id")) == rid,
+                "image.prior_job_unsettled")
+            if job.get("name") == "image-admission":
+                need(job.get("conclusion") == "failure", "image.prior_admission_refusal")
+            else:
+                need(job.get("conclusion") == "skipped" and "steps" in job and
+                    (job["steps"] is None or type(job["steps"]) is list and job["steps"] == []) and
+                    "runner_id" in job and (job["runner_id"] is None or type(job["runner_id"]) is int and job["runner_id"] == 0) and
+                    "runner_name" in job and job["runner_name"] in (None, ""),
+                    "image.physical_attempt_already_consumed")
+    need(found and seen == set(prior), "image.third_current_and_both_priors_required")
     return True
 
 

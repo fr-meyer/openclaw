@@ -1645,7 +1645,9 @@ def collect_history_accounting(pipeline, bindings, request, head, env, api, reso
                 policy.need({a.get("id") for a in arts}<={a["metadata"]["id"] for a in booked},
                     "v9.h3_prefix_unknown_artifact")
             artifact_absences+=reconcile_h3_artifacts(arts,booked,run,clock)
-        if diagnostic_value is not None and not is_source:
+        if image_hold:
+            verify_image_source_hold(run, arts, diagnostic_value)
+        elif diagnostic_value is not None and not is_source:
             model_diagnostic.validate_record(sys.modules[__name__],run,diagnostic_value,jobs,arts,env["GITHUB_RUN_ID"])
         for artifact in arts:
             aid = artifact.get("id")
@@ -1759,20 +1761,41 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
 # Image-only consumer of the unchanged, qualified validation28 source proof.
 # Public run identities retain unresolved ownership; they do not attribute it.
 IMAGE_ALLOCATION_LEDGER_SHA256 = "4bbcbdfd04048d6026c8fc59587ed79bc1bed00a6a68f4b46f05233444e7a89d"
-IMAGE_ALLOCATION_DECISION_SHA256 = "1d2a5a1851568fddf9b39cbd16ee63dfbda9c25c755b12bea9a884100bdde6e7"
+IMAGE_ALLOCATION_DECISION_SHA256 = "fd4095fd9b381cd1b77b8b10e9b968f72b08325d47ae839e19a0b42e7c24574c"
 IMAGE_SOURCE_BINDINGS_SHA256 = "5726aac943f27f1bea3c804fc91d89e7bd4fe8ecec50ecaf13f2d677bd9c2190"
 IMAGE_SOURCE_REQUEST_SHA256 = "b25f0027a5fad04f8a28b824de23b1d73788cbf445d4f9d43a96580bafeba9b9"
 IMAGE_UNKNOWN_RUN_IDS = ('41951003346', '41951003359', '41951013206', '41951014161', '41959745699', '41959745748', '41959755184', '41959755321', '41973803168', '41973803175', '41973812464', '41973821194', '41978951015', '41978951107', '41978960074', '41978962442', '41984882074', '41984882082', '41984890987', '41984897439', '41997331659', '41997331796', '41997342179', '41997342272', '42007804734', '42007805142', '42007821574', '42007823268', '42022441217', '42022441229', '42022451281', '42022453352', '42034443898', '42034443919', '42034459328', '42034460160', '42044753476', '42044753908', '42044768222', '42044773380', '42150531944', '42150531991', '42150541964', '42150542713', '42157190380', '42157190419', '42157199759', '42157202222', '42166042574', '42166042726', '42166054486', '42166054635', '42168828507', '42168854781', '42170282542', '42170282649', '42172551178', '42172562781', '42174003663', '42174003797', '42180561696', '42180582139', '42180801783', '42180801873', '42189830085', '42189899682', '42189940912', '42189965214', '42190005375', '42190094421', '42190259001', '42190283060', '42193180261', '42193180279', '42198085012', '42198150508', '42198191477', '42198191571', '42198195000', '42198195043', '42198267656', '42198267676', '42199535935', '42199536020')
 IMAGE_UNKNOWN_HELD_MINUTES = 28
-IMAGE_RETRY_PRIOR_RUN_ID = "42239007307"
-IMAGE_RETRY_PRIOR_HEAD = "ccca07e2156a06ab5cd90badbf289442376d0ddf"
+IMAGE_FAILED_ADMISSION_DEBITS = (
+    ("42239007307", "ccca07e2156a06ab5cd90badbf289442376d0ddf", 5, 10),
+    ("42256250335", "f10e39a8995b4b7a8012d36757369641c6ca27c9", 5, 9),
+)
+IMAGE_NEXT_PUBLICATION_INCIDENTAL_RESERVE = 22
+
+
+def verify_image_source_hold(run, artifacts, diagnostic_value):
+    """A skipped image-head source run is incidental, not a model diagnostic.
+
+    The positive zero-runner job shape and image-head identity are established
+    before this call. Require its terminal state, no artifacts, and (when the
+    same head also has a model workflow) SOURCE/DISARMED routing. A genuine
+    DIAGNOSTIC head cannot take this branch to evade its original validator.
+    """
+    policy.need(run.get("status")=="completed" and run.get("conclusion")=="skipped",
+        "v9.image_source_hold_terminal")
+    policy.need(artifacts==[], "v9.image_source_hold_artifacts")
+    if diagnostic_value is not None:
+        policy.need(type(diagnostic_value)is dict and
+            diagnostic_value.get("routingMode")=="SOURCE" and
+            diagnostic_value.get("status")=="DISARMED",
+            "v9.image_source_hold_model_routing")
 
 
 def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, current_minutes):
-    """Apply the reviewed18-minute internal transfer only to this image lane.
+    """Apply the reviewed additional22-minute transfer only to this image lane.
 
     Qualified source inputs keep their original194 incidental cap. This image
-    consumer uses212 and reduces preparation310 to292, retaining all source,
+    consumer uses234 and reduces preparation310 to270, retaining all source,
     artifact and native-attempt checks of the unchanged history collector.
     """
     from bounded_run_contract_v109 import h3_stage_pools, source_successor_amendment
@@ -1785,7 +1808,7 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
     policy.need(grant==policy.run_grant(bindings) and
         h3_stage_pools(grant)=={"preparation":310,"source":3189,"incidental":194,"image":180},
         "v9.image_allocation_original_pools")
-    pools={"preparation":292,"source":3189,"incidental":212,"image":180}
+    pools={"preparation":270,"source":3189,"incidental":234,"image":180}
     stage=source_successor_amendment(grant)
     policy.need(stage is not None and stage["stagePrefixNewMinutes"]==2215 and
         stage["maximumStageRunnerMinutes"]==3873 and stage["maximumStageBookedMinutes"]==6088 and
@@ -1811,13 +1834,35 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
         charges[key]=max(charges[key],row["runnerMinutes"])
     old={r["runId"]:r["runnerMinutes"] for r in prefix["records"]}
     policy.need(current_id not in old,"v9.h3_current_reuses_prefix")
-    prior=facts["history"].get(IMAGE_RETRY_PRIOR_RUN_ID)
-    prior_minutes=charges.get((IMAGE_RETRY_PRIOR_RUN_ID,1))
-    policy.need(type(prior)is dict and prior.get("head_sha")==IMAGE_RETRY_PRIOR_HEAD and
-        prior.get("status")=="completed" and prior.get("conclusion")=="failure" and
-        facts["run_pools"].get(IMAGE_RETRY_PRIOR_RUN_ID)=="image" and
-        type(prior_minutes)is int and 5<=prior_minutes<=15,
-        "v9.image_exact_failed_admission_debit")
+    prior_image_minutes=0;incidental_floor_added=0;prior_native_incidental=0
+    for rid,head,image_floor,incidental_floor in IMAGE_FAILED_ADMISSION_DEBITS:
+        prior=facts["history"].get(rid);key=(rid,1)
+        native=charges.get(key)
+        policy.need(rid!=current_id and type(prior)is dict and
+            prior.get("head_sha")==head and prior.get("run_attempt")==1 and
+            prior.get("path")==".github/workflows/future-v109-image-build.yml" and
+            prior.get("event")=="push" and prior.get("head_branch")==policy.PIPELINE_BRANCH and
+            prior.get("status")=="completed" and prior.get("conclusion")=="failure" and
+            facts["run_pools"].get(rid)=="image" and type(native)is int and 0<=native<=15,
+            "v9.image_exact_two_failed_admission_debits")
+        # A shorter later observation cannot refund the settled five-minute
+        # admission. Native work above the floor is still charged in full.
+        charges[key]=max(native,image_floor);prior_image_minutes+=charges[key]
+        incidental_ids={run_id for run_id,run in facts["history"].items()
+            if run.get("head_sha")==head and facts["run_pools"].get(run_id)=="incidental"}
+        policy.need(incidental_ids and all(facts["history"][run_id].get("status")=="completed"
+            and (run_id,1) in charges for run_id in incidental_ids),
+            "v9.image_failed_publication_incidental_membership")
+        native_incidental=sum(charges[(run_id,1)]for run_id in incidental_ids)
+        prior_native_incidental+=native_incidental
+        incidental_floor_added+=max(0,incidental_floor-native_incidental)
+    current_head=facts["current"].get("head_sha")
+    policy.need(type(current_head)is str and policy.SHA.fullmatch(current_head) and
+        current_head not in {row[1]for row in IMAGE_FAILED_ADMISSION_DEBITS},
+        "v9.image_fresh_third_publication_head")
+    current_publication_incidental=sum(minutes for (rid,attempt),minutes in charges.items()
+        if facts["run_pools"].get(rid)=="incidental" and
+        facts["history"].get(rid,{}).get("head_sha")==current_head)
     used={k:0 for k in pools}
     for (rid,attempt),minutes in charges.items():
         policy.need(attempt==1 and rid in facts["run_pools"],"v9.h3_component_native_identity")
@@ -1825,12 +1870,13 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
         policy.need(kind in used,"v9.h3_component_role")
         used[kind]+=minutes-old.get(rid,0)
     policy.need(used["preparation"]==246 and used["source"]==2028 and
-        used["incidental"]>=162 and used["image"]==prior_minutes+current_minutes and
+        used["incidental"]-prior_native_incidental-current_publication_incidental==162 and
+        used["image"]==prior_image_minutes+current_minutes and
         facts["run_pools"].get(current_id)=="image", "v9.image_allocation_no_source_refund_or_new_source")
-    used["incidental"]+=IMAGE_UNKNOWN_HELD_MINUTES
+    used["incidental"]+=IMAGE_UNKNOWN_HELD_MINUTES+incidental_floor_added
     policy.need(all(type(v)is int and 0<=v<=pools[k] for k,v in used.items()),
         "v9.image_allocation_component_ceiling")
-    total=sum(charges.values())+IMAGE_UNKNOWN_HELD_MINUTES
+    total=sum(charges.values())+IMAGE_UNKNOWN_HELD_MINUTES+incidental_floor_added
     policy.need(total==stage["stagePrefixNewMinutes"]+sum(used.values()) and
         total<=stage["maximumStageBookedMinutes"] and total<=25000,
         "v9.h3_stage_total_floor")
@@ -1840,6 +1886,12 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
         "remainingIncidentalReserveMinutes":pools["incidental"]-used["incidental"],
         "unresolvedOwnershipHeldMinutes":IMAGE_UNKNOWN_HELD_MINUTES,
         "unresolvedOwnershipAttemptCount":len(IMAGE_UNKNOWN_RUN_IDS),
+        "priorFailedAdmissionImageMinutes":prior_image_minutes,
+        "priorFailedPublicationIncidentalFloorMinutes":19,
+        "priorFailedPublicationIncidentalFloorAddedMinutes":incidental_floor_added,
+        "currentPublicationIncidentalObservedMinutes":current_publication_incidental,
+        "remainingWholePublicationIncidentalReserveMinutes":max(0,
+            IMAGE_NEXT_PUBLICATION_INCIDENTAL_RESERVE-current_publication_incidental),
         "imageOnlyAllocationLedgerSha256":IMAGE_ALLOCATION_LEDGER_SHA256,
         "imageOnlyAllocationDecisionSha256":IMAGE_ALLOCATION_DECISION_SHA256}
     return total,components,pools
@@ -1873,6 +1925,12 @@ def image_cumulative_booking(pipeline, api_get, bindings, selected, current_id, 
                 job.get("conclusion")=="success","v9.image_admission_success_required")
     current=observed_jobs(jobs,clock,False,{"image-admission":15,"build-private-image":90})[0]
     total,components,pools=image_stage_minute_facts(pipeline,bindings,selected,facts,current_id,current)
+    # Both failed publications remain paid liabilities. The reviewed234 pool
+    # leaves25 after their209-minute conservative incidental prefix. Require
+    # the remaining whole22-minute publication envelope at every admission.
+    policy.need(components["remainingIncidentalReserveMinutes"]>=
+        components["remainingWholePublicationIncidentalReserveMinutes"],
+        "v9.image_third_publication_requires_reviewed_incidental_allocation")
     # The image owner separately reserves image/incidental remainders. Retain
     # the unspent source/preparation pools here rather than releasing them from
     # a missing observation or fewer material generations.
