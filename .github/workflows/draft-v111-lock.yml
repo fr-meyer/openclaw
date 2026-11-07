@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = d2affe9540c5af39adcfc6d53856f55ac05d222a
-          test "$(git rev-parse HEAD^^)" = 5b37d2715db78b093c0455c0716faf155efef472
+          test "$(git rev-parse HEAD^)" = e004aebfa5eb9023259a993349b8d3d7bda95fbf
+          test "$(git rev-parse HEAD^^)" = d2affe9540c5af39adcfc6d53856f55ac05d222a
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -222,7 +222,7 @@ jobs:
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
               const file = path.join(dir, entry.name);
               if (entry.isDirectory()) visit(file);
-              else if (/\\.m?js$/.test(entry.name) && fs.readFileSync(file, "utf8").includes(symbol)) {
+              else if ((entry.name.endsWith(".js") || entry.name.endsWith(".mjs")) && fs.readFileSync(file, "utf8").includes(symbol)) {
                 matches.push(file);
               }
             }
@@ -236,7 +236,7 @@ jobs:
             for (const file of [...new Set([named, ...matches])].slice(0, 15)) {
               if (!fs.existsSync(file)) continue;
               const source = fs.readFileSync(file, "utf8");
-              const regions = [...source.matchAll(/^\\/\\/#region (.+)$/gm)].map((match) => match[1]);
+              const regions = source.split(String.fromCharCode(10)).filter((line) => line.startsWith("//#region ")).map((line) => line.slice("//#region ".length));
               const names = graph.names(file);
               const bindings = names.map((name) => ({ name, binding: graph.binding(file, name) })).filter(({ name, binding }) => name === symbol || binding?.origin?.module === "src/daemon/inspect.ts");
               console.log(JSON.stringify({ file: path.relative(dist, file), regions: regions.filter((name) => name.includes("daemon/inspect")).slice(0, 8), names: names.filter((name) => name.includes("findSystem") || name.includes("GatewayServices")), bindings }));
