@@ -101,10 +101,12 @@ function createVirtualFileSystem(contents: Readonly<Record<string, string>>) {
     getAccessibleEntries(directory: string): FileSystemEntries {
       const root = path.resolve(directory);
       return {
-        files: [...files.keys()].filter((file) => path.dirname(file) === root).map(path.basename),
+        files: [...files.keys()]
+          .filter((file) => path.dirname(file) === root)
+          .map((file) => path.basename(file)),
         directories: [...directories]
           .filter((child) => child !== root && path.dirname(child) === root)
-          .map(path.basename),
+          .map((child) => path.basename(child)),
         symlinks: [],
       };
     },
