@@ -1,4 +1,4 @@
-name: Diagnose 11.1 updater binding
+name: Qualify 11.1 module-label compatibility
 
 on:
   push:
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 46a20c3b1ebaa47b40831b1cfe66c35041ab14de
-          test "$(git rev-parse HEAD^^)" = e004aebfa5eb9023259a993349b8d3d7bda95fbf
+          test "$(git rev-parse HEAD^)" = 51074618cb954f5e74d155a6a28c3872fa29ab43
+          test "$(git rev-parse HEAD^^)" = 149e34a4cb56ed6ac0b96d5cfc26bf2e2126e3b9
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -59,6 +59,20 @@ jobs:
           test "$(git rev-parse HEAD:scripts/pr-lib/wrapper-components.txt)" = fdf259c403967aeb32db7a8fd34c0499cad087b9
           test "$(git rev-parse HEAD:src/cli/gateway-cli/run.ts)" = 3cc56653184018a1b64cb179f819a3eaf93a2a2e
           test "$(git rev-parse HEAD:tsdown.config.ts)" = 579af91733a2a4030da7bd9499cb858d39993922
+          test "$(git rev-parse HEAD:scripts/lib/bundled-module-regions.mjs)" = fef67d607694b8fe11b72f23e7557351f9ae0156
+          test "$(git rev-parse HEAD:scripts/lib/update-compat-chunks.mts)" = c3e8340c1aadb7f8953a04430c178d47dc31c807
+          test "$(git rev-parse HEAD:scripts/lib/update-compat-module-graph.mts)" = 305dfd844d12588737f5926fd90bf2c1b450c638
+          test "$(git rev-parse HEAD:scripts/runtime-postbuild.mts)" = a2b2f0333fba8ce680e0e730a13894a386ebb55e
+          test "$(git rev-parse HEAD:scripts/openclaw-npm-postpublish-verify.ts)" = 0ab29a4a42f54ea921b72b2612477ea90254bad0
+          test "$(git rev-parse HEAD:scripts/openclaw-npm-release-check.ts)" = 43d5cc0b4e2f1d5247fb5ec059df12a9b85be976
+          test "$(git rev-parse HEAD:scripts/release-check.ts)" = 168fb579b75a750f15a6ec2c818c375866d8f174
+          test "$(git rev-parse HEAD:test/scripts/runtime-postbuild.test.ts)" = c2f9f052348b4be33fa28cb64956a7008caed0f3
+          test "$(git rev-parse HEAD:test/scripts/update-compat-external-bindings.test.ts)" = 5baf5de783207607a8e5c33872a51cd106e71735
+          test "$(git rev-parse HEAD:test/openclaw-npm-postpublish-verify.test.ts)" = 192dbc8224b214eecc686245f3c14b548b59f9ba
+          test "$(git rev-parse HEAD:test/openclaw-npm-release-check.test.ts)" = 190723a9630c96ee4238cac2cd3930a64abd151f
+          test "$(git rev-parse HEAD:test/release-check.test.ts)" = 1264f6e74078483c146647aaf1dc47d330a9723b
+          test "$(git rev-parse HEAD:scripts/lib/bun-standalone-codegen.mjs)" = 42930198938270a9e361bbe958316c4150b8eaa7
+          test "$(git rev-parse HEAD:test/scripts/bun-standalone-codegen.test.ts)" = 762cb872b91d7c371b39b4f5a14ab3f35804efe2
           test "$(git rev-parse HEAD:test/scripts/native-typescript.test.ts)" = 4abb28603af08cbea222b2901413bbb9d865d118
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 9a8fad5519c62064cd3e9b8960d5225ce207f895
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
@@ -169,6 +183,17 @@ jobs:
         run: |
           set -euo pipefail
           pnpm test test/scripts/native-declaration-boundary.test.ts test/scripts/native-typescript.test.ts test/scripts/eager-import-closure.test.ts test/scripts/check-coercion-helper-declarations.test.ts test/scripts/check-coercion-helper-declarations.io.test.ts test/scripts/check-dependency-pins.test.ts test/scripts/generate-npm-package-lock-peers.test.ts test/scripts/generate-npm-package-lock.test.ts src/tasks/managed-task-flow-host.test.ts src/plugins/plugin-instance-invocation.test.ts src/plugins/runtime/gateway-request-scope.test.ts --maxWorkers=1
+
+      - name: Test module-label updater, release and standalone consumers
+        shell: bash
+        env:
+          CI: 'true'
+          TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
+          OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
+          pnpm test test/scripts/update-compat-external-bindings.test.ts test/openclaw-npm-postpublish-verify.test.ts test/openclaw-npm-release-check.test.ts test/release-check.test.ts test/scripts/bun-standalone-codegen.test.ts --maxWorkers=1
 
       - name: Check TypeScript AST guard entrypoints
         shell: bash
