@@ -1,4 +1,4 @@
-name: Qualify 11.1 gateway startup declarations
+name: Qualify 11.1 update compatibility bridge
 
 on:
   push:
@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 99481d32bbf7871b4d1f9f3749ac9532fcb9d8cf
-          test "$(git rev-parse HEAD^^)" = 90e22138b239c4a12880a5758965b07120cf44b8
+          test "$(git rev-parse HEAD^)" = 5b37d2715db78b093c0455c0716faf155efef472
+          test "$(git rev-parse HEAD^^)" = 141be20206a1b8e32d3200b4c14254867f5d2938
           if git grep -n -F "typescript/unstable/" -- scripts src test packages extensions; then
             echo "Obsolete TypeScript unstable import remains" >&2
             exit 1
@@ -58,6 +58,7 @@ jobs:
           test "$(git rev-parse HEAD:test/scripts/check-coercion-helper-declarations.test.ts)" = 2a5020b0400b189508182bd4264c702660572565
           test "$(git rev-parse HEAD:scripts/pr-lib/wrapper-components.txt)" = fdf259c403967aeb32db7a8fd34c0499cad087b9
           test "$(git rev-parse HEAD:src/cli/gateway-cli/run.ts)" = 3cc56653184018a1b64cb179f819a3eaf93a2a2e
+          test "$(git rev-parse HEAD:tsdown.config.ts)" = 579af91733a2a4030da7bd9499cb858d39993922
           test "$(git rev-parse HEAD:test/scripts/native-typescript.test.ts)" = 4abb28603af08cbea222b2901413bbb9d865d118
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 9a8fad5519c62064cd3e9b8960d5225ce207f895
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
@@ -200,6 +201,18 @@ jobs:
         run: |
           set -euo pipefail
           pnpm build
+
+      - name: Verify built update bridge and compatibility tests
+        shell: bash
+        env:
+          CI: 'true'
+          TMPDIR: ${{ runner.temp }}/openclaw-v111-tmp
+          OPENCLAW_STATE_DIR: ${{ runner.temp }}/openclaw-v111-state
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$OPENCLAW_STATE_DIR"
+          node --input-type=module -e 'const bridge = await import("./dist/inspect-Duxclsbo.js"); if (typeof bridge.findSystemGatewayServices !== "function") throw new Error("missing inspect compatibility export");'
+          pnpm test test/scripts/runtime-postbuild.test.ts --maxWorkers=1
 
       - name: Test tsdown wrapper on GitHub
         shell: bash
