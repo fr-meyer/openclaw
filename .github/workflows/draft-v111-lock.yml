@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 1f20ad00d42f999af9c8ebaa8678ae925531e755
-          test "$(git rev-parse HEAD^^)" = a45152713f3cdccee802e3547562ec242d25e300
+          test "$(git rev-parse HEAD^)" = e98e2ceaa0d029f3edbedf257b34a4731ddae52c
+          test "$(git rev-parse HEAD^^)" = 1f20ad00d42f999af9c8ebaa8678ae925531e755
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 815ecaa51d26e8a6bf49b4e8ba1ed07e0694dae1
           test "$(git rev-parse HEAD:scripts/check-dependency-pins.mts)" = 12d1fe1d3d78b214d292adcb78e96f2c9202bdac
           test "$(git rev-parse HEAD:scripts/generate-npm-package-lock.mts)" = e863c132e3465c27a35d382f8ec8dd36e56f3c4f
@@ -86,6 +86,47 @@ jobs:
           grep -q '^  rolldown-plugin-dts@0.29.0:' pnpm-lock.yaml
           grep -q '^  tsdown@0.23.2:' pnpm-lock.yaml
           grep -q "^  '@lancedb/lancedb@0.41.0':" pnpm-lock.yaml
+
+      - name: Diagnose ACP SDK npm mirror placement
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          node --import ./scripts/tsx.mjs --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import path from 'node:path';
+          import {
+            packageJsonForNpmLock,
+            readNpmLockOverrides,
+          } from './scripts/generate-npm-package-lock.mts';
+          const packageDir = path.resolve('extensions/acpx');
+          const pkg = JSON.parse(readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
+          const planned = readNpmLockOverrides(pkg, packageDir);
+          const effective = packageJsonForNpmLock(pkg, planned).overrides;
+          const parentKeys = new Set([
+            '@agentclientprotocol/codex-acp',
+            '@agentclientprotocol/codex-acp@2.1.1',
+            'acpx',
+            'acpx@0.19.4',
+            '@agentclientprotocol/claude-agent-acp',
+            '@agentclientprotocol/claude-agent-acp@0.95.0',
+          ]);
+          const project = (overrides) => Object.fromEntries(
+            Object.entries(overrides ?? {}).flatMap(([key, value]) => {
+              if (key === '@agentclientprotocol/sdk' || key.startsWith('@agentclientprotocol/sdk@')) {
+                return [[key, typeof value === 'string' ? value : value?.['.']]];
+              }
+              if (!parentKeys.has(key) || !value || typeof value !== 'object') return [];
+              return [[key, Object.fromEntries(Object.entries(value)
+                .filter(([child]) => child === '.' || child === '@agentclientprotocol/sdk')
+                .map(([child, spec]) => [child, typeof spec === 'string' ? spec : spec?.['.']]))]];
+            }),
+          );
+          console.log('planned-sdk-overrides=' + JSON.stringify(project(planned)));
+          console.log('effective-sdk-overrides=' + JSON.stringify(project(effective)));
+          NODE
+          node scripts/generate-npm-package-lock.mjs --package-dir extensions/acpx
 
       - name: Test peer override guards
         shell: bash
