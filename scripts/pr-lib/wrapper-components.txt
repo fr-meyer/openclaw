@@ -163,6 +163,7 @@ scripts/changed-lanes.mts
 scripts/check-changelog-attributions.mjs
 scripts/check-changelog-attributions.mts
 scripts/crabbox-untrusted-bootstrap.sh
+scripts/fork-release/native_tests.mjs
 scripts/generate-kysely-types.mts
 scripts/lib/arg-utils.mts
 scripts/lib/arg-utils.runtime.mjs
