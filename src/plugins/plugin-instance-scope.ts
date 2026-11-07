@@ -1,7 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { pluginInstanceInvocation } from "./plugin-instance-invocation.js";
-import { createPluginValueInstances } from "./plugin-instance-owned-values.js";
+import {
+  createPluginValueInstances,
+  type PluginValueInstances,
+} from "./plugin-instance-owned-values.js";
 import type {
   PluginInvocationInstance,
   PluginInstanceResource,
@@ -69,8 +72,12 @@ export type PluginInstanceOwner = {
   | { revoked: false; registry: PluginRegistry }
   | { revoked: true; registry: PluginRegistry | undefined }
 );
+export type PluginInstanceState = {
+  records: WeakMap<PluginRecord | PluginInstanceResource, PluginInstanceOwner>;
+  values: PluginValueInstances<PluginInstanceHandle>;
+};
 // SDK source transforms and native core chunks must observe the same exact owner.
-export const pluginInstanceState = resolveGlobalSingleton(
+export const pluginInstanceState: PluginInstanceState = resolveGlobalSingleton(
   Symbol.for("openclaw.pluginInstanceState"),
   () => ({
     records: new WeakMap<PluginRecord | PluginInstanceResource, PluginInstanceOwner>(),
