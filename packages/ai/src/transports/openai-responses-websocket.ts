@@ -249,7 +249,7 @@ function createCachedWebSocketLease(
     entry,
     reusedConnection,
     steeringContinuation,
-    release: ({ keep } = {}) => {
+    release: ({ keep }: { keep?: boolean } = {}) => {
       if (!keep || entry.socket.socket.readyState !== WEBSOCKET_OPEN_STATE) {
         invalidateOwnedWebSocketSession(cacheKey, entry);
         return;

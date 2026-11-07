@@ -210,7 +210,11 @@ export async function searchRemoteProjects(
   let stale = false;
   const request: GitHubSearchRequest = async (
     url,
-    { optionalAuth = true, optional, single } = {},
+    {
+      optionalAuth = true,
+      optional,
+      single,
+    }: { optionalAuth?: boolean; optional?: boolean; single?: boolean } = {},
   ) => {
     const identity = {
       assertSelected: assertTransportCurrent,

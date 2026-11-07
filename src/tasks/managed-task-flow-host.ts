@@ -110,9 +110,13 @@ export function createManagedTaskFlowHost(options: {
       if (isManagedTaskFlowReadCommand(command)) {
         if (
           (command.type === "tasks.managedFlows.get" &&
-            (typeof command.input.flowId !== "string" || !command.input.flowId.trim())) ||
+            (!("flowId" in command.input) ||
+              typeof command.input.flowId !== "string" ||
+              !command.input.flowId.trim())) ||
           (command.type === "tasks.runs.get" &&
-            (typeof command.input.taskId !== "string" || !command.input.taskId.trim()))
+            (!("taskId" in command.input) ||
+              typeof command.input.taskId !== "string" ||
+              !command.input.taskId.trim()))
         ) {
           throw new Error("Managed task-flow observation requires a nonempty identity");
         }
