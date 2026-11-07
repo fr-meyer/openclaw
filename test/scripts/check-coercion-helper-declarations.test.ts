@@ -39,11 +39,13 @@ describe("coercion helper declaration AST guard", () => {
       "function containsAsciiControlCharacter() {}",
     ].join("\n");
 
+    using retainedSource = parser.createSourceFile("src/example.ts", source);
+
     expect(
       findBannedCoercionHelperDeclarations(
         source,
         "src/example.ts",
-        parser.createSourceFile("src/example.ts", source),
+        retainedSource.sourceFile,
       ),
     ).toEqual([
       { file: "src/example.ts", kind: "function", line: 1, name: "readString" },
@@ -75,11 +77,13 @@ describe("coercion helper declaration AST guard", () => {
       'const fixture = "function toError() {}";',
     ].join("\n");
 
+    using retainedSource = parser.createSourceFile("src/example.ts", source);
+
     expect(
       findBannedCoercionHelperDeclarations(
         source,
         "src/example.ts",
-        parser.createSourceFile("src/example.ts", source),
+        retainedSource.sourceFile,
       ),
     ).toEqual([]);
   });
@@ -181,7 +185,9 @@ describe("coercion helper declaration AST guard", () => {
       "export const VALUE = 1;",
     ].join("\n");
 
-    expect(findExportedCallableNames(parser.createSourceFile("src/owner.ts", source))).toEqual([
+    using retainedSource = parser.createSourceFile("src/owner.ts", source);
+
+    expect(findExportedCallableNames(retainedSource.sourceFile)).toEqual([
       "alias",
       "canonical",
     ]);

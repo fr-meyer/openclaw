@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { transformSync } from "esbuild";
 import { resolve as resolvePackageImport } from "import-meta-resolve";
 import * as ts from "typescript/ast";
+import { serverFS } from "typescript/fs";
 import { API } from "typescript/sync";
 import { readNativeTypeScriptConfig } from "./native-typescript-config.mts";
 import { createNativeTypeScriptProject } from "./native-typescript.mts";
@@ -147,13 +148,13 @@ export function createRuntimeImportGraph(
             return configText();
           }
           if (isDeclaration(file)) {
-            return sourceImports ? undefined : null;
+            return sourceImports ? serverFS.useOS : undefined;
           }
           if (!/\.[cm]?[jt]sx?$/.test(file) || file.split(/[\\/]/).includes("node_modules")) {
-            return undefined;
+            return serverFS.useOS;
           }
           if (!existsSync(file)) {
-            return null;
+            return undefined;
           }
           const text = readFileSync(file, "utf8");
           // Source guards discard explicitly type-only bindings. Runtime capture follows
@@ -173,7 +174,8 @@ export function createRuntimeImportGraph(
                 target: "esnext",
                 tsconfigRaw: transformConfig,
               }).code;
-          const source = parser.createSourceFile(file, sourceText);
+          using retainedSource = parser.createSourceFile(file, sourceText);
+          const source = retainedSource.sourceFile;
           const selected: ImportReference[] = [];
           visitModuleSpecifiers(
             source,

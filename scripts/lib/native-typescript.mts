@@ -20,7 +20,7 @@ export type NativeTypeScriptParser = ReturnType<typeof createNativeTypeScriptPar
 export type NativeTypeScriptProject = ReturnType<typeof createNativeTypeScriptProject>;
 
 type FileSystem = {
-  readFile?: (file: string) => string | undefined;
+  readFile?: (file: string) => string | undefined | typeof serverFS.useOS;
   fileExists?: (file: string) => boolean | undefined;
   directoryExists?: (directory: string) => boolean | undefined;
   realpath?: (file: string) => string | undefined;
