@@ -37,14 +37,14 @@ describe("IMAP sender admission", () => {
       .toString("base64")
       .replace(/=+$/u, "");
     const unsigned = await message(["From: trusted@example.com", "To: reader@example.net"]);
+    const signer = {
+      signingDomain: "example.com",
+      selector: "compat",
+      privateKey: privateKey.export({ format: "pem", type: "pkcs8" }),
+    };
     const signed = await dkimSign(unsigned.raw, {
-      signatureData: [
-        {
-          signingDomain: "example.com",
-          selector: "compat",
-          privateKey: privateKey.export({ format: "pem", type: "pkcs8" }),
-        },
-      ],
+      ...signer,
+      signatureData: [signer],
     });
     expect(signed.errors).toEqual([]);
     const raw = Buffer.concat([Buffer.from(signed.signatures), unsigned.raw]);
