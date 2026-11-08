@@ -73,7 +73,7 @@ overrides:
   "@hono/node-server": 2.1.1
   axios: 1.20.0
   fast-uri: 4.1.5
-  follow-redirects: 1.16.1
+  follow-redirects: 1.16.2
   defu: 6.1.7
   fast-xml-parser: 5.11.1
   request: "npm:@cypress/request@4.0.1"
@@ -85,7 +85,8 @@ overrides:
   "werift-ice@0.2.2>ip": "npm:neoip@3.1.0"
   ip-address: 10.7.2
   "mailauth@5.0.3>nodemailer": 10.0.10
-  "mailauth@5.0.3>joi": 18.2.9
+  "mailauth@5.0.3>joi": 18.3.1
+  "@openclaw/crabline@0.1.27>re2js": 2.8.7
   # Mailauth pins vulnerable Undici; remove when its direct dependency is fixed.
   "mailauth@5.0.3>undici": 8.12.2
   minimatch: 10.2.6
