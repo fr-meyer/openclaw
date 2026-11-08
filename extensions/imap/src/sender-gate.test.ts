@@ -1,4 +1,5 @@
-import { authenticate } from "mailauth";
+import { generateKeyPairSync } from "node:crypto";
+import { authenticate, dkimSign } from "mailauth";
 import { simpleParser } from "mailparser";
 import type { IdentifierAuthentication } from "openclaw/plugin-sdk/channel-ingress-runtime";
 import { describe, expect, it, vi } from "vitest";
@@ -28,6 +29,67 @@ async function message(headers: string[], body = "Hello from a trusted sender") 
 }
 
 describe("IMAP sender admission", () => {
+  it("admits signed mail and rejects invalid DKIM keys through real mailauth", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const keyData = publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("base64")
+      .replace(/=+$/u, "");
+    const unsigned = await message(["From: trusted@example.com", "To: reader@example.net"]);
+    const signed = await dkimSign(unsigned.raw, {
+      signatureData: [
+        {
+          signingDomain: "example.com",
+          selector: "compat",
+          privateKey: privateKey.export({ format: "pem", type: "pkcs8" }),
+        },
+      ],
+    });
+    expect(signed.errors).toEqual([]);
+    const raw = Buffer.concat([Buffer.from(signed.signatures), unsigned.raw]);
+    const mail = await simpleParser(raw);
+
+    for (const key of [keyData, "%%%"]) {
+      const resolver = vi.fn(async (domain: string, type: string) => {
+        expect(type).toBe("TXT");
+        if (domain === "compat._domainkey.example.com") {
+          return [[`v=DKIM1; k=ed25519; p=${key}`]];
+        }
+        if (domain === "_dmarc.example.com") {
+          return [["v=DMARC1; p=reject"]];
+        }
+        return [];
+      });
+      const valid = key === keyData;
+      const authentication = await authenticate(raw, {
+        disableArc: true,
+        disableBimi: true,
+        resolver,
+      });
+      expect(resolver).toHaveBeenCalledWith("compat._domainkey.example.com", "TXT");
+      expect(authentication.dkim.results[0]?.status).toMatchObject(
+        valid ? { result: "pass" } : { result: "neutral", comment: "invalid public key" },
+      );
+      expect(authentication.dmarc).toMatchObject({
+        status: { result: valid ? "pass" : "fail" },
+      });
+      await expect(
+        evaluateImapSender({
+          raw,
+          mail,
+          internalDate: new Date(),
+          account: account(),
+          authenticator: async () => authentication,
+        }),
+      ).resolves.toMatchObject({
+        accepted: valid,
+        strength: valid ? "verified" : "unverified",
+        reason: valid ? "dmarc-pass" : "dmarc-fail",
+      });
+    }
+  });
+
   it.each([
     ["trusted@EXAMPLE.com", ["trusted@example.COM"], true],
     ["person@example.com", ["@EXAMPLE.com"], true],
