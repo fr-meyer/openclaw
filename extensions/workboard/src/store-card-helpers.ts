@@ -506,6 +506,7 @@ function appendWorkerContextSection<T>(
 export function buildWorkerContext(
   card: WorkboardCard,
   cards: readonly WorkboardCard[] = [],
+  options: { relatedOnly?: boolean } = {},
 ): string {
   const lines = [
     `# Workboard card ${card.id}`,
@@ -582,7 +583,7 @@ export function buildWorkerContext(
       `- ${parent.id} ${parent.title}: ${capText(cardResultSummary(parent), 500) ?? "done"}`,
   );
   const recentAgentWork =
-    card.agentId && cards.length
+    !options.relatedOnly && card.agentId && cards.length
       ? cards
           .filter(
             (entry) =>

@@ -440,7 +440,9 @@ async function runWorkboardDispatch(
       // Racing card changes never reached a worker and must not consume the
       // provider-outage budget or starve a later healthy candidate.
       attemptedStarts += 1;
-      const context = await params.store.buildWorkerContext(card.id);
+      const context = await params.store.buildWorkerContext(card.id, {
+        relatedOnly: directCardId !== undefined,
+      });
       const materialized = await materializeWorkspace({
         card: claimed.card,
         worktrees: params.worktrees,
