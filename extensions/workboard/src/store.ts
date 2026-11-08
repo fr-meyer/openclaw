@@ -716,18 +716,17 @@ export class WorkboardStore extends WorkboardNotificationStore {
     });
   }
 
-  async buildWorkerContext(id: string): Promise<string> {
+  async buildWorkerContext(id: string, options: { relatedOnly?: boolean } = {}): Promise<string> {
     const card = await this.requireCard(id);
-    return buildWorkerContext(
-      card,
-      await readCards(this.store, {
-        kind: "worker-context",
-        cardId: card.id,
-        boardId: cardBoardId(card),
-        agentId: card.agentId,
-        parentIds: cardParentIds(card),
-      }),
-    );
+    const cards = await readCards(this.store, {
+      kind: "worker-context",
+      cardId: card.id,
+      boardId: cardBoardId(card),
+      // Exact-card dispatch must not read unrelated completed work by this agent.
+      agentId: options.relatedOnly ? undefined : card.agentId,
+      parentIds: cardParentIds(card),
+    });
+    return buildWorkerContext(card, cards, options);
   }
 
   static openSqlite(workerModuleUrl: URL) {
