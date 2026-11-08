@@ -1,10 +1,14 @@
 import copy
+from contextlib import ExitStack, redirect_stdout
 import importlib.util
 import fcntl
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
+import sys
 from unittest.mock import patch
 
 MODULE_PATH = Path(__file__).with_name("release.py")
@@ -30,6 +34,212 @@ def state():
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_retained_execution_verifies_without_relabeling_original_producer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {name: root / name for name in ("manifest", "inventory", "source", "oci", "receipt", "plan")}
+            paths["manifest"].write_text("synthetic manifest")
+            paths["inventory"].write_text("synthetic inventory")
+            producer = {"workflowSha": "b" * 40, "runId": "42", "attempt": "1"}
+            receipt = {"sourceSha": "c" * 40, "producer": producer,
+                       "indexDigest": "sha256:" + "1" * 64,
+                       "imageDigest": "sha256:" + "2" * 64,
+                       "configDigest": "sha256:" + "3" * 64,
+                       "reinspection": {"schema": "openclaw.retained-hosted-qualification.v1",
+                                        "inspectionToolingSha": "a" * 40}}
+            paths["receipt"].write_text(json.dumps(receipt))
+            paths["plan"].write_text(json.dumps({
+                "schema": "openclaw.retained-hosted-qualification.v1",
+                "inspectionToolingSha": "a" * 40,
+                **{key: str(paths[name]) for key, name in (("manifestPath", "manifest"),
+                   ("inventoryPath", "inventory"), ("sourceDir", "source"), ("ociDir", "oci"))}}))
+            report = {"schema": "openclaw.retained-hosted-verification.v1", "status": "passed",
+                      "productionAuthorized": False, "sourceSha": receipt["sourceSha"],
+                      "imageReceiptSha256": release.sha256(paths["receipt"].read_bytes()),
+                      "inspectionToolingSha": "a" * 40,
+                      **{key: receipt[key] for key in ("indexDigest", "imageDigest", "configDigest")}}
+            def fake_git(_root, *args):
+                return "a" * 40 if args == ("rev-parse", "HEAD") else ""
+            with patch.object(release, "git", side_effect=fake_git), patch.object(
+                    release.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(report))) as runner:
+                evidence = release.verify_execution(paths["manifest"], paths["inventory"], paths["source"],
+                    paths["receipt"], paths["oci"], receipt, paths["plan"])
+                self.assertEqual(runner.call_args.args[0][2], "verify-retained-hosted")
+                self.assertEqual(evidence["producer"], producer)
+                self.assertEqual(evidence["toolingSha"], "a" * 40)
+                self.assertEqual(evidence["mode"], "retained-hosted")
+                report["status"] = "failed"
+                runner.return_value.stdout = json.dumps(report)
+                with self.assertRaisesRegex(release.Refusal, "did not pass"):
+                    release.verify_execution(paths["manifest"], paths["inventory"], paths["source"],
+                        paths["receipt"], paths["oci"], receipt, paths["plan"])
+                report["status"] = "passed"
+                report["configDigest"] = "sha256:" + "9" * 64
+                runner.return_value.stdout = json.dumps(report)
+                with self.assertRaisesRegex(release.Refusal, "identity differs"):
+                    release.verify_execution(paths["manifest"], paths["inventory"], paths["source"],
+                        paths["receipt"], paths["oci"], receipt, paths["plan"])
+                with self.assertRaisesRegex(release.Refusal, "current committed tooling"):
+                    plan = json.loads(paths["plan"].read_text())
+                    plan["inspectionToolingSha"] = "d" * 40
+                    paths["plan"].write_text(json.dumps(plan))
+                    release.verify_execution(paths["manifest"], paths["inventory"], paths["source"],
+                        paths["receipt"], paths["oci"], receipt, paths["plan"])
+
+    def test_missing_retained_plan_refuses_before_verifier_invocation(self):
+        receipt = {"producer": {"workflowSha": "b" * 40}, "reinspection": {"schema": "openclaw.retained-hosted-qualification.v1"}}
+        with patch.object(release, "git", side_effect=["a" * 40, ""]), patch.object(release.subprocess, "run") as runner:
+            with self.assertRaisesRegex(release.Refusal, "plan required"):
+                release.verify_execution("manifest", "inventory", "source", "receipt", "oci", receipt)
+            runner.assert_not_called()
+
+    def test_changed_receipt_during_verification_refuses_execution_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / name for name in ("manifest", "inventory", "receipt")]
+            for path in paths:
+                path.write_text("original")
+            receipt = {"producer": {"workflowSha": "b" * 40}, "sourceSha": "a" * 40,
+                       "indexDigest": "sha256:" + "1" * 64,
+                       "imageDigest": "sha256:" + "2" * 64,
+                       "configDigest": "sha256:" + "3" * 64}
+            def mutate(*_args, **_kwargs):
+                paths[2].write_text("changed")
+                return SimpleNamespace(returncode=0, stdout="Verified")
+            with patch.object(release, "git", side_effect=["a" * 40, ""]), patch.object(
+                    release.subprocess, "run", side_effect=mutate):
+                with self.assertRaisesRegex(release.Refusal, "input changed during verification"):
+                    release.verify_execution(paths[0], paths[1], root, paths[2], root, receipt)
+
+    def test_read_only_status_root_does_not_create_missing_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing"
+            with self.assertRaisesRegex(release.Refusal, "does not exist"):
+                release.private_root(missing, create=False)
+            self.assertFalse(missing.exists())
+            output = io.StringIO()
+            manifest_path = Path(__file__).with_name("manifest.json")
+            inventory_path = Path(__file__).with_name("patch-inventory.json")
+            argv = ["release.py", "status", "--manifest", str(manifest_path),
+                    "--inventory", str(inventory_path), "--private-root", str(missing)]
+            with patch.object(sys, "argv", argv), redirect_stdout(output):
+                release.main()
+            self.assertEqual(output.getvalue().strip(), "Release has not started.")
+            self.assertFalse(missing.exists())
+
+    def test_legacy_issued_status_is_read_only_and_shows_original_operation(self):
+        manifest_path = Path(__file__).with_name("manifest.json")
+        inventory_path = Path(__file__).with_name("patch-inventory.json")
+        manifest, manifest_hash = release.manifest_at(manifest_path)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "private"
+            root.mkdir(mode=0o700)
+            current = state()
+            current.update(candidate=manifest["candidate"], manifestSha256=manifest_hash,
+                           inventorySha256=release.sha256(inventory_path.read_bytes()),
+                           sourceSha=manifest["source"]["commit"])
+            current["steps"]["backup"] = {"state": "issued", "attempts": 1,
+                                          "operationId": release.operation_id(current, "backup")}
+            saved = root / f"{manifest['candidate']}.json"
+            saved.write_text(json.dumps(current))
+            saved.chmod(0o600)
+            before = saved.read_bytes()
+            output = io.StringIO()
+            argv = ["release.py", "status", "--manifest", str(manifest_path),
+                    "--inventory", str(inventory_path), "--private-root", str(root)]
+            with patch.object(sys, "argv", argv), patch.object(release, "adapter_call") as adapter, redirect_stdout(output):
+                release.main()
+            adapter.assert_not_called()
+            self.assertEqual(saved.read_bytes(), before)
+            self.assertEqual(set(root.iterdir()), {saved})
+            self.assertIn(current["steps"]["backup"]["operationId"], output.getvalue())
+            self.assertIn("no new invocation", output.getvalue())
+
+    def test_execution_evidence_changes_operation_and_approval_identity(self):
+        current = state()
+        for phase in ("backup", "restore", "rehearsal"):
+            current["steps"][phase] = {"state": "succeeded", "receiptId": phase + "-receipt"}
+        current["executionEvidenceSha256"] = "9" * 64
+        current["executionToolingSha"] = "a" * 40
+        changed = copy.deepcopy(current)
+        changed["executionEvidenceSha256"] = "8" * 64
+        self.assertNotEqual(release.operation_id(current, "deploy"), release.operation_id(changed, "deploy"))
+        self.assertNotEqual(release.challenge(current), release.challenge(changed))
+
+    def test_unqualified_private_ops_contract_cannot_issue_production_approval(self):
+        current = state()
+        current["phase"] = "awaiting_approval"
+        self.assertIn("Production approval blocked", release.human_status(current))
+        with self.assertRaisesRegex(release.Refusal, "private operations gate contract is not qualified"):
+            release.require_private_ops_contract()
+
+    def test_deploy_reconciles_status_then_blocks_new_invocation_without_ops_contract(self):
+        current = state()
+        current["phase"] = "deploy"
+        actions = []
+        def adapter(_path, action, *_args):
+            actions.append(action)
+            return {"state": "not_found"}
+        with patch.object(release, "adapter_call", side_effect=adapter):
+            with self.assertRaisesRegex(release.Refusal, "private operations gate contract is not qualified"):
+                release.reconcile_step(current, "deploy", "adapter", "manifest", "receipt", "oci",
+                    lambda: None, lambda _state: release.require_private_ops_contract())
+        self.assertEqual(actions, ["status"])
+        self.assertEqual(current["steps"]["deploy"]["attempts"], 0)
+
+    def test_approve_entrypoint_preserves_rehearsed_state_without_ops_contract(self):
+        import preflight
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            private = root / "private"
+            private.mkdir(mode=0o700)
+            manifest_path, inventory_path, receipt_path = (root / name for name in
+                ("manifest.json", "inventory.json", "receipt.json"))
+            for path in (manifest_path, inventory_path, receipt_path):
+                path.write_text(path.name)
+            manifest_hash = release.sha256(manifest_path.read_bytes())
+            inventory_hash = release.sha256(inventory_path.read_bytes())
+            receipt_hash = release.sha256(receipt_path.read_bytes())
+            manifest = {"repository": "fr-meyer/openclaw", "candidate": "fixture",
+                        "productionEligible": True, "source": {"commit": "a" * 40}}
+            receipt = {"sourceSha": manifest["source"]["commit"], "indexDigest": "sha256:" + "1" * 64}
+            execution = {"toolingSha": "b" * 40, "imageReceiptSha256": receipt_hash}
+            execution_path = private / "fixture.execution.json"
+            release.atomic_json(execution_path, execution)
+            current = state()
+            current.update(candidate="fixture", manifestSha256=manifest_hash,
+                           inventorySha256=inventory_hash, receiptSha256=receipt_hash,
+                           sourceSha=manifest["source"]["commit"], imageDigest=receipt["indexDigest"],
+                           executionEvidenceSha256=release.sha256(execution_path.read_bytes()),
+                           executionToolingSha=execution["toolingSha"], phase="awaiting_approval")
+            for phase in ("backup", "restore", "rehearsal"):
+                current["steps"][phase] = {"operationId": release.operation_id(current, phase),
+                                           "attempts": 1, "state": "succeeded", "receiptId": phase + "-receipt"}
+            state_path = private / "fixture.json"
+            release.atomic_json(state_path, current)
+            before = state_path.read_bytes()
+            adapter = root / "adapter"
+            adapter.write_text("#!/bin/sh\nexit 1\n")
+            adapter.chmod(0o700)
+            argv = ["release.py", "approve", "--manifest", str(manifest_path),
+                    "--inventory", str(inventory_path), "--source-dir", str(root),
+                    "--private-root", str(private), "--image-receipt", str(receipt_path),
+                    "--oci-dir", str(root), "--adapter", str(adapter)]
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(sys, "argv", argv))
+                stack.enter_context(patch.object(release, "manifest_at", return_value=(manifest, manifest_hash)))
+                stack.enter_context(patch.object(preflight, "inventory_at", return_value=({}, inventory_hash)))
+                stack.enter_context(patch.object(release, "receipt_at", return_value=receipt))
+                stack.enter_context(patch.object(release, "private_inputs", return_value=({}, {}, "f" * 64, "1" * 64)))
+                stack.enter_context(patch.object(release, "verify_execution", return_value=execution))
+                admission = stack.enter_context(patch.object(release, "backup_admission"))
+                call = stack.enter_context(patch.object(release, "adapter_call"))
+                with self.assertRaisesRegex(release.Refusal, "private operations gate contract is not qualified"):
+                    release.main()
+            self.assertEqual(state_path.read_bytes(), before)
+            admission.assert_not_called()
+            call.assert_not_called()
+
     def test_validation_runtime_preserves_retained_lane(self):
         for upstream in (None, {"tag": "v2026.10.5"}, {"tag": "v2026.9.8"}):
             self.assertEqual(release.validation_node_version({"upstream": upstream}), "24.21.0")

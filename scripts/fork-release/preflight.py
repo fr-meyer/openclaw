@@ -241,6 +241,32 @@ def backup_checks(checks, evidence, baseline, image_digest, now, max_age, retain
         checks.need(restored["state"] == "passed", "backup.restore.unproved")
 
 
+def execution_checks(checks, evidence, image, image_hash):
+    """Keep later verifier/tooling evidence distinct from the historical producer."""
+    names = ("schema status mode toolingSha sourceSha imageReceiptSha256 indexDigest "
+             "imageDigest configDigest producer verifierOutputSha256")
+    if not checks.fields(evidence, names, "execution.fields"):
+        return
+    checks.need(evidence["schema"] == "openclaw.fork-release-execution.v1" and
+                evidence["status"] == "passed", "execution.status")
+    checks.need(release.matches(release.SHA, evidence["toolingSha"]), "execution.tooling")
+    checks.need(release.matches(HEX256, evidence["verifierOutputSha256"]), "execution.verifier")
+    expected = {"sourceSha": image["sourceSha"], "imageReceiptSha256": image_hash,
+                "producer": image["producer"],
+                **{key: image[key] for key in ("indexDigest", "imageDigest", "configDigest")}}
+    for key, value in expected.items():
+        checks.need(evidence[key] == value, "execution.binding." + key)
+    proof = image.get("reinspection")
+    if proof is None:
+        checks.need(evidence["mode"] == "ordinary", "execution.mode")
+    else:
+        kind = "gcp" if image["producer"].get("kind") == "gcp" else "hosted"
+        checks.need(type(proof) is dict and
+                    proof.get("schema") == f"openclaw.retained-{kind}-qualification.v1" and
+                    proof.get("inspectionToolingSha") == evidence["toolingSha"] and
+                    evidence["mode"] == f"retained-{kind}", "execution.retained")
+
+
 def deployment_checks(checks, receipt, manifest, manifest_hash, inventory_hash, image, image_hash, upstream_tag):
     names = ("schema repository version deploymentId deploymentTag deployedAt sourceSha sourceTree "
              "manifestSha256 inventorySha256 imageReceiptSha256 indexDigest imageDigest configDigest "
@@ -287,7 +313,7 @@ def main():
         parser.add_argument("--" + option, required=True, type=Path)
     parser.add_argument("--source-dir", type=Path)
     parser.add_argument("--metadata-only", action="store_true")
-    for option in ("image-receipt", "backup-evidence", "baseline", "deployment-receipt"):
+    for option in ("image-receipt", "execution-evidence", "backup-evidence", "baseline", "deployment-receipt"):
         parser.add_argument("--" + option, type=Path)
     parser.add_argument("--now", type=utc, default=datetime.now(timezone.utc))
     parser.add_argument("--backup-max-age-seconds", type=int)
@@ -333,6 +359,12 @@ def main():
             image = release.receipt_at(args.image_receipt, manifest, manifest_hash, digest(args.inventory))
         except (OSError, ValueError, release.Refusal, KeyError, TypeError):
             checks.need(False, "image_receipt.invalid")
+    execution = None
+    if args.execution_evidence:
+        execution = read(args.execution_evidence, "execution")
+        checks.need(image is not None, "execution.image_receipt.required")
+        if execution is not None and image is not None:
+            execution_checks(checks, execution, image, digest(args.image_receipt))
     if args.backup_evidence:
         backup = read(args.backup_evidence, "backup")
         baseline = read(args.baseline, "baseline")
@@ -346,6 +378,10 @@ def main():
             deployment_checks(checks, receipt, manifest, manifest_hash, digest(args.inventory),
                               image, digest(args.image_receipt),
                               inventory["upstream"].get("tag") if type(inventory.get("upstream")) is dict else None)
+            checks.need(execution is not None, "deployment.execution.required")
+            if execution is not None:
+                checks.need(receipt.get("toolingSha") == execution.get("toolingSha"),
+                            "deployment.execution.tooling")
     errors = sorted(set(checks.errors))
     print(json.dumps({"schema": "openclaw.fork-preflight.v1", "passed": not errors, "errors": errors,
                       "deploymentAuthorized": False}, indent=2))

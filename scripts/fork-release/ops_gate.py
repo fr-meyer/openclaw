@@ -17,7 +17,7 @@ def object_at(value, name):
     return value
 
 
-def validate_gate(payload, mode, receipt, source_sha):
+def validate_gate(payload, mode, receipt, source_sha, runtime_manifest_sha256=None):
     payload = object_at(payload, "root")
     need(type(payload.get("schemaVersion")) is int and payload["schemaVersion"] == 1 and
          payload.get("status") == "ok", "runtime-tools gate did not pass")
@@ -31,6 +31,9 @@ def validate_gate(payload, mode, receipt, source_sha):
         need(type(payload.get("manifestSha256")) is str and
              re.fullmatch(r"[0-9a-f]{64}", payload["manifestSha256"]) is not None,
              "runtime-tools manifest is missing")
+        need(runtime_manifest_sha256 is not None and
+             payload["manifestSha256"] == runtime_manifest_sha256,
+             "runtime-tools manifest differs from reviewed input")
     else:
         need(payload.get("mode") == "post-deploy" and
              object_at(payload.get("contract"), "contract").get("imageId") == image_id,
@@ -58,14 +61,20 @@ def main():
     parser.add_argument("--inventory", required=True, type=Path)
     parser.add_argument("--image-receipt", required=True, type=Path)
     parser.add_argument("--gate", required=True, type=Path)
+    parser.add_argument("--runtime-manifest-sha256")
     parser.add_argument("--candidate-image")
     parser.add_argument("--container")
     args = parser.parse_args()
-    need(args.gate.is_absolute() and args.gate.is_file(), "reviewed gate path required")
+    need(args.gate.is_absolute() and args.gate.is_file() and not args.gate.is_symlink(),
+         "reviewed gate path required")
     manifest, manifest_hash = manifest_at(args.manifest)
     import preflight
     _, inventory_hash = preflight.inventory_at(args.inventory, manifest, manifest_hash)
     receipt = receipt_at(args.image_receipt, manifest, manifest_hash, inventory_hash)
+    need(args.mode != "image" or (args.runtime_manifest_sha256 is not None and
+         re.fullmatch(r"[0-9a-f]{64}", args.runtime_manifest_sha256) is not None),
+         "reviewed runtime-tools manifest hash required")
+    gate_hash = hashlib.sha256(args.gate.read_bytes()).hexdigest()
     if args.mode == "image":
         need(args.candidate_image and not args.container, "candidate image required")
         command = [str(args.gate), "image", args.candidate_image, receipt["configDigest"]]
@@ -74,16 +83,23 @@ def main():
         command = [str(args.gate), "post", args.container]
     result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
     need(result.returncode == 0, "runtime-tools gate command failed")
+    need(hashlib.sha256(args.gate.read_bytes()).hexdigest() == gate_hash,
+         "runtime-tools gate executable changed during execution")
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as error:
         raise Refusal("runtime-tools gate returned invalid JSON") from error
-    validate_gate(payload, args.mode, receipt, manifest["source"]["commit"])
+    validate_gate(payload, args.mode, receipt, manifest["source"]["commit"],
+                  args.runtime_manifest_sha256)
     print(json.dumps({"schema": "openclaw.fork-release-ops-gate.v1",
+                      "productionAuthorized": False,
                       "mode": args.mode, "sourceSha": manifest["source"]["commit"],
+                      "manifestSha256": manifest_hash,
                       "inventorySha256": inventory_hash,
                       "indexDigest": receipt["indexDigest"],
                       "imageId": receipt["configDigest"],
+                      "imageReceiptSha256": hashlib.sha256(args.image_receipt.read_bytes()).hexdigest(),
+                      "gateExecutableSha256": gate_hash,
                       "gateEvidenceSha256": hashlib.sha256(result.stdout.encode()).hexdigest()},
                      sort_keys=True))
 
