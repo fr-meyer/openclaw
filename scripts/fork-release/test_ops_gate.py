@@ -20,10 +20,13 @@ class GateTests(unittest.TestCase):
                    "imageId": self.receipt["configDigest"],
                    "manifestSha256": "a" * 64,
                    "cumulative": {"revision": self.source}}
-        gate.validate_gate(payload, "image", self.receipt, self.source)
+        gate.validate_gate(payload, "image", self.receipt, self.source, "a" * 64)
         payload["cumulative"]["revision"] = "d" * 40
         with self.assertRaisesRegex(gate.Refusal, "source revision"):
-            gate.validate_gate(payload, "image", self.receipt, self.source)
+            gate.validate_gate(payload, "image", self.receipt, self.source, "a" * 64)
+        payload["cumulative"]["revision"] = self.source
+        with self.assertRaisesRegex(gate.Refusal, "reviewed input"):
+            gate.validate_gate(payload, "image", self.receipt, self.source, "b" * 64)
 
     def test_post_gate_binds_running_image_and_health(self):
         payload = {"schemaVersion": 1, "status": "ok", "mode": "post-deploy",
@@ -46,7 +49,7 @@ class GateTests(unittest.TestCase):
                    "imageId": self.receipt["configDigest"],
                    "manifestSha256": "a" * 64, "cumulative": None}
         with self.assertRaisesRegex(gate.Refusal, "cumulative gate payload"):
-            gate.validate_gate(payload, "image", self.receipt, self.source)
+            gate.validate_gate(payload, "image", self.receipt, self.source, "a" * 64)
 
 
 if __name__ == "__main__":

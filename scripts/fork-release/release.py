@@ -267,6 +267,65 @@ def receipt_at(path, manifest, manifest_hash, inventory_hash):
     return receipt
 
 
+def verify_execution(manifest_path, inventory_path, source_dir, receipt_path, oci_dir,
+                     receipt, retained_plan=None):
+    """Reverify retained bytes with current committed tooling, never rewrite the producer."""
+    tooling_dir = Path(__file__).resolve().parents[2]
+    tooling_sha = git(tooling_dir, "rev-parse", "HEAD")
+    need(git(tooling_dir, "status", "--porcelain") == "", "execution tooling checkout is dirty")
+    retained = "reinspection" in receipt
+    need(retained_plan is not None if retained else retained_plan is None,
+         "retained qualification plan required" if retained else "retained plan supplied for ordinary image")
+    inputs = (manifest_path, inventory_path, receipt_path) + ((retained_plan,) if retained else ())
+    before = {str(path): sha256(Path(path).read_bytes()) for path in inputs}
+    command = ["node", str(tooling_dir / "scripts/fork-release/image.mjs")]
+    if retained:
+        kind = "gcp" if receipt["producer"].get("kind") == "gcp" else "hosted"
+        proof = receipt["reinspection"]
+        need(type(proof) is dict and proof.get("schema") == f"openclaw.retained-{kind}-qualification.v1",
+             "invalid retained qualification proof")
+        plan = read_json(retained_plan)
+        need(type(plan) is dict and plan.get("schema") == f"openclaw.retained-{kind}-qualification.v1",
+             "invalid retained qualification plan")
+        for key, path in (("manifestPath", manifest_path), ("inventoryPath", inventory_path),
+                          ("sourceDir", source_dir), ("ociDir", oci_dir)):
+            need(plan.get(key) == str(Path(path).resolve()), "retained plan path differs: " + key)
+        need(plan.get("inspectionToolingSha") == tooling_sha and
+             proof.get("inspectionToolingSha") == tooling_sha,
+             "retained qualification requires current committed tooling")
+        command += [f"verify-retained-{kind}", str(retained_plan), str(receipt_path)]
+    else:
+        command += ["verify", str(manifest_path), str(inventory_path), str(receipt_path), str(oci_dir)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=300, check=False)
+    need(result.returncode == 0, "OCI artifact qualification failed")
+    need(all(sha256(Path(path).read_bytes()) == digest for path, digest in before.items()),
+         "qualification input changed during verification")
+    need(git(tooling_dir, "rev-parse", "HEAD") == tooling_sha and
+         git(tooling_dir, "status", "--porcelain") == "",
+         "execution tooling changed during verification")
+    receipt_hash = before[str(receipt_path)]
+    if retained:
+        try:
+            report = json.loads(result.stdout)
+        except ValueError as error:
+            raise Refusal("retained verification returned invalid JSON") from error
+        need(type(report) is dict and report.get("schema") == f"openclaw.retained-{kind}-verification.v1"
+             and report.get("status") == "passed" and report.get("productionAuthorized") is False,
+             "retained verification did not pass")
+        expected = {"sourceSha": receipt["sourceSha"], "imageReceiptSha256": receipt_hash,
+                    "inspectionToolingSha": tooling_sha,
+                    **{key: receipt[key] for key in ("indexDigest", "imageDigest", "configDigest")}}
+        need(all(report.get(key) == value for key, value in expected.items()),
+             "retained verification identity differs")
+    return {"schema": "openclaw.fork-release-execution.v1", "status": "passed",
+            "mode": f"retained-{kind}" if retained else "ordinary",
+            "toolingSha": tooling_sha, "sourceSha": receipt["sourceSha"],
+            "imageReceiptSha256": receipt_hash,
+            **{key: receipt[key] for key in ("indexDigest", "imageDigest", "configDigest")},
+            "producer": receipt["producer"],
+            "verifierOutputSha256": sha256(result.stdout.encode())}
+
+
 def producer_fields(producer):
     if type(producer) is dict and producer.get("kind") == "gcp":
         return "kind toolingSha operationId attempt executionSha256"
@@ -292,9 +351,10 @@ def image_artifact_name(source_sha, producer):
     return f"fork-release-{source_sha}-{producer['runId']}-{producer['attempt']}"
 
 
-def private_root(path):
+def private_root(path, create=True):
     root = Path(path).expanduser().absolute()
     if not root.exists():
+        need(create, "private state root does not exist")
         root.mkdir(mode=0o700, parents=True)
     stat = root.lstat()
     need(root.is_dir() and not root.is_symlink() and stat.st_uid == os.getuid() and stat.st_mode & 0o077 == 0, "private state root must be owned and mode 0700")
@@ -342,7 +402,10 @@ def atomic_json(path, value):
 
 def operation_id(state, phase):
     keys = ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "imageDigest")
-    return "fr-" + sha256((":".join(state[key] for key in keys) + ":" + phase).encode())[:32]
+    material = [state[key] for key in keys]
+    if "executionEvidenceSha256" in state:
+        material.extend((state["executionEvidenceSha256"], state["executionToolingSha"]))
+    return "fr-" + sha256((":".join(material) + ":" + phase).encode())[:32]
 
 def load_state(path):
     if not path.exists():
@@ -359,6 +422,9 @@ def load_state(path):
         need(matches(re.compile(r"[0-9a-f]{64}\Z"), state[key]), "invalid backup binding")
     if "prEvidenceSha256" in state:
         need(matches(re.compile(r"[0-9a-f]{64}\Z"), state["prEvidenceSha256"]), "invalid PR evidence identity")
+    if "executionEvidenceSha256" in state or "executionToolingSha" in state:
+        need(matches(re.compile(r"[0-9a-f]{64}\Z"), state.get("executionEvidenceSha256")) and
+             matches(SHA, state.get("executionToolingSha")), "invalid execution evidence identity")
     need(state.get("phase") in (*PHASES, "awaiting_approval", "completed", "rolled_back", "needs_operator"), "invalid progress phase")
     need(state.get("approval") is None or matches(re.compile(r"[0-9a-f]{64}\Z"), state.get("approval")), "invalid approval record")
     steps = state.get("steps")
@@ -377,6 +443,13 @@ def load_state(path):
     return state
 
 
+def private_evidence_at(path):
+    metadata = path.lstat()
+    need(path.is_file() and not path.is_symlink() and metadata.st_uid == os.getuid()
+         and metadata.st_mode & 0o077 == 0, "unsafe private execution evidence")
+    return read_json(path), sha256(path.read_bytes())
+
+
 def challenge(state):
     steps = state["steps"]
     need(all(steps.get(phase, {}).get("state") == "succeeded" for phase in ("backup", "restore", "rehearsal")), "backup, restore and rehearsal are not complete")
@@ -384,8 +457,15 @@ def challenge(state):
     material = [state["manifestSha256"], state["inventorySha256"], state["baselineSha256"],
                 state["backupPolicySha256"], state["backupBindingSha256"],
                 state["receiptSha256"], state.get("prEvidenceSha256", ""),
+                state.get("executionEvidenceSha256", ""), state.get("executionToolingSha", ""),
                 state["imageDigest"], *(steps[phase]["receiptId"] for phase in ("backup", "restore", "rehearsal"))]
     return sha256("\n".join(material).encode())
+
+
+def require_private_ops_contract():
+    # The public bridge has no authenticated Compose/plugin/target admission.
+    # Do not accept its compact receipt as permission to change production.
+    raise Refusal("private operations gate contract is not qualified")
 
 
 def adapter_call(adapter, action, phase, operation_id, state, manifest_path, receipt_path, image_dir):
@@ -566,12 +646,19 @@ def human_status(state):
         return "Release has not started."
     lines = [f"Candidate: {state['candidate']}", f"Source: {state['sourceSha']}",
              f"Image: {state['imageDigest']}", f"Phase: {state['phase']}"]
+    if "executionToolingSha" in state:
+        lines.append(f"Execution tooling: {state['executionToolingSha']}")
+        lines.append(f"Execution evidence: {state['executionEvidenceSha256']}")
+    else:
+        lines.append("Legacy progress lacks execution evidence; no new invocation is authorized.")
     for phase in PHASES:
         step = state["steps"].get(phase)
         if step:
             lines.append(f"{phase}: {step['state']} (operation {step['operationId']}, attempts {step['attempts']})")
     if state["phase"] == "awaiting_approval":
-        lines.append(f"Production approval challenge: {challenge(state)}")
+        lines.append("Production approval blocked: private operations gate contract is not qualified.")
+    elif state["phase"] in PHASES and state["steps"].get(state["phase"], {}).get("state") == "issued":
+        lines.append("Resume by reconciling this operation ID before any new invocation.")
     return "\n".join(lines)
 
 
@@ -591,6 +678,7 @@ def main():
     parser.add_argument("--backup-policy", type=Path)
     parser.add_argument("--private-root", type=Path)
     parser.add_argument("--image-receipt", type=Path)
+    parser.add_argument("--retained-plan", type=Path)
     parser.add_argument("--pr-evidence", type=Path)
     parser.add_argument("--oci-dir", type=Path)
     parser.add_argument("--adapter", type=Path)
@@ -623,9 +711,25 @@ def main():
         return
     need(args.private_root is not None, "private state root required")
     if args.command == "status":
-        root = private_root(args.private_root)
+        try:
+            Path(args.private_root).expanduser().absolute().lstat()
+        except FileNotFoundError:
+            print(human_status(None))
+            return
+        root = private_root(args.private_root, create=False)
         state_path = root / f"{manifest['candidate']}.json"
-        print(human_status(load_state(state_path)))
+        state = load_state(state_path)
+        if state is not None:
+            need(state["manifestSha256"] == manifest_hash and state["inventorySha256"] == inventory_hash
+                 and state["sourceSha"] == manifest["source"]["commit"],
+                 "saved progress differs from requested release identity")
+            if "executionEvidenceSha256" in state:
+                evidence_path = root / f"{manifest['candidate']}.execution.json"
+                need(evidence_path.exists(), "saved execution evidence missing")
+                _, saved_hash = private_evidence_at(evidence_path)
+                need(saved_hash == state["executionEvidenceSha256"],
+                     "saved execution evidence changed")
+        print(human_status(state))
         return
     need(args.image_receipt is not None, "exact image receipt required")
     need(args.source_dir is not None, "exact source checkout required before private operations")
@@ -652,8 +756,14 @@ def main():
     if args.command in ("run", "approve"):
         need(args.adapter is not None and args.oci_dir is not None, "adapter and OCI artifact required")
         need(args.adapter.is_absolute() and args.adapter.is_file() and os.access(args.adapter, os.X_OK), "invalid adapter executable")
-        check = subprocess.run(["node", str(Path(__file__).with_name("image.mjs")), "verify", str(args.manifest), str(args.inventory), str(args.image_receipt), str(args.oci_dir)], check=False)
-        need(check.returncode == 0, "OCI artifact does not match image receipt")
+        execution = verify_execution(args.manifest, args.inventory, args.source_dir,
+                                     args.image_receipt, args.oci_dir, receipt, args.retained_plan)
+        need(execution["imageReceiptSha256"] == receipt_hash,
+             "image receipt changed before verification")
+        need(sha256(args.manifest.read_bytes()) == manifest_hash and
+             sha256(args.inventory.read_bytes()) == inventory_hash and
+             sha256(args.image_receipt.read_bytes()) == receipt_hash,
+             "release input changed after admission")
     root = private_root(args.private_root)
     state_path = root / f"{manifest['candidate']}.json"
     lock_path = root / "production.lock"
@@ -665,6 +775,16 @@ def main():
         except BlockingIOError as error:
             raise Refusal("another production operation holds the lock") from error
         state = load_state(state_path)
+        execution_path = root / f"{manifest['candidate']}.execution.json"
+        if args.command in ("run", "approve"):
+            need(state is not None or args.command == "run", "no prepared release exists")
+            if execution_path.exists():
+                observed, execution_hash = private_evidence_at(execution_path)
+                need(observed == execution, "execution evidence changed")
+            else:
+                need(state is None, "saved execution evidence missing")
+                atomic_json(execution_path, execution)
+                execution_hash = sha256(execution_path.read_bytes())
         if state is None:
             need(args.command == "run", "no prepared release exists")
             state = {"schema": "openclaw.fork-release-progress.v2", "candidate": manifest["candidate"],
@@ -672,15 +792,23 @@ def main():
                      "baselineSha256": baseline_hash, "backupPolicySha256": policy_hash,
                      "sourceSha": manifest["source"]["commit"],
                      "receiptSha256": receipt_hash, "imageDigest": receipt["indexDigest"],
+                     "executionEvidenceSha256": execution_hash,
+                     "executionToolingSha": execution["toolingSha"],
                      **({"prEvidenceSha256": pr_evidence_hash} if pr_evidence_hash else {}),
                      "phase": "backup", "steps": {}, "approval": None}
             atomic_json(state_path, state)
         need(state["manifestSha256"] == manifest_hash and state["receiptSha256"] == receipt_hash and state["sourceSha"] == receipt["sourceSha"] and state["imageDigest"] == receipt["indexDigest"], "progress identity changed")
         need(state.get("prEvidenceSha256") == pr_evidence_hash, "PR check evidence changed")
         need(state["inventorySha256"] == inventory_hash and state["baselineSha256"] == baseline_hash and state["backupPolicySha256"] == policy_hash, "private admission inputs changed")
+        need(state.get("executionEvidenceSha256") == execution_hash and
+             state.get("executionToolingSha") == execution["toolingSha"],
+             "progress execution evidence changed")
         def admission(current):
+            if current["phase"] == "deploy":
+                require_private_ops_contract()
             backup_admission(args.adapter, current, args.manifest, args.image_receipt, args.oci_dir, baseline, policy)
         if args.command == "approve":
+            require_private_ops_contract()
             admission(state)
             need(state["phase"] == "awaiting_approval" and args.challenge == challenge(state), "approval challenge differs from exact rehearsed release")
             state["approval"] = args.challenge

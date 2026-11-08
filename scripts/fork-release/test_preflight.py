@@ -13,6 +13,31 @@ HERE = Path(__file__).parent
 
 
 class PreflightTests(unittest.TestCase):
+    def test_execution_evidence_binds_tooling_receipt_and_original_producer(self):
+        image = {"sourceSha": "a" * 40, "indexDigest": "sha256:" + "1" * 64,
+                 "imageDigest": "sha256:" + "2" * 64,
+                 "configDigest": "sha256:" + "3" * 64,
+                 "producer": {"workflowSha": "b" * 40, "runId": "42", "attempt": "1"},
+                 "reinspection": {"schema": "openclaw.retained-hosted-qualification.v1",
+                                  "inspectionToolingSha": "c" * 40}}
+        evidence = {"schema": "openclaw.fork-release-execution.v1", "status": "passed",
+                    "mode": "retained-hosted", "toolingSha": "c" * 40,
+                    "sourceSha": image["sourceSha"], "imageReceiptSha256": "d" * 64,
+                    "verifierOutputSha256": "e" * 64,
+                    **{key: image[key] for key in ("indexDigest", "imageDigest", "configDigest", "producer")}}
+        checks = pf.Checks()
+        pf.execution_checks(checks, evidence, image, "d" * 64)
+        self.assertEqual(checks.errors, [])
+        for key, value, code in (("producer", {"workflowSha": "f" * 40}, "execution.binding.producer"),
+                                 ("imageReceiptSha256", "f" * 64, "execution.binding.imageReceiptSha256"),
+                                 ("toolingSha", "f" * 40, "execution.retained")):
+            with self.subTest(key=key):
+                changed = copy.deepcopy(evidence)
+                changed[key] = value
+                checks = pf.Checks()
+                pf.execution_checks(checks, changed, image, "d" * 64)
+                self.assertIn(code, checks.errors)
+
     def setUp(self):
         # Schema negatives need the legacy seed's explicit missing-upstream and
         # missing-decision-evidence preconditions, not whichever candidate is staged.
