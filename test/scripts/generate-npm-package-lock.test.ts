@@ -596,11 +596,15 @@ describe("generate-npm-package-lock", () => {
       const lock: { packages: Record<string, Record<string, unknown>> } = fixture();
       const parent = lock.packages["node_modules/body-parser"];
       const child = lock.packages["node_modules/body-parser/node_modules/qs"];
+      const root = lock.packages["node_modules/qs"];
+      if (!parent || !child || !root) {
+        throw new Error("body-parser override fixture is incomplete");
+      }
       if (scenario === "child") {
         child.version = "6.16.0";
       }
       if (scenario === "root") {
-        lock.packages["node_modules/qs"].version = "6.16.1";
+        root.version = "6.16.1";
       }
       if (scenario === "parent") {
         parent.version = "2.3.0";
@@ -846,22 +850,31 @@ describe("generate-npm-package-lock", () => {
         query: "6.16.0",
         parser: { ".": "npm:body-parser@2.4.0", query: "npm:@trusted/qs@6.16.1" },
       });
+      const query = lock.packages["node_modules/parser/node_modules/query"];
+      if (!query) {
+        throw new Error("parser override fixture is incomplete");
+      }
       expect(collectOverrideViolations(lock, rules)).toEqual([]);
-      lock.packages["node_modules/parser/node_modules/query"].name = "unrelated";
+      query.name = "unrelated";
       expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
-      lock.packages["node_modules/parser/node_modules/query"].name = "@trusted/qs";
-      lock.packages["node_modules/parser/node_modules/query"].version = "6.16.0";
+      query.name = "@trusted/qs";
+      query.version = "6.16.0";
       expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
     });
 
     it("does not exempt an ambiguous hoisted child or invalidate valid shrinkwraps", () => {
       const lock: { packages: Record<string, Record<string, unknown>> } = fixture();
-      lock.packages["node_modules/body-parser"].hasShrinkwrap = true;
+      const parent = lock.packages["node_modules/body-parser"];
+      const root = lock.packages["node_modules/qs"];
+      if (!parent || !root) {
+        throw new Error("body-parser override fixture is incomplete");
+      }
+      parent.hasShrinkwrap = true;
       const rules = exactOverrideRulesFromOverrides(policy);
       expect(disableDependencyShrinkwrapOverrideConflictSources(lock, rules)).toEqual([]);
-      expect(lock.packages["node_modules/body-parser"].hasShrinkwrap).toBe(true);
+      expect(parent.hasShrinkwrap).toBe(true);
       delete lock.packages["node_modules/body-parser/node_modules/qs"];
-      lock.packages["node_modules/qs"].version = "6.16.1";
+      root.version = "6.16.1";
       expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
     });
   });

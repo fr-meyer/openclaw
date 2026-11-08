@@ -128,7 +128,7 @@ export function nativeChildEnv(sourceRoot, testFiles, parentEnv = process.env) {
 export function runNativeTests({
   sourceRoot,
   testFiles,
-  completedVitestFiles = [],
+  completedVitestFiles = /** @type {string[]} */ ([]),
   parentEnv = process.env,
 }) {
   if (process.versions.bun) {
