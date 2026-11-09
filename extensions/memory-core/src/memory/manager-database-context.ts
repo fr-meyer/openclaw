@@ -397,7 +397,7 @@ export class MemoryIndexDatabase {
     return undefined;
   }
 
-  read<Key extends "source.hash" | "cache.read" | "session.current">(
+  read<Key extends "source.hash" | "cache.read" | "session.current" | "index.revision">(
     command: { type: Key; input: MemoryPublicationOperations[Key]["input"] },
     assertCurrent: () => void,
   ): Promise<MemoryPublicationOperations[Key]["output"]> {

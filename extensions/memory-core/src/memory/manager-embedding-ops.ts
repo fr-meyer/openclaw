@@ -3,8 +3,6 @@ import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import {
   formatEmbeddingModelInput,
-  isEmbeddingBatchUnavailableError,
-  resolveEmbeddingInputFormatVersion,
   type EmbeddingInput,
   type MemoryEmbeddingProviderRuntime,
 } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
@@ -31,14 +29,19 @@ import type { IndexedMemoryChunk } from "./manager-chunk-writer.js";
 import { prepareMemoryIndexInWorker } from "./manager-cpu-worker-runtime.js";
 import { readMemoryDatabaseRevision } from "./manager-db-kernel.js";
 import {
-  MemoryManagerEmbeddingCacheOps,
-  type MemoryEmbeddingCacheCandidate,
+  EMBEDDING_BATCH_MAX_TOKENS,
+  MemoryManagerEmbeddingBatchOps,
+} from "./manager-embedding-batch-ops.js";
+import type {
+  MemoryEmbeddingCacheCandidate,
+  MemoryEmbeddingProgress,
 } from "./manager-embedding-cache-ops.js";
+import { isValidMemoryEmbedding } from "./manager-embedding-cache.js";
 import { createMemoryEmbeddingOperationError } from "./manager-embedding-errors.js";
 import {
-  runMemoryEmbeddingBatchTimeoutRetry,
   runMemoryEmbeddingBatchRetryWithSplit,
   runMemoryEmbeddingRetryLoop,
+  resolveMemoryEmbeddingBatch,
 } from "./manager-embedding-policy.js";
 import { resolveChunkProvenance } from "./manager-index-preparation.js";
 import { readMemoryIndexSource } from "./manager-index-source.js";
@@ -56,7 +59,6 @@ import { logMemoryVectorDegradedWrite } from "./manager-vector-warning.js";
 import { resolveMemoryPathClassification } from "./memory-path-provenance.js";
 import { runEmbeddingOperationWithTimeout } from "./paused-deadline.js";
 
-const EMBEDDING_BATCH_MAX_TOKENS = 8000;
 const EMBEDDING_INDEX_CONCURRENCY = 4;
 const EMBEDDING_TIMEOUTS_MS = {
   query: { remote: 60_000, local: 5 * 60_000 },
@@ -93,11 +95,7 @@ function formatBatchSourceCounts(counts: Record<string, number>): string {
   );
 }
 
-export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCacheOps {
-  protected readonly batchFailureLimit = 2;
-  protected batchFailure: { count: number; lastError?: string; lastProvider?: string } = {
-    count: 0,
-  };
+export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingBatchOps {
   protected abstract markLocalEmbeddingProviderDegraded(err: unknown): void;
   private activeProviderUses = new Map<
     EmbeddingProvider,
@@ -205,103 +203,11 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     });
   }
 
-  private async embedChunksWithBatch(
-    candidates: MemoryEmbeddingCacheCandidate[],
-    source: string,
-    generation: MemorySemanticProviderGeneration,
-    debugContext: Record<string, unknown> = {},
-  ): Promise<number[][]> {
-    const provider = generation.provider;
-    const batchEmbed = generation.runtime?.batchEmbed;
-    if (!batchEmbed) {
-      return this.embedChunksInBatches(candidates, generation, EMBEDDING_BATCH_MAX_TOKENS);
-    }
-    const { embeddings, missing, missingCandidates } = await this.collectCachedEmbeddings(
-      candidates,
-      generation,
-    );
-    this.assertEmbeddingCacheGenerationCurrent(generation);
-    if (missing.length === 0) {
-      return embeddings;
-    }
-
-    const missingChunks = missingCandidates.map((candidate) => candidate.chunk);
-    const batchResult = this.batch.enabled
-      ? await runMemoryEmbeddingBatchTimeoutRetry({
-          onRetry: () =>
-            log.warn(`memory embeddings: ${provider.id} batch timed out; retrying once`),
-          run: () =>
-            batchEmbed({
-              agentId: this.agentId,
-              chunks: resolveEmbeddingInputFormatVersion(provider.model)
-                ? missingChunks.map((chunk) => ({
-                    ...chunk,
-                    ...formatEmbeddingModelInput(chunk, provider.model, "document"),
-                    ...(chunk.embeddingInput
-                      ? {
-                          embeddingInput: formatEmbeddingModelInput(
-                            chunk.embeddingInput,
-                            provider.model,
-                            "document",
-                          ),
-                        }
-                      : {}),
-                  }))
-                : missingChunks,
-              wait: this.batch.wait,
-              concurrency: this.batch.concurrency,
-              pollIntervalMs: this.batch.pollIntervalMs,
-              timeoutMs: this.batch.timeoutMs,
-              debug: (message, data) =>
-                log.debug(message, { ...data, source, chunks: candidates.length, ...debugContext }),
-            }),
-        })
-      : null;
-    let batchEmbeddings: number[][];
-    // Completion accounting is synchronous: concurrent batches cannot interleave updates.
-    if (batchResult?.kind === "success") {
-      if (this.batchFailure.count > 0) {
-        log.debug("memory embeddings: batch recovered; resetting failure count");
-      }
-      // An in-flight success clears failures without re-enabling disabled batching.
-      this.batchFailure = { count: 0 };
-      if (!batchResult.value) {
-        return this.embedChunksInBatches(candidates, generation, EMBEDDING_BATCH_MAX_TOKENS);
-      }
-      batchEmbeddings = batchResult.value;
-      await this.persistGeneratedEmbeddings(missingCandidates, batchEmbeddings, generation);
-    } else {
-      if (batchResult) {
-        const message = formatErrorMessage(batchResult.error);
-        const forceDisable = isEmbeddingBatchUnavailableError(batchResult.error);
-        if (this.batch.enabled) {
-          const count =
-            this.batchFailure.count +
-            (forceDisable ? this.batchFailureLimit : batchResult.attempts);
-          this.batchFailure = { count, lastError: message, lastProvider: provider.id };
-          this.batch.enabled = !(forceDisable || count >= this.batchFailureLimit);
-        }
-        const suffix = this.batch.enabled ? "keeping batch enabled" : "disabling batch";
-        log.warn(
-          `memory embeddings: ${provider.id} batch failed (${this.batchFailure.count}/${this.batchFailureLimit}); ${suffix}; falling back to non-batch embeddings: ${message}`,
-        );
-      }
-      batchEmbeddings = await this.embedChunksInBatches(
-        missingCandidates,
-        generation,
-        EMBEDDING_BATCH_MAX_TOKENS,
-      );
-    }
-    for (const [index, item] of missing.entries()) {
-      embeddings[item] = batchEmbeddings[index] ?? [];
-    }
-    return embeddings;
-  }
-
   protected override async embedBatchWithRetry(
     inputs: Array<string | EmbeddingInput>,
     generation?: MemorySemanticProviderGeneration,
     cacheCandidates?: MemoryEmbeddingCacheCandidate[],
+    onSuccess?: MemoryEmbeddingProgress,
   ): Promise<number[][]> {
     if (inputs.length === 0) {
       return [];
@@ -336,13 +242,18 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
               const result = await runEmbeddingOperationWithTimeout({
                 timeoutMs,
                 message: `memory embeddings batch timed out after ${Math.round(timeoutMs / 1000)}s`,
-                run: async (signal) =>
-                  await provider.embedBatch(
+                run: async (signal) => {
+                  if (onSuccess && generation) {
+                    await this.authorizeEmbeddingRecovery(generation);
+                  }
+                  signal.throwIfAborted();
+                  return await provider.embedBatch(
                     batchItems.map((item) =>
                       formatEmbeddingModelInput(item.input, provider.model, "document"),
                     ),
                     { signal, inputType: "document" },
-                  ),
+                  );
+                },
               });
               if (!structured) {
                 log.debug("memory embeddings: batch completed", {
@@ -362,7 +273,33 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
               if (batchCandidates.length !== batchItems.length) {
                 return;
               }
-              await this.persistGeneratedEmbeddings(batchCandidates, batchEmbeddings, generation);
+              if (onSuccess) {
+                const dimensions =
+                  generation.embeddingDimensions ??
+                  provider.dimensions ??
+                  batchEmbeddings[0]?.length;
+                if (
+                  batchEmbeddings.length !== batchCandidates.length ||
+                  !batchEmbeddings.every((vector) => isValidMemoryEmbedding(vector, dimensions))
+                ) {
+                  throw Object.assign(
+                    new Error("synchronous embedding recovery returned invalid vectors"),
+                    { code: "INVALID_EMBEDDING_RESPONSE" },
+                  );
+                }
+                onSuccess(batchCandidates, batchEmbeddings);
+              }
+              try {
+                await this.persistGeneratedEmbeddings(batchCandidates, batchEmbeddings, generation);
+              } catch (error) {
+                if (onSuccess) {
+                  generation.cacheWritesInvalidated = true;
+                }
+                throw error;
+              }
+              if (onSuccess) {
+                this.assertEmbeddingRecoveryCurrent(generation);
+              }
             },
             waitForRetry: async (delayMs) => {
               await this.waitForEmbeddingRetry(
@@ -727,7 +664,8 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     items: MemoryIndexWorkItem[],
     generation: MemorySyncProviderGeneration | null,
   ): Promise<void> {
-    const batchEmbed = generation?.kind === "semantic" ? generation.runtime?.batchEmbed : undefined;
+    const batchEmbed =
+      generation?.kind === "semantic" ? resolveMemoryEmbeddingBatch(generation.runtime) : undefined;
     if (
       generation?.kind !== "semantic" ||
       !this.batch.enabled ||

@@ -291,3 +291,18 @@ describe("fetchRemoteEmbeddingVectors", () => {
     expect(JSON.stringify(debugMock.mock.calls)).not.toContain(AUTH_TOKEN);
   });
 });
+
+it("rejects uniformly wrong configured dimensions at the HTTP response boundary", async () => {
+  remoteHttpMock.mockReset();
+  respondJson({ data: [{ embedding: Array(1536).fill(1) }, { embedding: Array(1536).fill(2) }] });
+  await expect(
+    fetchRemoteEmbeddingVectors({
+      ...REQUEST,
+      body: { model: "text-embedding-3-small", input: ["first", "second"], dimensions: 256 },
+    }),
+  ).rejects.toMatchObject({
+    code: "INVALID_EMBEDDING_RESPONSE",
+    message: expect.stringContaining("expected 256 dimensions, got 1536"),
+  });
+  expect(remoteHttpMock).toHaveBeenCalledOnce();
+});

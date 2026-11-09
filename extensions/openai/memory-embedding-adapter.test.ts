@@ -6,6 +6,11 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  OpenAiEmbeddingBatchError: class extends Error {
+    constructor(readonly embeddings: Map<string, number[]>) {
+      super("synthetic partial batch");
+    }
+  },
   createOpenAiEmbeddingProvider: vi.fn(),
   runOpenAiEmbeddingBatches: vi.fn(async () => new Map([["0", [1, 0]]])),
 }));
@@ -17,6 +22,7 @@ vi.mock("./embedding-provider.js", () => ({
 vi.mock("./embedding-batch.js", () => ({
   OPENAI_BATCH_ENDPOINT: "/v1/embeddings",
   runOpenAiEmbeddingBatches: mocks.runOpenAiEmbeddingBatches,
+  OpenAiEmbeddingBatchError: mocks.OpenAiEmbeddingBatchError,
 }));
 
 import { openAiMemoryEmbeddingProviderAdapter } from "./memory-embedding-adapter.js";
@@ -29,6 +35,27 @@ const provider: MemoryEmbeddingProvider = {
 };
 
 describe("OpenAI memory embedding adapter", () => {
+  it("returns validated partial positions for host-owned same-provider recovery", async () => {
+    const result = await openAiMemoryEmbeddingProviderAdapter.create({
+      config: {} as never,
+      model: "text-embedding-3-small",
+      fallback: "none",
+    });
+    mocks.runOpenAiEmbeddingBatches.mockRejectedValueOnce(
+      new mocks.OpenAiEmbeddingBatchError(new Map([["1", [1, 0]]])),
+    );
+    await expect(
+      result.runtime?.batchEmbedPartial?.({
+        agentId: "main",
+        chunks: [{ text: "first" }, { text: "second" }],
+        wait: true,
+        concurrency: 1,
+        pollIntervalMs: 1,
+        timeoutMs: 1000,
+        debug: () => {},
+      }),
+    ).resolves.toMatchObject({ kind: "partial", embeddings: [null, [1, 0]] });
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
   });

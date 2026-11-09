@@ -498,6 +498,7 @@ describe("bounded memory publication transfer", () => {
     const staleRevision = readMemoryDatabaseRevision(owner.db);
     owner.db.exec("UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1");
     const outcomes: Array<boolean | undefined> = [];
+    let cacheInvalidated = false;
     const assertCurrent = () => undefined;
     outcomes.push(
       await owner.mutateEmbeddingCache(
@@ -513,10 +514,26 @@ describe("bounded memory publication transfer", () => {
         },
         assertCurrent,
         () => staleRevision,
-        () => undefined,
+        () => {
+          cacheInvalidated = true;
+        },
       ),
     );
     expect(outcomes).toEqual([false]);
+    expect(cacheInvalidated).toBe(true);
+    expect(readRows()).toEqual(before);
+    cacheInvalidated = false;
+    expect(
+      await owner.mutateEmbeddingCache(
+        { kind: "upsert", header, entries: [{ hash: "stale", embedding: [2] }] },
+        assertCurrent,
+        () => staleRevision,
+        () => {
+          cacheInvalidated = true;
+        },
+      ),
+    ).toBe(false);
+    expect(cacheInvalidated).toBe(true);
     expect(readRows()).toEqual(before);
 
     owner.db

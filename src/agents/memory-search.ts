@@ -164,7 +164,7 @@ function produceMemorySearchConfig(cfg: OpenClawConfig, agentId: string) {
           wait: true,
           concurrency: 2,
           pollIntervalMs: 2_000,
-          timeoutMinutes: 60,
+          timeoutMinutes: primaryAdapter?.batchTimeoutMinutes ?? 60,
         },
       }
     : undefined;

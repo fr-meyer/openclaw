@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MemorySearchResult } from "../memory-host-sdk/host/types.js";
 import type { MemorySearchHit } from "../plugins/memory-provider-types.js";
+import { createDeferredCore as createDeferred } from "../shared/deferred.js";
 import {
   buildProjectMemoryWriteInstruction,
   filterProjectScopedCuratedContextFiles,
@@ -16,7 +17,12 @@ const runtimeMocks = vi.hoisted(() => ({
   providerRuntime: undefined as unknown,
 }));
 
-const logMocks = vi.hoisted(() => ({ debug: vi.fn() }));
+const logMocks = vi.hoisted(() => ({ debug: vi.fn(), warn: vi.fn() }));
+
+// Fast-provider cases exclude cold module loading from the latency fixture.
+beforeAll(async () => {
+  await import("../plugins/memory-audience.js");
+});
 
 vi.mock("../plugins/memory-state.js", () => ({
   getMemoryRuntime: () => runtimeMocks.legacyRuntime,
@@ -508,4 +514,149 @@ describe("native project memory bootstrap", () => {
       expect(close).toHaveBeenCalledOnce();
     },
   );
+});
+
+it.each(["legacy", "candidates", "open", "close"] as const)(
+  "continues after the project recall budget during %s without losing late cleanup",
+  async (stage) => {
+    runtimeMocks.getManager.mockReset();
+    runtimeMocks.getProvider.mockReset();
+    runtimeMocks.listCurated.mockReset();
+    logMocks.warn.mockReset();
+    runtimeMocks.legacyRuntime =
+      stage === "legacy" ? { getMemorySearchManager: runtimeMocks.getManager } : undefined;
+    runtimeMocks.providerRuntime = stage === "legacy" ? undefined : { open: vi.fn() };
+    vi.useFakeTimers();
+    const pending = createDeferred<void>();
+    const started = createDeferred<void>();
+    const delayed = async () => {
+      started.resolve();
+      await pending.promise;
+    };
+    const closed = createDeferred<void>();
+    const provider = {
+      capabilities: { candidates: ["project"] as const },
+      candidates: vi.fn(async () => {
+        if (stage === "candidates") {
+          await delayed();
+        }
+        return { hits: [] };
+      }),
+      close: vi.fn(async () => {
+        if (stage === "close") {
+          await delayed();
+        }
+        closed.resolve();
+      }),
+    };
+    runtimeMocks.getManager.mockResolvedValue({
+      manager: {
+        listCuratedProjectCandidates: async () => {
+          await delayed();
+          return [];
+        },
+      },
+    });
+    runtimeMocks.getProvider.mockImplementation(async () => {
+      if (stage === "open") {
+        await delayed();
+      }
+      return { provider };
+    });
+    const caller = new AbortController();
+    let result: string[] | undefined;
+    const preparation = prepareProjectMemoryBootstrap({
+      cfg: {},
+      agentId: "main",
+      activeProjectKeys: ["github.com/OpenClaw/OpenClaw"],
+      context: {
+        authority: { kind: "host", operation: "project-test" },
+        signal: caller.signal,
+        assertCurrent() {},
+      },
+    }).then((lines) => {
+      result = lines;
+    });
+    try {
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(result).toEqual([]);
+      expect(logMocks.warn).toHaveBeenCalledWith(expect.stringContaining("1000ms budget"));
+      expect(caller.signal.aborted).toBe(false);
+      caller.abort();
+      if (stage !== "legacy") {
+        const context = runtimeMocks.getProvider.mock.calls[0]?.[0].context;
+        expect(context?.signal.aborted).toBe(true);
+        expect(() => context?.assertCurrent()).toThrow();
+      }
+    } finally {
+      pending.resolve();
+      await preparation;
+      if (stage !== "legacy") {
+        await closed.promise;
+      }
+      vi.useRealTimers();
+    }
+  },
+);
+
+it("discards late candidates and closes the provider after turn authority is revoked", async () => {
+  runtimeMocks.legacyRuntime = undefined;
+  runtimeMocks.providerRuntime = { open: vi.fn() };
+  runtimeMocks.getProvider.mockReset();
+  logMocks.warn.mockReset();
+  logMocks.debug.mockReset();
+  vi.useFakeTimers();
+  const pending = createDeferred<MemorySearchHit[]>();
+  const started = createDeferred<void>();
+  const closed = createDeferred<void>();
+  let current = true;
+  const close = vi.fn(async () => closed.resolve());
+  runtimeMocks.getProvider.mockResolvedValue({
+    provider: {
+      capabilities: { candidates: ["project"] },
+      candidates: async () => {
+        started.resolve();
+        return { hits: await pending.promise };
+      },
+      close,
+    },
+  });
+  const preparation = prepareProjectMemoryBootstrap({
+    cfg: {},
+    agentId: "main",
+    activeProjectKeys: ["github.com/OpenClaw/OpenClaw"],
+    context: {
+      authority: { kind: "host", operation: "project-test" },
+      assertCurrent() {
+        if (!current) {
+          throw new Error("turn ended");
+        }
+      },
+    },
+  });
+  try {
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await preparation).toEqual([]);
+    current = false;
+    pending.resolve([
+      {
+        reference: { providerId: "records", id: "late" },
+        excerpt: "Late project fact.",
+        automaticRecall: {
+          eligible: true,
+          projectKeys: ["github.com/OpenClaw/OpenClaw"],
+        },
+      },
+    ]);
+    await closed.promise;
+    expect(close).toHaveBeenCalledOnce();
+    expect(logMocks.debug).toHaveBeenCalledWith(
+      expect.stringContaining("project memory recall failed for memory-core: Error: turn ended"),
+    );
+  } finally {
+    pending.resolve([]);
+    vi.useRealTimers();
+  }
 });

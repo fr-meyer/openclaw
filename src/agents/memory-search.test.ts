@@ -37,6 +37,7 @@ function registerBaseMemoryEmbeddingProviders(options?: { includeGemini?: boolea
   // plugin loader or live embedding backends.
   registerEmbeddingProvider({
     id: "openai",
+    batchTimeoutMinutes: 1500,
     defaultModel: "text-embedding-3-small",
     transport: "remote",
     create: async () => ({ provider: null }),
@@ -99,7 +100,10 @@ describe("memory search config", () => {
     });
   }
 
-  function expectDefaultRemoteBatch(resolved: ReturnType<typeof resolveMemorySearchConfig>): void {
+  function expectDefaultRemoteBatch(
+    resolved: ReturnType<typeof resolveMemorySearchConfig>,
+    timeoutMinutes = 60,
+  ): void {
     // Remote providers default to non-batch mode; explicit batch config must
     // opt in so memory search does not introduce hidden async polling.
     expect(resolved?.remote?.batch).toEqual({
@@ -107,7 +111,7 @@ describe("memory search config", () => {
       wait: true,
       concurrency: 2,
       pollIntervalMs: 2000,
-      timeoutMinutes: 60,
+      timeoutMinutes,
     });
   }
 
@@ -158,7 +162,7 @@ describe("memory search config", () => {
         wait: true,
         concurrency: 2,
         pollIntervalMs: 2000,
-        timeoutMinutes: 60,
+        timeoutMinutes: 1500,
       },
     });
   }
@@ -668,7 +672,14 @@ describe("memory search config", () => {
   it("includes batch defaults for openai without remote overrides", () => {
     const cfg = configWithDefaultProvider("openai");
     const resolved = resolveMemorySearchConfig(cfg, "main");
-    expectDefaultRemoteBatch(resolved);
+    expectDefaultRemoteBatch(resolved, 1500);
+  });
+
+  it("preserves the default batch wait for providers without a completion-window budget", () => {
+    expect(
+      resolveMemorySearchConfig(configWithDefaultProvider("gemini"), "main")?.remote?.batch
+        ?.timeoutMinutes,
+    ).toBe(60);
   });
 
   it("merges memory search input_type overrides", () => {

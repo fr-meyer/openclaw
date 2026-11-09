@@ -91,6 +91,8 @@ export type EmbeddingProviderAdapter = {
   defaultModel?: string;
   transport?: "local" | "remote";
   authProviderId?: string;
+  /** Default asynchronous Batch wait budget, including the provider completion window. */
+  batchTimeoutMinutes?: number;
   /** Canonical model from config only: synchronous, without auth or network access. */
   normalizeModel?: (options: EmbeddingProviderCreateOptions) => string;
   resolveIndexIdentity?: (

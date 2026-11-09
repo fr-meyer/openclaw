@@ -35,7 +35,12 @@ export async function fetchRemoteEmbeddingVectors(params: {
     },
     parse: (payload) => {
       const data = asOptionalRecord(payload)?.data;
-      return readEmbeddingVectors(data, inputCount, errorPrefix);
+      return readEmbeddingVectors(
+        data,
+        inputCount,
+        errorPrefix,
+        typeof body?.dimensions === "number" ? body.dimensions : undefined,
+      );
     },
   });
 }

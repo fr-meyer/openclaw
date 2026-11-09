@@ -634,7 +634,6 @@ extensions/ollama/src/setup.runtime.ts	1
 extensions/ollama/src/stream-compat.ts	1
 extensions/ollama/src/stream.runtime.ts	6
 extensions/onepassword/index.ts	2
-extensions/openai/embedding-batch.ts	2
 extensions/openai/index.ts	2
 extensions/openai/native-web-search.ts	1
 extensions/openai/openai-chatgpt-oauth-token.runtime.ts	1
@@ -1743,6 +1742,7 @@ src/commands/doctor-config-preflight.cron.ts	4
 src/commands/doctor-gateway-services.ts	1
 src/commands/doctor-heartbeat-scratch-migration.ts	4
 src/commands/doctor-main-session-recovery.ts	1
+src/commands/doctor-migration-backup-reuse.ts	2
 src/commands/doctor-model-catalog-credentials.ts	1
 src/commands/doctor-post-upgrade.ts	1
 src/commands/doctor-prompter.ts	1
@@ -1986,6 +1986,7 @@ src/gateway/server-http-upgrades.ts	2
 src/gateway/server-in-process-dispatch.ts	3
 src/gateway/server-instance-runtime.ts	3
 src/gateway/server-maintenance.ts	4
+src/gateway/server-managed-task-flow-runtime.ts	1
 src/gateway/server-methods.ts	3
 src/gateway/server-methods/agent-run-handler.ts	1
 src/gateway/server-methods/agent-session-patch.ts	1
@@ -2456,7 +2457,7 @@ src/plugins/registry-registrars-host.ts	1
 src/plugins/registry-registrars-operations.ts	2
 src/plugins/registry-registrars-tools-hooks.ts	1
 src/plugins/registry-runtime-binding.ts	1
-src/plugins/registry-runtime.ts	1
+src/plugins/registry-runtime.ts	2
 src/plugins/registry.ts	1
 src/plugins/runtime-channel-state.ts	1
 src/plugins/runtime-state.ts	1
@@ -2593,6 +2594,7 @@ src/talk/consult-question.ts	2
 src/talk/exact-speech-protocol.ts	1
 src/talk/provider-internal.ts	2
 src/talk/turn-context-tracker.ts	2
+src/tasks/managed-task-flow-kill-claim.worker.ts	6
 src/trajectory/export.ts	8
 src/trajectory/runtime-store.sqlite.ts	1
 src/trajectory/runtime.ts	3

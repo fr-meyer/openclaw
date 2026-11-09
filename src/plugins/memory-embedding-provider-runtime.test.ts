@@ -128,11 +128,17 @@ describe("memory embedding provider runtime resolution", () => {
     const batchEmbed = vi.fn(async (options: EmbeddingBatchOptions) =>
       options.chunks.map(() => [5, 6]),
     );
+    const batchEmbedPartial = vi.fn(async (options: EmbeddingBatchOptions) => ({
+      kind: "partial" as const,
+      embeddings: options.chunks.map(() => null),
+      reason: "synthetic unresolved inputs",
+    }));
     const runtime = {
       id: "generic",
       inlineQueryTimeoutMs: 1234,
       sourceWideBatchEmbed: true,
       batchEmbed,
+      batchEmbedPartial,
     } satisfies EmbeddingProviderRuntime;
     const runtimeFactsKey = Symbol.for("openclaw.localEmbeddingRuntimeFacts");
     const provider = {
@@ -175,6 +181,7 @@ describe("memory embedding provider runtime resolution", () => {
     const result = await adapter?.create(options);
     expect(create).toHaveBeenCalledWith(options);
     expect(result?.runtime).toBe(runtime);
+    expect(result?.runtime?.batchEmbedPartial).toBe(batchEmbedPartial);
     await expect(
       result?.runtime?.batchEmbed?.({
         agentId: "main",

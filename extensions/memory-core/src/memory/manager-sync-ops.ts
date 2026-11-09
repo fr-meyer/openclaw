@@ -25,6 +25,7 @@ import { MemoryIndexDatabase } from "./manager-database-context.js";
 import { memoryDatabaseTableExists, readMemoryDatabaseRevision } from "./manager-db-kernel.js";
 import { cleanupAgedMemoryReindexTempFiles, removeMemoryDatabaseFiles } from "./manager-db.js";
 import { isMemoryEmbeddingOperationError } from "./manager-embedding-errors.js";
+import { resolveMemoryEmbeddingBatch } from "./manager-embedding-policy.js";
 import { withMemoryIndexGeneration } from "./manager-index-generation-lease.js";
 import {
   resolveMemoryProviderLifecycle,
@@ -114,8 +115,8 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
     return Boolean(
       this.batch.enabled &&
       provider &&
-      providerRuntime?.batchEmbed &&
-      providerRuntime.sourceWideBatchEmbed === true,
+      resolveMemoryEmbeddingBatch(providerRuntime) &&
+      providerRuntime?.sourceWideBatchEmbed === true,
     );
   }
 
@@ -427,7 +428,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
 
   protected resolveBatchConfig(): MemoryEmbeddingBatchConfig {
     const batch = this.settings.remote?.batch;
-    const enabled = Boolean(batch?.enabled && this.provider && this.providerRuntime?.batchEmbed);
+    const enabled = Boolean(
+      batch?.enabled && this.provider && resolveMemoryEmbeddingBatch(this.providerRuntime),
+    );
     return {
       enabled,
       wait: batch?.wait ?? true,

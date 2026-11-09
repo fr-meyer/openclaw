@@ -52,6 +52,7 @@ export type MemoryPublicationOperations = {
     input: Omit<Parameters<typeof loadMemoryEmbeddingCache>[0], "db">;
     output: ReturnType<typeof loadMemoryEmbeddingCache>;
   };
+  "index.revision": { input: null; output: number };
   "source.hash": {
     input: { source: "memory" | "sessions"; path: string };
     output: string | undefined;

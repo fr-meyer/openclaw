@@ -7,6 +7,7 @@ export function readEmbeddingVectors(
   data: unknown,
   expectedCount: number | undefined,
   errorPrefix: string,
+  expectedDimensions?: number,
 ): number[][] {
   const invalid = (condition: string) =>
     Object.assign(new Error(`${errorPrefix}: ${condition}`), {
@@ -40,6 +41,11 @@ export function readEmbeddingVectors(
     }
     if (embedding.length === 0) {
       throw invalid(`empty embedding at position ${position}`);
+    }
+    if (expectedDimensions !== undefined && embedding.length !== expectedDimensions) {
+      throw invalid(
+        `expected ${expectedDimensions} dimensions, got ${embedding.length} at position ${position}`,
+      );
     }
     if (indexed !== undefined && indexed !== usesIndex) {
       throw invalid(

@@ -399,3 +399,65 @@ describe.each(["text", "structured"])("memory embedding batch retry boundary (%s
     expect(manager.markLocalEmbeddingProviderDegraded).toHaveBeenCalledOnce();
   });
 });
+
+describe("asynchronous batch fail-closed capability", () => {
+  it.each(["polling timed out", "submission outcome unknown", "batch failed", "null result"])(
+    "makes one batch call and no synchronous fallback after %s",
+    async (message) => {
+      const error = new Error(message);
+      const batchEmbed =
+        message === "null result"
+          ? vi.fn().mockResolvedValue(null)
+          : vi.fn().mockRejectedValue(error);
+      const syncEmbed = vi.fn().mockResolvedValue([[1, 0]]);
+      const manager = Object.assign(Object.create(MemoryManagerEmbeddingOps.prototype), {
+        agentId: "main",
+        batch: {
+          enabled: true,
+          wait: true,
+          concurrency: 2,
+          pollIntervalMs: 2000,
+          timeoutMs: 90_000_000,
+        },
+        batchFailure: { count: 0 },
+        collectCachedEmbeddings: async () => ({
+          embeddings: [[]],
+          missing: [0],
+          missingCandidates: [{ chunk: { text: "synthetic input" } }],
+        }),
+        assertEmbeddingCacheGenerationCurrent: () => {},
+        embedChunksInBatches: syncEmbed,
+      }) as {
+        embedChunksWithBatch: (
+          candidates: unknown[],
+          source: string,
+          generation: unknown,
+        ) => Promise<unknown>;
+        batch: { enabled: boolean };
+      };
+      const pending = manager.embedChunksWithBatch([{}], "memory", {
+        provider: { id: "openai", model: "text-embedding-3-small" },
+        runtime: { batchFailureMode: "fail-closed", batchEmbed },
+      });
+      if (message === "null result") {
+        await expect(pending).rejects.toThrow(/batch returned no result/);
+      } else {
+        await expect(pending).rejects.toBe(error);
+      }
+      expect(batchEmbed).toHaveBeenCalledOnce();
+      expect(syncEmbed).not.toHaveBeenCalled();
+      expect(manager.batch.enabled).toBe(true);
+    },
+  );
+
+  it("keeps synchronous timeout retry behavior unchanged", async () => {
+    const embedBatch = vi
+      .fn<EmbeddingProvider["embedBatch"]>()
+      .mockRejectedValueOnce(new Error("request timed out"))
+      .mockResolvedValueOnce([[1, 0]]);
+    const manager = createEmbeddingBatchRetryHarness(embedBatch);
+    await expect(manager.embedBatchWithRetry(["synthetic input"])).resolves.toEqual([[1, 0]]);
+    expect(embedBatch).toHaveBeenCalledTimes(2);
+    expect(manager.waitForEmbeddingRetry).toHaveBeenCalledOnce();
+  });
+});

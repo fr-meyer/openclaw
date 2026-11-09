@@ -14,6 +14,7 @@ import type {
 import type {
   EmbeddingBatchChunk,
   EmbeddingBatchOptions,
+  EmbeddingBatchResult,
 } from "./embedding-provider-runtime-types.js";
 import type {
   EmbeddingProvider,
@@ -77,8 +78,14 @@ export type MemoryEmbeddingBatchOptions = Omit<EmbeddingBatchOptions, "chunks"> 
 
 export type MemoryEmbeddingProviderCallOptions = Pick<EmbeddingProviderCallOptions, "signal">;
 
-export type MemoryEmbeddingProviderRuntime = Omit<EmbeddingProviderRuntime, "batchEmbed"> & {
+export type MemoryEmbeddingProviderRuntime = Omit<
+  EmbeddingProviderRuntime,
+  "batchEmbed" | "batchEmbedPartial"
+> & {
   batchEmbed?: (options: MemoryEmbeddingBatchOptions) => Promise<number[][] | null>;
+  batchEmbedPartial?: (
+    options: MemoryEmbeddingBatchOptions,
+  ) => Promise<EmbeddingBatchResult | null>;
 };
 
 export type MemoryEmbeddingProviderIndexIdentity = EmbeddingProviderIndexIdentity;

@@ -158,6 +158,22 @@ Embedding providers can type their asynchronous `batchEmbed(...)` capability wit
 `EmbeddingProviderBatchRuntime` from
 `openclaw/plugin-sdk/embedding-provider-runtime-contract`. The public contract
 contains batch chunks and execution options, without host cache or identity metadata.
+An adapter can declare `batchTimeoutMinutes` for its provider completion window.
+A runtime can set `batchFailureMode: "fail-closed"` to prevent blind replay or
+wholesale synchronous fallback after a failed asynchronous invocation. Omitting
+it preserves existing retry and fallback behavior.
+
+The optional `batchEmbedPartial(...)` capability returns `EmbeddingBatchResult`:
+an ordered vector array, or `{ kind: "partial", embeddings, reason }` with null
+positions for unresolved inputs. The host prefers this capability, saves valid
+vectors, and uses canonical same-provider synchronous recovery only for missing
+positions. The existing `batchEmbed(...)` return shape remains unchanged. Providers
+own safe transport retries and remote-job reconciliation; the host owns cache
+writes, generation authority, and synchronous retry/splitting. Terminal recovery
+errors retain validated in-run vectors without serializing them into logs. This
+contract does not provide remote-job restart recovery or unlimited durable cache
+retention.
+
 Batches remain per-file unless the runtime sets `sourceWideBatchEmbed: true`.
 That opt-in lets the memory host submit chunks from
 multiple dirty memory files and enabled sources in one `batchEmbed(...)` call up

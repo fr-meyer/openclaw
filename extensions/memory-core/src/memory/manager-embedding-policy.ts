@@ -3,6 +3,7 @@ import {
   estimateStructuredEmbeddingInputBytes,
   estimateUtf8Bytes,
   type EmbeddingInput,
+  type MemoryEmbeddingProviderRuntime,
 } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import { retryAsync } from "openclaw/plugin-sdk/retry-runtime";
 import {
@@ -12,19 +13,38 @@ import {
 
 // Retry attempts are host control state. Provider-thrown values stay opaque so
 // they cannot override the counter or break accounting when they are immutable.
+type MemoryBatchValue = Awaited<
+  ReturnType<NonNullable<MemoryEmbeddingProviderRuntime["batchEmbedPartial"]>>
+>;
 type MemoryBatchRetryResult =
-  | { kind: "success"; value: number[][] | null }
+  | { kind: "success"; value: MemoryBatchValue }
   | { kind: "failure"; error: unknown; attempts: 1 | 2 };
+
+export function resolveMemoryEmbeddingBatch(runtime: MemoryEmbeddingProviderRuntime | undefined) {
+  return runtime?.batchEmbedPartial ?? runtime?.batchEmbed;
+}
 
 export async function runMemoryEmbeddingBatchTimeoutRetry(params: {
   onRetry: () => void;
-  run: () => Promise<number[][] | null>;
+  failureMode?: MemoryEmbeddingProviderRuntime["batchFailureMode"];
+  run: () => Promise<MemoryBatchValue>;
 }): Promise<MemoryBatchRetryResult> {
   let attempts: 1 | 2 = 1;
   while (true) {
     try {
-      return { kind: "success", value: await params.run() };
+      const value = await params.run();
+      if (value === null && params.failureMode === "fail-closed") {
+        throw new Error(
+          "asynchronous embedding batch returned no result; reconcile before retrying",
+        );
+      }
+      return { kind: "success", value };
     } catch (error) {
+      // Never blindly replay or replace a whole asynchronous invocation. The
+      // optional partial-result capability selects its own recoverable positions.
+      if (params.failureMode === "fail-closed") {
+        throw error;
+      }
       if (attempts === 2 || !/timed out|timeout/i.test(formatErrorMessage(error))) {
         return { kind: "failure", error, attempts };
       }

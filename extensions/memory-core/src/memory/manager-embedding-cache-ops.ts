@@ -33,11 +33,17 @@ export type MemoryEmbeddingCacheCandidate = {
   source: MemorySource;
 };
 
+export type MemoryEmbeddingProgress = (
+  candidates: MemoryEmbeddingCacheCandidate[],
+  embeddings: number[][],
+) => void;
+
 export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOps {
   protected abstract embedBatchWithRetry(
     inputs: Array<string | EmbeddingInput>,
     generation?: MemorySemanticProviderGeneration,
     cacheCandidates?: MemoryEmbeddingCacheCandidate[],
+    onSuccess?: MemoryEmbeddingProgress,
   ): Promise<number[][]>;
 
   protected async pruneEmbeddingCacheIfNeeded(): Promise<void> {
@@ -88,6 +94,7 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
         )
       : new Map<string, number[]>();
     this.assertEmbeddingCacheGenerationCurrent(generation);
+
     // Cache hits and new batches must inhabit the same vector space during a sync.
     for (const [hash, embedding] of cached) {
       if (!isValidMemoryEmbedding(embedding, generation.embeddingDimensions)) {
@@ -105,16 +112,55 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
     };
   }
 
+  protected assertEmbeddingRecoveryCurrent(generation: MemorySemanticProviderGeneration): void {
+    this.assertEmbeddingCacheGenerationCurrent(generation);
+    if (generation.cacheWritesInvalidated) {
+      throw Object.assign(new Error("Memory embedding recovery generation invalidated"), {
+        code: "MEMORY_EMBEDDING_GENERATION_INVALIDATED",
+      });
+    }
+  }
+
+  protected async authorizeEmbeddingRecovery(
+    generation: MemorySemanticProviderGeneration,
+  ): Promise<void> {
+    this.assertEmbeddingRecoveryCurrent(generation);
+    // A failed Batch can return no vectors, so cache-write CAS may not yet have
+    // observed a foreign forget/revision. Authorize each recovery network attempt.
+    const revision = await generation.database.read({ type: "index.revision", input: null }, () =>
+      this.assertEmbeddingRecoveryCurrent(generation),
+    );
+    if (revision !== generation.databaseRevision) {
+      generation.cacheWritesInvalidated = true;
+    }
+    this.assertEmbeddingRecoveryCurrent(generation);
+  }
+
   protected async embedChunksInBatches(
     candidates: MemoryEmbeddingCacheCandidate[],
     generation: MemorySemanticProviderGeneration,
     maxTokens: number,
+    onSuccess?: MemoryEmbeddingProgress,
   ): Promise<number[][]> {
     const { embeddings, missing, missingCandidates } = await this.collectCachedEmbeddings(
       candidates,
       generation,
     );
     this.assertEmbeddingCacheGenerationCurrent(generation);
+
+    if (onSuccess) {
+      this.assertEmbeddingRecoveryCurrent(generation);
+      const unresolved = new Set(missing);
+      const cached = candidates.flatMap((candidate, index) =>
+        unresolved.has(index) ? [] : [{ candidate, embedding: embeddings[index]! }],
+      );
+      if (cached.length > 0) {
+        onSuccess(
+          cached.map((item) => item.candidate),
+          cached.map((item) => item.embedding),
+        );
+      }
+    }
 
     if (missing.length === 0) {
       return embeddings;
@@ -126,6 +172,9 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
     );
     let cursor = 0;
     for (const batchChunks of batches) {
+      if (onSuccess) {
+        this.assertEmbeddingRecoveryCurrent(generation);
+      }
       const batchCandidates = missingCandidates.slice(cursor, cursor + batchChunks.length);
       const inputs = batchChunks.map((chunk) => chunk.embeddingInput ?? { text: chunk.text });
       const hasStructuredInputs = inputs.some((input) => hasNonTextEmbeddingParts(input));
@@ -133,6 +182,7 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
         hasStructuredInputs ? inputs : batchChunks.map((chunk) => chunk.text),
         generation,
         batchCandidates,
+        onSuccess,
       );
       for (let i = 0; i < batchChunks.length; i += 1) {
         const item = missing[cursor + i];

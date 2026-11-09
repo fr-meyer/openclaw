@@ -225,6 +225,44 @@ spawned scope (with an agent-wide exception for main), or `"self"` for strict
 current-session recall. Sandbox spawned-only clamps and
 incognito exclusions still apply.
 
+## OpenAI asynchronous Batch failures
+
+OpenAI asynchronous embedding batches share one wait and reconciliation budget of
+up to 25 hours, covering the provider's 24-hour completion window. Other providers
+keep their own wait defaults. Only
+`memory.search.remote.batch.enabled` is configurable; retired wait, concurrency,
+poll interval, and timeout keys remain unsupported.
+
+OpenClaw invokes each native OpenAI Batch creation POST once. Safe status and
+output reads can retry. Valid output rows are retained even when another row or
+group fails, an error file exists, or a job expires or is cancelled. Configured
+dimensions must match every vector. Duplicate or foreign result IDs cannot
+overwrite an already validated result.
+
+After an uncertain creation response, OpenClaw checks a bounded number of Batch
+list pages using the exact uploaded input file and operation metadata. A matching
+job is reconciled without another creation POST. An unsuccessful lookup is not
+proof that no job was accepted. If acceptance remains unknown, controlled
+synchronous recovery can duplicate remotely accepted work.
+
+The memory host saves validated results and uses its existing synchronous retry
+and splitting path only for missing or invalid inputs, with the same provider,
+model, dimensions, and generation. This bounded synchronous recovery follows the
+asynchronous wait budget; 25 hours is not an end-to-end corpus completion promise.
+Storage failures or stale generation authority stop further recovery work.
+Failures retain in-run vectors and observed reconciliation IDs without putting
+vectors in error logs.
+
+These IDs are error diagnostics, not durable submission receipts. There is no
+persisted remote-job recovery, import, or resume support. Normal embedding-cache
+limits and failed-shadow cleanup still apply; in-run preservation alone does not
+protect every successful vector across a whole failed corpus migration. Later
+invocations, including after restart, can submit unresolved remote work again.
+
+A proxy or SDK may independently retry requests; one OpenClaw POST does not
+guarantee one upstream job. A full migration also needs qualified retained-result
+storage, restart/deletion semantics, and verified proxy retry behavior.
+
 ## Troubleshooting
 
 **No results?** Run `openclaw memory status` to check the index. If empty, run

@@ -221,6 +221,9 @@ function createPublicationBackend(
         if (command.type === "source.hash") {
           return readMemorySourceHash(db, command.input.source, command.input.path);
         }
+        if (command.type === "index.revision") {
+          return readMemoryDatabaseRevision(db);
+        }
         if (command.type === "source.state") {
           return loadMemorySourceFileState({ db, ...command.input });
         }
