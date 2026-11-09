@@ -156,6 +156,14 @@ The agent has three tools for working with memory:
 
 All three tools are provided by the active memory plugin (default: `memory-core`).
 
+Automatic project recall has a one-second preparation budget, including provider
+startup and cleanup. If the budget expires, the turn continues without project
+candidates and the Gateway logs `project memory recall skipped` with the reason.
+Late results are discarded. The read may finish under the current turn's existing
+authority; the budget does not cancel storage work. Memory tools remain available
+for explicit retrieval. Cold or busy stores can therefore omit automatic recall
+on consecutive turns; explicit retrieval uses the memory tool's own lifetime.
+
 When session indexing is enabled, `memory_search` can also return session
 transcript hits. Their `sessions/...jsonl` paths are search references, not files
 that `memory_get` can read. Use `sessions_search` with distinctive text from the
