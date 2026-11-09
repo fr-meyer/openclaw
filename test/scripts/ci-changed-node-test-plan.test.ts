@@ -717,7 +717,10 @@ describe("CI changed Node test plan", () => {
         "packed changed-target plan",
       );
       expect(packed.filter((shard) => !shard.requiresDist)).toHaveLength(130);
-      expect(selectedFiles(packed).toSorted()).toEqual(selectedTestTargets.toSorted());
+      // A requested target repeated in the input still needs only one physical shard owner.
+      expect(selectedFiles(packed).toSorted()).toEqual(
+        [...new Set(selectedTestTargets)].toSorted(),
+      );
       expect(packed.filter((shard) => !shard.targets)).toEqual(
         original.filter((shard) => !shard.targets),
       );
