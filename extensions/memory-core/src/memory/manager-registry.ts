@@ -12,6 +12,7 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import type { MemoryEmbeddingProbeResult } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
+import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/time-runtime";
 import {
   resolveMemoryCoreLocalServiceHostIdentity,
   type MemoryCoreAcquireLocalService,
@@ -47,6 +48,15 @@ type PreparedMemoryManager<T extends ClosableMemoryManager> = {
 type MemoryManagerRegistryCallbacks<T extends ClosableMemoryManager> = {
   prepare: () => Promise<PreparedMemoryManager<T> | null> | PreparedMemoryManager<T> | null;
 };
+
+export type MemoryManagerAdmission = { signal?: AbortSignal; waitMs?: number };
+
+class MemoryManagerAdmissionUnavailableError extends Error {
+  constructor() {
+    super("Memory manager admission timed out");
+    this.name = "MemoryManagerAdmissionUnavailableError";
+  }
+}
 
 export function resolveMemoryIndexManagerCacheKey(params: {
   agentId: string;
@@ -209,7 +219,11 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
   }
 
   async acquire(
-    params: { agentId: string; purpose: MemoryIndexManagerPurpose },
+    params: {
+      agentId: string;
+      purpose: MemoryIndexManagerPurpose;
+      admission?: MemoryManagerAdmission;
+    },
     callbacks: MemoryManagerRegistryCallbacks<T>,
   ): Promise<T | null> {
     // A detached search handoff may race global teardown. Decline late
@@ -301,24 +315,96 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
   }
 
   private async runScopeOperation<R>(
-    params: { agentId: string; purpose: MemoryIndexManagerPurpose },
+    params: {
+      agentId: string;
+      purpose: MemoryIndexManagerPurpose;
+      admission?: MemoryManagerAdmission;
+    },
     operation: () => Promise<R>,
   ): Promise<R> {
-    while (this.closePromise) {
-      const globalClose = this.closePromise;
-      try {
-        await globalClose;
-      } catch {
-        if (this.closePromise === globalClose) {
-          await this.closeAll();
+    const admission = new AbortController();
+    const callerSignal = params.admission?.signal;
+    const onCallerAbort = () => admission.abort(callerSignal?.reason);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onQueuedAbort: (() => void) | undefined;
+    const disarm = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+      if (onQueuedAbort) {
+        admission.signal.removeEventListener("abort", onQueuedAbort);
+      }
+    };
+    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+    if (callerSignal?.aborted) {
+      onCallerAbort();
+    }
+    const waitMs = params.admission?.waitMs;
+    if (waitMs !== undefined && Number.isFinite(waitMs) && waitMs >= 0) {
+      timer = setTimeout(
+        () => admission.abort(new MemoryManagerAdmissionUnavailableError()),
+        waitMs,
+      );
+      timer.unref?.();
+    }
+    try {
+      // One budget covers both admission barriers. Never cancel either shared owner.
+      while (this.closePromise) {
+        const globalClose = this.closePromise;
+        try {
+          await racePromiseWithAbortSignal(
+            globalClose,
+            admission.signal,
+            (signal) => signal.reason,
+          );
+        } catch (error) {
+          if (admission.signal.aborted) {
+            throw error;
+          }
+          if (this.closePromise === globalClose) {
+            await racePromiseWithAbortSignal(
+              () => this.closeAll(),
+              admission.signal,
+              (signal) => signal.reason,
+            );
+          }
         }
       }
+      admission.signal.throwIfAborted();
+      let started = false;
+      let abandoned = false;
+      const queued = enqueueKeyedTask({
+        tails: this.scopeOperations,
+        key: JSON.stringify([params.agentId, params.purpose]),
+        task: async () => {
+          if (abandoned) {
+            throw admission.signal.reason;
+          }
+          admission.signal.throwIfAborted();
+          started = true;
+          // The bound ends before prepare, replacement close, or factory work starts.
+          disarm();
+          return await operation();
+        },
+      });
+      return await new Promise<R>((resolve, reject) => {
+        onQueuedAbort = () => {
+          if (started) {
+            return;
+          }
+          abandoned = true;
+          reject(admission.signal.reason);
+        };
+        admission.signal.addEventListener("abort", onQueuedAbort, { once: true });
+        if (admission.signal.aborted) {
+          onQueuedAbort();
+        }
+        // Keep observing a rejected abandoned queue callback after our caller exits.
+        queued.then(resolve, reject);
+      });
+    } finally {
+      disarm();
     }
-    return await enqueueKeyedTask({
-      tails: this.scopeOperations,
-      key: JSON.stringify([params.agentId, params.purpose]),
-      task: operation,
-    });
   }
 
   private async closeAllUnlocked(): Promise<void> {

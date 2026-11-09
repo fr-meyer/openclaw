@@ -19,6 +19,7 @@ type MemorySearchManagerParams = {
   cfg: OpenClawConfig;
   agentId: string;
   purpose?: MemorySearchManagerPurpose;
+  admission?: { signal?: AbortSignal; waitMs?: number };
   inspectSources?: boolean;
   acquireLocalService?: MemoryCoreAcquireLocalService;
   runInBackgroundContext?: MemoryCoreRuntimeHost["runInBackgroundContext"];

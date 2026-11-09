@@ -76,6 +76,20 @@ describe("memoryRuntime", () => {
     });
   });
 
+  it("forwards caller-bound admission without changing the runtime owner", async () => {
+    const cfg = {} as OpenClawConfig;
+    const admission = { signal: new AbortController().signal, waitMs: 100 };
+
+    await memoryRuntime.getMemorySearchManager({ cfg, agentId: "main", admission });
+
+    expect(getMemorySearchManagerMock).toHaveBeenCalledWith({
+      cfg,
+      agentId: "main",
+      admission,
+      runInBackgroundContext: runInMemoryTestBackgroundContext,
+    });
+  });
+
   it("keeps local-service acquisition scoped to each runtime instance", async () => {
     const cfg = {} as OpenClawConfig;
     const firstAcquire = vi.fn(async () => undefined);

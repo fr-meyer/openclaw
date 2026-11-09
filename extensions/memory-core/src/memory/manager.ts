@@ -36,6 +36,7 @@ import {
   normalizeMemoryIndexManagerPurpose,
   resolveMemoryIndexManagerCacheKey,
   type MemoryIndexManagerPurpose,
+  type MemoryManagerAdmission,
 } from "./manager-registry.js";
 import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 import type { MemoryIndexIdentityState } from "./manager-reindex-state.js";
@@ -109,6 +110,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     cfg: OpenClawConfig;
     agentId: string;
     purpose?: MemoryIndexManagerPurpose;
+    admission?: MemoryManagerAdmission;
     inspectSources?: boolean;
     acquireLocalService?: MemoryCoreAcquireLocalService;
     runInBackgroundContext?: MemoryCoreRuntimeHost["runInBackgroundContext"];
@@ -122,7 +124,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     const purpose = normalizeMemoryIndexManagerPurpose(params.purpose);
     const managerRegistry = source?.managerRegistry ?? getMemoryIndexManagerRegistry();
     return await managerRegistry.acquire(
-      { agentId, purpose },
+      { agentId, purpose, admission: params.admission },
       {
         prepare: () => {
           const settings = source?.settings ?? resolveMemorySearchConfig(cfg, agentId);
