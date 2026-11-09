@@ -1,0 +1,62 @@
+name: Source 307 Workboard asset diagnostic
+
+on:
+  push:
+    branches: [prep/source307-workboard-asset-diagnostic-20261109]
+    paths:
+      - .github/workflows/workboard-asset-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  workboard-manifest:
+    if: github.repository == 'fr-meyer/openclaw'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact diagnostic revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify pinned source base
+        env:
+          EXPECTED_BASE_SHA: 8300acf26b1561dc2798ed57dd561b30f53cfeb3
+        run: test "$(git rev-parse HEAD^)" = "$EXPECTED_BASE_SHA"
+
+      - name: Install frozen source dependencies without shared cache
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          install-bun: "false"
+          frozen-lockfile: "true"
+          cache-mode: "off"
+
+      - name: Rebuild only the Workboard Control UI and inspect its manifest
+        run: |
+          set -euo pipefail
+          node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/workboard
+          git diff --check -- extensions/workboard/openclaw.plugin.json
+          git diff -- extensions/workboard/openclaw.plugin.json
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { execFileSync } from "node:child_process";
+          import { readFileSync } from "node:fs";
+
+          const file = "extensions/workboard/openclaw.plugin.json";
+          const before = JSON.parse(execFileSync("git", ["show", `HEAD:${file}`], { encoding: "utf8" }));
+          const after = JSON.parse(readFileSync(file, "utf8"));
+          const { controlUi: beforeUi, ...beforeRest } = before;
+          const { controlUi: afterUi, ...afterRest } = after;
+          assert.deepEqual(afterRest, beforeRest, "Generated build changed non-Control UI fields");
+          if (JSON.stringify(afterUi) === JSON.stringify(beforeUi)) {
+            console.log("Standalone Workboard build produced no manifest delta; broader build inputs need investigation.");
+            process.exit(0);
+          }
+          const match = /^dist\/control-ui\/([a-f0-9]{64})\/index\.js$/u.exec(afterUi?.entry);
+          assert.ok(match, "Generated Workboard JS pointer is not a content-addressed path");
+          assert.deepEqual(afterUi.styles, [`dist/control-ui/${match[1]}/index.css`]);
+          console.log(`Generated Workboard Control UI hash: ${match[1]}`);
+          NODE
