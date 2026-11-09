@@ -44,4 +44,20 @@ describe("builtin memory search manager", () => {
 
     expect(closeMemoryIndexManagersForAgent).toHaveBeenCalledWith({ agentId: "main" });
   });
+
+  it("passes admission to the manager and reports a timed-out lookup as unavailable", async () => {
+    const cfg = {} as OpenClawConfig;
+    const admission = { signal: new AbortController().signal, waitMs: 100 };
+    memoryIndexGet.mockRejectedValueOnce(new Error("Memory manager admission timed out"));
+
+    await expect(
+      getMemorySearchManager({ cfg, agentId: "main", admission }),
+    ).resolves.toMatchObject({
+      manager: null,
+      error: "Memory manager admission timed out",
+    });
+    expect(memoryIndexGet).toHaveBeenCalledWith(
+      expect.objectContaining({ cfg, agentId: "main", admission }),
+    );
+  });
 });

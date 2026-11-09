@@ -168,6 +168,25 @@ describe("project memory bootstrap", () => {
     expect(buildProjectMemoryWriteInstruction(undefined)).toBe("");
   });
 
+  it("does not swallow a canceled attempt when project recall is skipped", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("attempt canceled"));
+
+    await expect(
+      prepareProjectMemoryBootstrap({
+        cfg: {},
+        agentId: "main",
+        activeProjectKeys: [],
+        context: {
+          authority: { kind: "host", operation: "project-test" },
+          signal: controller.signal,
+          assertCurrent() {},
+        },
+      }),
+    ).rejects.toThrow("attempt canceled");
+    expect(runtimeMocks.getManager).not.toHaveBeenCalled();
+  });
+
   it("filters tagged raw entries fail-closed with the all-keys rule", () => {
     const contextFiles = [
       {
@@ -259,9 +278,44 @@ describe("project memory bootstrap", () => {
       cfg: {},
       agentId: "main",
       purpose: "default",
+      admission: { signal: undefined, waitMs: 10_000 },
     });
     expect(runtimeMocks.getProvider).not.toHaveBeenCalled();
     expect(lines).toContain("- Use the release helper. (Source: MEMORY.md#L5)");
+  });
+
+  it("omits optional legacy recall when admission is unavailable", async () => {
+    runtimeMocks.getManager.mockResolvedValue({
+      manager: null,
+      error: "Memory manager admission timed out",
+    });
+
+    await expect(
+      prepareProjectMemoryBootstrap({ cfg: {}, agentId: "main", activeProjectKeys: ["project"] }),
+    ).resolves.toEqual([]);
+    expect(runtimeMocks.listCurated).not.toHaveBeenCalled();
+  });
+
+  it("propagates a canceled caller even when legacy lookup reports an ordinary error", async () => {
+    const controller = new AbortController();
+    runtimeMocks.getManager.mockImplementation(async () => {
+      controller.abort(new Error("attempt canceled"));
+      return { manager: null, error: "Memory manager admission timed out" };
+    });
+
+    await expect(
+      prepareProjectMemoryBootstrap({
+        cfg: {},
+        agentId: "main",
+        activeProjectKeys: ["project"],
+        context: {
+          authority: { kind: "host", operation: "project-test" },
+          signal: controller.signal,
+          assertCurrent: () => controller.signal.throwIfAborted(),
+        },
+      }),
+    ).rejects.toThrow("attempt canceled");
+    expect(runtimeMocks.listCurated).not.toHaveBeenCalled();
   });
 
   it("does not load the slot plugin when no memory runtime is active", async () => {
@@ -468,6 +522,29 @@ describe("native project memory bootstrap", () => {
     );
   });
 
+  it("releases a provider returned just as the caller is canceled", async () => {
+    const controller = new AbortController();
+    const close = vi.fn(async () => {});
+    runtimeMocks.getProvider.mockImplementation(async () => {
+      controller.abort(new Error("attempt canceled"));
+      return { provider: { capabilities: { candidates: [] }, close } };
+    });
+
+    await expect(
+      prepareProjectMemoryBootstrap({
+        cfg: {},
+        agentId: "main",
+        activeProjectKeys: ["project"],
+        context: {
+          authority: { kind: "host", operation: "project-test" },
+          signal: controller.signal,
+          assertCurrent() {},
+        },
+      }),
+    ).rejects.toThrow("attempt canceled");
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it.each(["selection", "close"])(
     "does not inject records after caller authority is revoked during %s",
     async (during) => {
@@ -490,8 +567,8 @@ describe("native project memory bootstrap", () => {
         }
         return { hits: entries };
       });
-      expect(
-        await prepareProjectMemoryBootstrap({
+      await expect(
+        prepareProjectMemoryBootstrap({
           cfg: {},
           agentId: "main",
           activeProjectKeys: ["github.com/OpenClaw/OpenClaw"],
@@ -504,7 +581,7 @@ describe("native project memory bootstrap", () => {
             },
           },
         }),
-      ).toEqual([]);
+      ).rejects.toThrow("revoked");
       expect(close).toHaveBeenCalledOnce();
     },
   );

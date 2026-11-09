@@ -271,6 +271,8 @@ export type MemoryPluginRuntime = {
     cfg: OpenClawConfig;
     agentId: string;
     purpose?: "default" | "status" | "cli";
+    /** Bounds only waiting to enter memory manager work, not work after admission. */
+    admission?: { signal?: AbortSignal; waitMs?: number };
     /** Request a read-only source freshness scan; runtimes may ignore unsupported diagnostics. */
     inspectSources?: boolean;
   }): Promise<{
