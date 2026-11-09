@@ -204,7 +204,7 @@ export function resolveLoadedCommitHash(
     : loaded;
 }
 
-type FullLoadedStamp = string | "headless" | null | undefined;
+type FullLoadedStamp = string | null | undefined;
 
 function readFullLoadedStamp(
   moduleUrl: string,
@@ -264,11 +264,7 @@ export function resolveLoadedFullCommitHash(options: { moduleUrl?: string } = {}
   if (!buildInfo) {
     return null;
   }
-  const buildStamp = readFullLoadedStamp(
-    moduleUrl,
-    ["../.buildstamp", "./.buildstamp"],
-    "build",
-  );
+  const buildStamp = readFullLoadedStamp(moduleUrl, ["../.buildstamp", "./.buildstamp"], "build");
   const runtimeStamp = readFullLoadedStamp(
     moduleUrl,
     ["../.runtime-postbuildstamp", "./.runtime-postbuildstamp"],

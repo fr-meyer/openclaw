@@ -154,6 +154,7 @@ async function awaitWithSearchSignal<T>(promise: Promise<T>, signal?: AbortSigna
   signal.throwIfAborted();
   let removeAbort = () => {};
   const aborted = new Promise<never>((_resolve, reject) => {
+    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Preserve the exact AbortSignal reason, including non-Error reasons.
     const onAbort = () => reject(signal.reason);
     signal.addEventListener("abort", onAbort, { once: true });
     removeAbort = () => signal.removeEventListener("abort", onAbort);

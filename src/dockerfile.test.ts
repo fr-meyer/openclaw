@@ -164,9 +164,9 @@ describe("Dockerfile", () => {
     expect(acquisitionEnd).toBeGreaterThan(acquisitionStart);
     const acquisition = dockerfile.slice(acquisitionStart, acquisitionEnd);
     const instructions = collapseDockerContinuations(dockerfile).split("\n");
-    const runs = instructions.filter((line) => /^RUN /u.test(line));
+    const runs = instructions.filter((line) => line.startsWith("RUN "));
     expect(runs.every((line) => /^RUN --network=(?:none|default) /u.test(line))).toBe(true);
-    const networked = runs.filter((line) => /^RUN --network=default /u.test(line));
+    const networked = runs.filter((line) => line.startsWith("RUN --network=default "));
     expect(networked).toHaveLength(3);
     expect(networked[0]).toContain("pnpm fetch --ignore-pnpmfile --config.ignoreScripts=true");
     expect(networked[0]).not.toContain("--frozen-lockfile");

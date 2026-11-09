@@ -168,7 +168,7 @@ describe("Doctor migration backup retries", () => {
         assertOwnerCurrent: () => {},
       });
       try {
-        await maintenance.run(() =>
+        maintenance.run(() =>
           completeDoctorMigrationBackups(fixture.env, [fixture.shared, fixture.agent]),
         );
       } finally {

@@ -102,7 +102,8 @@ describe("version resolution", () => {
 
   it("captures the runtime commit from startup provenance once", async () => {
     let startupCommit = "aaaaaaa";
-    vi.doMock("./infra/git-commit.js", () => ({
+    vi.doMock("./infra/git-commit.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("./infra/git-commit.js")>()),
       resolveLoadedCommitHash: () => startupCommit,
       resolveLoadedFullCommitHash: () => "a".repeat(40),
     }));

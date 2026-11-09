@@ -344,15 +344,18 @@ export async function backupDoctorSqliteDatabases(params: {
   }
   const warnings: string[] = [];
   try {
-    recordDoctorMigrationBackups(params.env, currentBackupId, inventory, {
-      ...(crossBuildReuse
+    recordDoctorMigrationBackups(
+      params.env,
+      currentBackupId,
+      inventory,
+      crossBuildReuse
         ? {
             archiveBackupId: backupId,
             originManifestSha256: crossBuildReuse.manifestSha256,
             verifiedBackupIdentities: verifiedReuseIdentities,
           }
-        : {}),
-    });
+        : {},
+    );
   } catch (error) {
     if (crossBuildReuse) {
       throw new DoctorMaintenanceRefusalError(

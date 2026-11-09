@@ -31,6 +31,13 @@ import type { GatewayClient } from "./server-methods/client-types.js";
 
 const pluginId = "mergeguez-pr-lifecycle";
 const packagedEntry = "/app/runtime-plugins/mergeguez-pr-lifecycle/index.mjs";
+function firstTool<T>(tools: readonly T[]): T {
+  const tool = tools[0];
+  if (!tool) {
+    throw new Error("Expected a registered mergeguez tool");
+  }
+  return tool;
+}
 const ownerKey = "agent:franck:main";
 const statusKey = "agent:status:main";
 const workerKey = "agent:reviewer:subagent:mergeguez-parity";
@@ -257,7 +264,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
       try {
         const statusClient = clientFor("status", statusKey, new AbortController().signal);
         await runInScope(statusClient, async () => {
-          const result = await registered.tools[0]
+          const result = await firstTool(registered.tools)
             .factory({
               sessionKey: statusKey,
               agentId: "status",
@@ -275,7 +282,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
           nativeRun.runId,
         );
         await runInScope(workerClient, async () => {
-          const report = await registered.tools[0]
+          const report = await firstTool(registered.tools)
             .factory({
               sessionKey: workerKey,
               agentId: "reviewer",
@@ -536,7 +543,7 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
           },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      const tool = firstTool(registered.tools).factory({ sessionKey: ownerKey, agentId: "franck" });
       let abortCalls = 0;
       const handle = createEmbeddedRunHandle({
         runId: rootRunId,
@@ -616,7 +623,7 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
             },
           },
         };
-        const racedTool = registeredApi(config, raceTasks).tools[0].factory({
+        const racedTool = firstTool(registeredApi(config, raceTasks).tools).factory({
           sessionKey: ownerKey,
           agentId: "franck",
         });

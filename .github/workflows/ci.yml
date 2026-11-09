@@ -1772,6 +1772,7 @@ jobs:
         run: pnpm build:ci-artifacts
 
       - name: Check bundled plugin generated assets
+        id: plugin_assets_check
         run: |
           set -euo pipefail
 
@@ -1788,6 +1789,10 @@ jobs:
             # Their own build remains the available asset validation surface.
             echo "Selected release candidate predates plugins:assets:check; skipping unavailable check."
           fi
+
+      - name: Show Workboard generated asset delta after failed check
+        if: ${{ failure() && steps.plugin_assets_check.outcome == 'failure' }}
+        run: git diff -- extensions/workboard/openclaw.plugin.json
 
       - name: Package published-driver candidate
         id: published_driver_package
