@@ -272,6 +272,22 @@ function decodeSqliteWorkerReplyError(
   return failure;
 }
 
+function hostAdmissionRefusalMessage(refusal: unknown): string | undefined {
+  try {
+    if (typeof refusal === "string") {
+      return refusal;
+    }
+    if (refusal instanceof Error) {
+      const message: unknown = refusal.message;
+      return typeof message === "string" ? message : undefined;
+    }
+    return undefined;
+  } catch {
+    // Diagnostic formatting must not prevent native retirement and settlement.
+    return undefined;
+  }
+}
+
 function decodeSqliteWorkerCleanupError(payload: OpenClawStateWorkerErrorPayload): Error {
   const failure = new Error("SQLite worker native cleanup failed");
   retainOpenClawStateWorkerErrorPayload(failure, payload);
@@ -336,10 +352,21 @@ export function receiveSqliteWorkerReply(
     if (job.request.type !== "execute" || reply.retire) {
       const refusedOpen =
         job.request.type === "open" && reply.openOutcome === "refused-before-agent-open";
+      const hostRefusal =
+        job.request.type === "execute" && reply.retire && reply.admissionRefused
+          ? job.operationAdmission?.admission.failure
+          : undefined;
+      const hostMessage = hostAdmissionRefusalMessage(hostRefusal);
       const failure =
         refusedOpen || (job.request.type === "open" && reply.admissionRefused)
           ? toErrorObject(job.operationAdmission?.admission.failure ?? error, error.message)
-          : error;
+          : hostRefusal === undefined
+            ? error
+            : new AggregateError(
+                [error, hostRefusal],
+                `SQLite worker admission refused${hostMessage ? `: ${hostMessage}` : ""}`,
+                { cause: hostRefusal },
+              );
       owner.fail(
         failure,
         job.request.type !== "execute" ? failure : undefined,

@@ -3,6 +3,7 @@ import type { MessagePort } from "node:worker_threads";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredCore } from "../shared/deferred.js";
 import {
+  receiveSqliteWorkerReply,
   settleFailedSqliteWorkerJobs,
   settleSqliteWorkerJob,
   withSqliteWorkerCleanupFailure,
@@ -47,7 +48,7 @@ vi.mock("./sqlite-worker-transfer.js", () => ({
   createSqliteWorkerTransferReceiver: effects.forbidden,
 }));
 
-function jobWithCleanup(admissionFailures: readonly unknown[] = []) {
+function jobWithCleanup(admissionFailures: readonly unknown[] = [], admissionFailure?: unknown) {
   const resolve = vi.fn((_value: unknown) => {
     effects.events.push("resolve");
   });
@@ -61,8 +62,8 @@ function jobWithCleanup(admissionFailures: readonly unknown[] = []) {
     get port(): MessagePort {
       return effects.forbidden();
     },
-    failure: undefined,
-    failureSource: undefined,
+    failure: admissionFailure,
+    failureSource: admissionFailure ? "authority" : undefined,
     cleanupFailures: admissionFailures,
     committed: undefined,
     settlement: undefined,
@@ -140,6 +141,72 @@ afterEach(() => {
 });
 
 describe("SQLite worker settlement cleanup lineage", { concurrent: false }, () => {
+  it.each(["error", "hostile object"] as const)(
+    "retains the %s host refusal when an execute reply retires before its result",
+    async (kind) => {
+      const hostRefusal =
+        kind === "error"
+          ? new Error("Current session writer authority was revoked")
+          : Object.defineProperty({ message: "Synthetic hostile refusal" }, "trap", {
+              enumerable: true,
+              get() {
+                throw new Error("Diagnostic formatting must not run this getter");
+              },
+            });
+      const current = jobWithCleanup([], hostRefusal);
+      const retirement = createDeferredCore();
+      const dispatch = vi.fn();
+      const fail = vi.fn((failure: unknown) => {
+        settleFailedSqliteWorkerJobs({
+          current: current.job,
+          queued: [],
+          queuedError: new SqliteWorkerError("Worker retired", "unavailable"),
+          error: failure instanceof Error ? failure : new Error(String(failure)),
+          retire: () => retirement.promise,
+          finish: settleSqliteWorkerJob,
+        });
+      });
+      receiveSqliteWorkerReply(
+        { actors: new Set(), current: current.job, worker: { postMessage: effects.forbidden } },
+        {
+          id: 1,
+          ok: false,
+          retire: true,
+          admissionRefused: true,
+          error: {
+            name: "SqliteWorkerError",
+            message: "SQLite transaction admission was refused",
+            code: "closed",
+          },
+        },
+        { fail, finish: effects.forbidden, dispatch },
+      );
+      expect(fail).toHaveBeenCalledOnce();
+      expect(current.settleNative).not.toHaveBeenCalled();
+      expect(current.reject).not.toHaveBeenCalled();
+      retirement.resolve();
+      await retirement.promise;
+      const reported = current.reject.mock.calls[0]?.[0] as SqliteWorkerError;
+      expect(reported.code).toBe("outcome-unknown");
+      expect(reported.message.includes(hostRefusal.message)).toBe(kind === "error");
+      const lineage = reported.cause as AggregateError;
+      expect(lineage).toBeInstanceOf(AggregateError);
+      expect(lineage.cause).toBe(hostRefusal);
+      expect(lineage.errors[0]).toMatchObject({
+        name: "SqliteWorkerError",
+        message: "SQLite transaction admission was refused",
+        code: "closed",
+      });
+      expect(lineage.errors[1]).toBe(hostRefusal);
+      expect(current.settleNative).toHaveBeenCalledExactlyOnceWith({
+        kind: "unknown",
+        error: lineage,
+        nativeStopped: true,
+      });
+      expect(dispatch).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([true, false])(
     "keeps a lost outcome unknown while reporting confirmed worker exit: %s",
     async (retired) => {
