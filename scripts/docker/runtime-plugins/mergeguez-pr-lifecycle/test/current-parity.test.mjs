@@ -574,7 +574,7 @@ void test("ingress transitions retain every unsettled exact worker identity", ()
     assert.equal(
       next.activeWorker?.runId === worker.runId || next.orphanedWorker?.runId === worker.runId,
       true,
-      `${name} discarded the worker`,
+      `${typeof name === "string" ? name : "unnamed transition"} discarded the worker`,
     );
   }
 });
@@ -995,9 +995,17 @@ void test("async PR ingress awaits creation and preserves state, workflow and ow
 void test("concurrent Promise ingress converges in the inert native transaction without state overwrite", async () => {
   const older = "2026-10-09T00:00:00Z";
   const newer = "2026-10-09T00:00:01Z";
-  for (const [action, changed, expected] of [
-    ["synchronize", { headSha: "c".repeat(40) }, { headSha: "c".repeat(40) }],
-    ["edited", { baseSha: "c".repeat(40) }, { baseSha: "c".repeat(40) }],
+  for (const { action, changed, expected } of [
+    {
+      action: "synchronize",
+      changed: { headSha: "c".repeat(40) },
+      expected: { headSha: "c".repeat(40) },
+    },
+    {
+      action: "edited",
+      changed: { baseSha: "c".repeat(40) },
+      expected: { baseSha: "c".repeat(40) },
+    },
   ]) {
     const f = fixture();
     // Both lookups suspend before their empty result, reproducing the original create race.

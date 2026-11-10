@@ -215,11 +215,10 @@ export function createWorkboardDispatchHandler(params: {
       }
       return { ...started, card: redactClaimToken(started.card) };
     }
-    return {
-      ...redactDispatchResult(result),
-      started: result.started.map((started) =>
-        started.card ? { ...started, card: redactClaimToken(started.card) } : started,
-      ),
-    };
+    const started: typeof result.started = [];
+    for (const entry of result.started) {
+      started.push(entry.card ? { ...entry, card: redactClaimToken(entry.card) } : entry);
+    }
+    return { ...redactDispatchResult(result), started };
   };
 }

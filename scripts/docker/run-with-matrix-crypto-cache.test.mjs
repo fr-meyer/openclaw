@@ -18,7 +18,7 @@ const assetArch = ["x64", "arm64"].includes(process.arch) ? process.arch : "x64"
 const filename = `matrix-sdk-crypto.linux-${assetArch}-gnu.node`;
 const fixture = { filename, bytes: Buffer.from("synthetic native-asset transport fixture") };
 
-test("CLI refuses unverified bytes before running a lifecycle command", async () => {
+void test("CLI refuses unverified bytes before running a lifecycle command", async () => {
   const assetPath = join(root, filename);
   if (process.platform !== "linux" || !["x64", "arm64"].includes(process.arch)) {
     assert.throws(() => readMatrixCryptoAsset(assetPath), /supports Linux x64\/arm64/);
@@ -60,7 +60,7 @@ test("CLI refuses unverified bytes before running a lifecycle command", async ()
   assert.throws(() => readMatrixCryptoAsset(assetPath), { code: "ELOOP" });
 });
 
-test("native child gets only the exact loopback asset route and retains argv/environment", async () => {
+void test("native child gets only the exact loopback asset route and retains argv/environment", async () => {
   const observation = join(root, "transport-url");
   const expectedArgument = "one argument; $(must-not-run)";
   const code = `
@@ -102,7 +102,7 @@ test("native child gets only the exact loopback asset route and retains argv/env
   await assert.rejects(fetch(`${base}/v0.6.6/${filename}`));
 });
 
-test("child failure and spawn failure settle without retaining the server", async () => {
+void test("child failure and spawn failure settle without retaining the server", async () => {
   const observation = join(root, "failure-url");
   const code =
     "require('fs').writeFileSync(process.argv[1], process.env.MATRIX_SDK_CRYPTO_DOWNLOADS_BASE_URL); process.exit(23)";
@@ -117,7 +117,7 @@ test("child failure and spawn failure settle without retaining the server", asyn
   );
 });
 
-test(
+void test(
   "SIGTERM reaches the native child and cannot become a successful install",
   { skip: process.platform === "win32" },
   async () => {

@@ -82,7 +82,8 @@ export async function runWithVerifiedMatrixCryptoAsset(asset, command, args) {
   const onTerminate = () => forward("SIGTERM");
   try {
     await new Promise((resolve, reject) => {
-      const fail = (error) => reject(error);
+      const fail = (error) =>
+        reject(error instanceof Error ? error : new Error("Matrix crypto cache server error"));
       server.once("error", fail);
       server.listen(0, "127.0.0.1", () => {
         server.off("error", fail);

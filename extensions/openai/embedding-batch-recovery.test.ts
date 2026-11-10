@@ -15,7 +15,7 @@ const output = (id: string, value = 1, dimensions = 256) => ({
   },
 });
 
-async function settle<T>(pending: Promise<T>): Promise<T | unknown> {
+async function settle(pending: Promise<unknown>): Promise<unknown> {
   const result = pending.catch((error: unknown) => error);
   await vi.runAllTimersAsync();
   return await result;
@@ -243,8 +243,10 @@ describe("OpenAI selective Batch recovery", () => {
         }
         if (url.pathname.endsWith("/batches") && init?.method === "POST") {
           creates++;
-          metadata = (JSON.parse(String(init.body)) as { metadata: Record<string, string> })
-            .metadata;
+          if (typeof init.body !== "string") {
+            throw new Error("Expected JSON batch creation body");
+          }
+          metadata = (JSON.parse(init.body) as { metadata: Record<string, string> }).metadata;
           throw new Error("fetch failed");
         }
         if (url.pathname.endsWith("/batches")) {

@@ -50,8 +50,11 @@ function withCaptureFixture(callback) {
     };
     callback({ root, originalRoot, originalRuntime, captureRuntime, options });
   } finally {
-    if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
-    else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+    if (previousStateDir === undefined) {
+      delete process.env.OPENCLAW_STATE_DIR;
+    } else {
+      process.env.OPENCLAW_STATE_DIR = previousStateDir;
+    }
     rmSync(root, { recursive: true, force: true });
   }
 }

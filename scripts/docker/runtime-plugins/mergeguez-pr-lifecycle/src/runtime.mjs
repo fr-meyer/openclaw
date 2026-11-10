@@ -427,7 +427,7 @@ function identityPathViaExistingAncestor(path) {
   let cursor = fallback;
   while (true) {
     try {
-      return join(realpathSync(cursor), ...missing.reverse());
+      return join(realpathSync(cursor), ...missing.toReversed());
     } catch {
       const parent = dirname(cursor);
       if (parent === cursor) {
@@ -1413,12 +1413,14 @@ async function ensureFlowWorkspace(api, policy, state) {
       "git",
       ["-C", recorded, "symbolic-ref", "--quiet", "--short", "HEAD"],
       { encoding: "utf8", timeout: 30_000, windowsHide: true },
-    ).catch((error) => {
-      if (error.code === 1) {
-        return { stdout: "" }; // detached HEAD
-      }
-      throw error;
-    });
+    ).catch(
+      /** @param {unknown} error */ (error) => {
+        if (error && typeof error === "object" && "code" in error && error.code === 1) {
+          return { stdout: "" }; // detached HEAD
+        }
+        throw error;
+      },
+    );
     if (branch.trim()) {
       throw new Error("flow_workspace_not_detached");
     }

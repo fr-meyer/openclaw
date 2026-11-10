@@ -155,9 +155,9 @@ describe("OpenAI native batch submission safety", () => {
   );
 
   it("drains a concurrently accepted group before reporting all reconciliation IDs", async () => {
-    const secondCreateStarted = createDeferred<void>();
-    const acceptSecond = createDeferred<void>();
-    const firstFailed = createDeferred<void>();
+    const secondCreateStarted = createDeferred();
+    const acceptSecond = createDeferred();
+    const firstFailed = createDeferred();
     let creates = 0;
     let uploads = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

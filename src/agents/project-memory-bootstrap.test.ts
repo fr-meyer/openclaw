@@ -527,13 +527,13 @@ it.each(["legacy", "candidates", "open", "close"] as const)(
       stage === "legacy" ? { getMemorySearchManager: runtimeMocks.getManager } : undefined;
     runtimeMocks.providerRuntime = stage === "legacy" ? undefined : { open: vi.fn() };
     vi.useFakeTimers();
-    const pending = createDeferred<void>();
-    const started = createDeferred<void>();
+    const pending = createDeferred();
+    const started = createDeferred();
     const delayed = async () => {
       started.resolve();
       await pending.promise;
     };
-    const closed = createDeferred<void>();
+    const closed = createDeferred();
     const provider = {
       capabilities: { candidates: ["project"] as const },
       candidates: vi.fn(async () => {
@@ -608,8 +608,8 @@ it("discards late candidates and closes the provider after turn authority is rev
   logMocks.debug.mockReset();
   vi.useFakeTimers();
   const pending = createDeferred<MemorySearchHit[]>();
-  const started = createDeferred<void>();
-  const closed = createDeferred<void>();
+  const started = createDeferred();
+  const closed = createDeferred();
   let current = true;
   const close = vi.fn(async () => closed.resolve());
   runtimeMocks.getProvider.mockResolvedValue({
