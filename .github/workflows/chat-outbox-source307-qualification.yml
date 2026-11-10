@@ -1,0 +1,53 @@
+name: Chat outbox synthetic qualification
+
+on:
+  push:
+    branches:
+      - ci/chat-outbox-source307-qualification-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ddb9b960683263477871c5a6b39301198021a52f
+          persist-credentials: false
+      - name: Set up dependencies
+        uses: ./.github/actions/setup-node-env
+        with:
+          cache-mode: restore
+          install-bun: "false"
+      - name: Check changed source formatting and lint
+        run: |
+          pnpm exec oxfmt --check \
+            ui/src/pages/chat/chat-composer-queue.test.ts \
+            ui/src/pages/chat/chat-thread-inputs.ts \
+            ui/src/pages/chat/chat-thread-items.ts \
+            ui/src/pages/chat/components/chat-composer-queue.ts \
+            ui/src/pages/chat/user-message-content.ts
+          pnpm exec oxlint --tsconfig ui/tsconfig.json \
+            ui/src/pages/chat/chat-composer-queue.test.ts \
+            ui/src/pages/chat/chat-thread-inputs.ts \
+            ui/src/pages/chat/chat-thread-items.ts \
+            ui/src/pages/chat/components/chat-composer-queue.ts \
+            ui/src/pages/chat/user-message-content.ts
+      - name: Exercise synthetic queue and projection regressions
+        run: >-
+          pnpm test
+          ui/src/pages/chat/chat-composer-queue.test.ts
+          ui/src/pages/chat/chat-thread-input-order.test.ts
+          ui/src/pages/chat/chat-pending-inputs.test.ts
+          ui/src/pages/chat/user-message-content.test.ts
+          --maxWorkers=1
+      - name: Check UI source and test types
+        run: |
+          pnpm tsgo:ui
+          pnpm tsgo:test:ui
+      - name: Build Control UI
+        run: pnpm ui:build
