@@ -27,7 +27,10 @@ import { readSessionResetRecallCutoffMetadata } from "../session-reset-recall-me
 import type { EmbeddingProvider } from "./embeddings.js";
 import type { IndexedMemoryChunk } from "./manager-chunk-writer.js";
 import { prepareMemoryIndexInWorker } from "./manager-cpu-worker-runtime.js";
-import { readMemoryDatabaseRevision } from "./manager-db-kernel.js";
+import {
+  MemoryIndexRevisionConflictError,
+  readMemoryDatabaseRevision,
+} from "./manager-db-kernel.js";
 import {
   EMBEDDING_BATCH_MAX_TOKENS,
   MemoryManagerEmbeddingBatchOps,
@@ -529,6 +532,11 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingBa
           );
           if (current?.hash !== entry.hash) {
             this.dirty = true;
+            if (database.isShadow) {
+              throw new MemoryIndexRevisionConflictError(
+                "Memory source changed during shadow reindex; retry the full reindex.",
+              );
+            }
             log.debug("memory source changed while indexing; queued incremental retry", {
               path: entry.path,
             });

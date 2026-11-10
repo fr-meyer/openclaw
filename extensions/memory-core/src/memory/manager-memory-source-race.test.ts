@@ -51,6 +51,13 @@ describe("memory source changes during indexing", () => {
       });
       const manager = await fixture.getFreshManager(cfg, "cli");
       await manager.sync({ reason: "baseline", force: true });
+      const db = Reflect.get(manager, "db") as DatabaseSync;
+      const publishedState = () => ({
+        sources: db.prepare("SELECT * FROM memory_index_sources ORDER BY path").all(),
+        chunks: db.prepare("SELECT * FROM memory_index_chunks ORDER BY id").all(),
+        meta: db.prepare("SELECT * FROM memory_index_meta ORDER BY key").all(),
+      });
+      const baseline = publishedState();
       await fs.writeFile(changingFile, obsoleteContent);
       await fs.writeFile(siblingFile, "Updated beta sibling survives the concurrent edit.");
       Reflect.set(manager, "dirty", true);
@@ -71,6 +78,7 @@ describe("memory source changes during indexing", () => {
       if (maintenance) {
         Reflect.set(manager, "memoryFullRetryDirty", true);
       }
+      const publishShadow = vi.spyOn(MemoryIndexDatabase.prototype, "publishShadow");
       const activeSync = maintenance
         ? (
             manager as unknown as {
@@ -78,6 +86,7 @@ describe("memory source changes during indexing", () => {
             }
           ).syncPublishedIndexInBackground({ reason: "search" })
         : manager.sync({ reason: "watch", force });
+      const explicitFullReindex = force && !maintenance;
       void activeSync.catch(() => undefined);
       try {
         await Promise.race([changingSourceReady, activeSync]);
@@ -91,23 +100,39 @@ describe("memory source changes during indexing", () => {
           await fs.writeFile(changingFile, latestContent);
         }
         releaseEmbedding();
-        await expect(activeSync).resolves.toBeUndefined();
-        const db = Reflect.get(manager, "db") as DatabaseSync;
+        if (explicitFullReindex) {
+          await expect(activeSync).rejects.toThrow("retry the full reindex");
+        } else {
+          await expect(activeSync).resolves.toBeUndefined();
+        }
+        expect(publishShadow).toHaveBeenCalledTimes(maintenance ? 1 : 0);
         const indexedText = () =>
           db
             .prepare("SELECT text FROM memory_index_chunks")
             .all()
             .map((row) => row.text)
             .join("\n");
-        expect(indexedText()).toContain("Updated beta sibling");
-        expect(indexedText()).not.toContain("Obsolete alpha");
+        if (explicitFullReindex) {
+          // The shadow contained an invalidated file; none of its rows replaced
+          // the usable publication, including the successfully staged sibling.
+          expect(publishedState()).toEqual(baseline);
+          expect(indexedText()).toContain("Original beta sibling");
+          expect(indexedText()).toContain("Original alpha source");
+          expect(manager.status().dirty).toBe(true);
+          expect(Reflect.get(manager, "memoryFullRetryDirty")).toBe(true);
+        } else {
+          expect(indexedText()).toContain("Updated beta sibling");
+          expect(indexedText()).not.toContain("Obsolete alpha");
+          if (!maintenance) {
+            expect(manager.status().dirty).toBe(true);
+          }
+          expect(Reflect.get(manager, "memoryFullRetryDirty")).toBe(false);
+        }
         expect(
           db
             .prepare("SELECT hash FROM memory_embedding_cache WHERE hash = ?")
             .get(hashText(obsoleteContent)),
         ).toBeUndefined();
-        expect(manager.status().dirty).toBe(true);
-        expect(Reflect.get(manager, "memoryFullRetryDirty")).toBe(false);
 
         fixture.provider.providerRuntimeBatchCalls = [];
         await manager.sync({ reason: "retry-source" });
@@ -128,14 +153,17 @@ describe("memory source changes during indexing", () => {
               .get(hashText(latestContent)),
           ).toEqual({ hash: hashText(latestContent) });
         }
-        expect(fixture.provider.providerRuntimeBatchCalls.flat().join("\n")).not.toContain(
-          "beta sibling",
-        );
+        if (!force && !maintenance) {
+          expect(fixture.provider.providerRuntimeBatchCalls.flat().join("\n")).not.toContain(
+            "beta sibling",
+          );
+        }
       } finally {
         releaseEmbedding();
         await activeSync.catch(() => undefined);
         fixture.provider.providerRuntimeBatchGate = null;
         fixture.provider.providerRuntimeBatchEntered = null;
+        publishShadow.mockRestore();
       }
     },
   );
