@@ -246,6 +246,10 @@ vi.mock("./embeddings.js", async (importOriginal) => {
         options.provider === "batch-test" ||
         options.provider === "batch-wide-test" ||
         options.provider === providerState.identityAlias.provider ||
+        (options.provider === "mistral" && options.model === "synthetic-mistral-embed") ||
+        (options.provider === "openai" &&
+          options.model === "text-embedding-3-small" &&
+          options.outputDimensionality === 256) ||
         options.provider === "ollama"
           ? options.provider
           : "mock";
@@ -256,11 +260,23 @@ vi.mock("./embeddings.js", async (importOriginal) => {
           requestedModel === providerState.identityAlias.cacheModel)
           ? providerState.identityAlias.canonicalModel
           : requestedModel;
+      const syntheticDimensions =
+        (providerId === "mistral" && model === "synthetic-mistral-embed") ||
+        (providerId === "openai" && model === "text-embedding-3-small")
+          ? options.outputDimensionality
+          : undefined;
+      const embedVector = (text: string) => {
+        const vector = embedText(text);
+        return syntheticDimensions
+          ? [...vector, ...Array.from({ length: syntheticDimensions - vector.length }, () => 0)]
+          : vector;
+      };
       return {
         requestedProvider: options.provider ?? "openai",
         provider: {
           id: providerId,
           model,
+          dimensions: syntheticDimensions,
           close: async () => {
             providerState.providerCloseCalls += 1;
             await providerState.providerCloseGate;
@@ -274,7 +290,7 @@ vi.mock("./embeddings.js", async (importOriginal) => {
             const text = typeof input === "string" ? input : input.text;
             providerState.embedQueryCalls += 1;
             providerState.embeddedQueryTexts.push(text);
-            return embedText(text);
+            return embedVector(text);
           },
           embedBatch: async (inputs: EmbeddingInput[]) => {
             await providerState.beforeEmbedBatch?.();
@@ -299,7 +315,7 @@ vi.mock("./embeddings.js", async (importOriginal) => {
                   if (mimeType?.startsWith("audio/")) {
                     return [0, 0, 0, 1];
                   }
-                  return embedText(input.text);
+                  return embedVector(input.text);
                 });
               }
             }
@@ -309,7 +325,7 @@ vi.mock("./embeddings.js", async (importOriginal) => {
             const texts = inputs.map((input) => (typeof input === "string" ? input : input.text));
             providerState.embedBatchCalls += 1;
             providerState.embeddedBatchTexts.push(...texts);
-            return texts.map(embedText);
+            return texts.map(embedVector);
           },
         },
         ...(providerId === providerState.identityAlias.provider
@@ -438,7 +454,7 @@ export function createManagerIndexFixture(deps: {
           },
           remote: params.batchEnabled ? { batch: { enabled: true } } : undefined,
           query: { minScore: params.minScore ?? 0 },
-          cache: params.cacheEnabled ? { enabled: true } : undefined,
+          cache: params.cacheEnabled !== undefined ? { enabled: params.cacheEnabled } : undefined,
           extraPaths: params.extraPaths,
           multimodal: params.multimodal,
           sources: params.sources,
