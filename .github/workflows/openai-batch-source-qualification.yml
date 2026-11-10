@@ -1,0 +1,203 @@
+name: OpenAI Batch in-run recovery qualification
+
+on:
+  push:
+    branches: [prep/openai-batch-recovery-qualification-20261109]
+    paths: [.github/workflows/openai-batch-source-qualification.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openai-batch-recovery-qualification-20261109
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+  OPENCLAW_LOCAL_CHECK: "0"
+  SOURCE_SHA: 4772e3d31d68d46cfee09a1c96f9bb9b6d441f39
+  SOURCE_TREE: d122de396cd1283392fa3a6f55bd33f6315470b2
+  PUBLIC_BASE_SHA: 8300acf26b1561dc2798ed57dd561b30f53cfeb3
+
+jobs:
+  qualify:
+    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/openai-batch-recovery-qualification-20261109'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out the diagnostic definition
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify the exact source parent and definition-only delta
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$EVENT_REPOSITORY" = fr-meyer/openclaw
+          test "$EVENT_REF" = refs/heads/prep/openai-batch-recovery-qualification-20261109
+          test "$(git rev-parse HEAD)" = "$EVENT_SHA"
+          test "$(git rev-list --parents -n 1 HEAD | wc -w)" -eq 2
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git rev-parse "$SOURCE_SHA^{tree}")" = "$SOURCE_TREE"
+          test "$(git diff --name-only "$SOURCE_SHA" HEAD)" = .github/workflows/openai-batch-source-qualification.yml
+          git diff --exit-code
+          git diff --cached --exit-code
+          printf 'Source commit: %s\nSource tree: %s\nPublic review base: %s\n' "$SOURCE_SHA" "$SOURCE_TREE" "$PUBLIC_BASE_SHA"
+
+      - name: Require visible runner memory and disk headroom
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import shutil
+
+          memory = {
+              name: int(value.split()[0]) * 1024
+              for name, value in (
+                  line.split(":", 1)
+                  for line in pathlib.Path("/proc/meminfo").read_text().splitlines()
+              )
+          }
+          root = pathlib.Path("/sys/fs/cgroup")
+          group = next(
+              line.split(":", 2)[2]
+              for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
+              if line.startswith("0::")
+          )
+          current = (root / group.lstrip("/")).resolve()
+          limits = []
+          remaining = []
+          observed = []
+          while current == root or root in current.parents:
+              candidate = current / "memory.max"
+              if candidate.is_file():
+                  value = candidate.read_text().strip()
+                  observed.append(value)
+                  if value != "max":
+                      limits.append(int(value))
+                      used = int((current / "memory.current").read_text().strip())
+                      remaining.append(max(0, int(value) - used))
+              if current == root:
+                  break
+              current = current.parent
+          assert observed, "Runner does not expose cgroup memory limits"
+          effective = min([memory["MemTotal"], *limits])
+          available = min([memory["MemAvailable"], effective, *remaining])
+          free_disk = shutil.disk_usage(".").free
+          print(f"Effective memory bytes: {effective}; available bytes: {available}")
+          print(f"Cgroup memory.max values: {observed}; free disk bytes: {free_disk}")
+          # Prior diagnostic observed a 10.43 GiB process peak. This is admission
+          # headroom, not a reservation or a process-tree/cgroup upper bound.
+          assert effective >= 12 * 1024**3, "Insufficient memory above the measured build-process peak"
+          assert available >= 12 * 1024**3, "Insufficient available memory headroom"
+          assert free_disk >= 8 * 1024**3, "Insufficient dependency and build disk headroom"
+          PY
+
+      - name: Install frozen source dependencies without shared caches
+        id: setup
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          semantic-checks: "true"
+          install-bun: "false"
+          frozen-lockfile: "true"
+          cache-mode: "off"
+
+      - name: Audit the diagnostic workflow with canonical guards
+        run: pnpm check:workflows
+
+      - name: Check out only the exact source revision for qualification
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          clean: false
+          persist-credentials: false
+
+      - name: Verify the source identity before running checks
+        id: source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
+          test ! -e .github/workflows/openai-batch-source-qualification.yml
+
+      - name: Check production types
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 20
+        run: /usr/bin/time -v pnpm tsgo:prod
+
+      - name: Check test types
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 25
+        run: /usr/bin/time -v pnpm tsgo:test
+
+      - name: Check the complete lint pipeline
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 25
+        run: /usr/bin/time -v pnpm lint
+
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        run: pnpm format:check
+
+      - name: Run the synthetic Batch owner suites
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          /usr/bin/time -v pnpm test \
+            src/agents/memory-search.test.ts \
+            src/agents/project-memory-bootstrap.test.ts \
+            src/agents/project-memory-bootstrap.audience.test.ts \
+            src/config/dead-config-keys.test.ts \
+            src/plugins/memory-embedding-provider-runtime.test.ts \
+            extensions/memory-core/src/memory/manager-embedding-batch-recovery.test.ts \
+            extensions/memory-core/src/memory/manager-embedding-ops.retry.test.ts \
+            extensions/memory-core/src/memory/manager-publication-transfer.test.ts \
+            extensions/openai/embedding-batch-recovery.test.ts \
+            extensions/openai/embedding-batch.test.ts \
+            extensions/openai/embedding-batch-safety.test.ts \
+            extensions/openai/memory-embedding-adapter.test.ts \
+            packages/memory-host-sdk/src/host/embeddings-remote-fetch.test.ts \
+            packages/memory-host-sdk/src/host/remote-http.test.ts \
+            --maxWorkers=1
+
+      - name: Run focused checks for repaired owners
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 15
+        run: |
+          pnpm test \
+            extensions/workboard/src/card-redaction.test.ts \
+            extensions/workboard/src/gateway.test.ts \
+            src/commands/doctor-migration-backup.test.ts \
+            src/infra/git-commit.test.ts \
+            --maxWorkers=1
+          node --test \
+            scripts/docker/run-with-matrix-crypto-cache.test.mjs \
+            scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/capture-integrity.test.mjs \
+            scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs
+
+      - name: Run the full source build
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 35
+        run: /usr/bin/time -v pnpm build
+
+      - name: Check generated plugin assets
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        run: pnpm plugins:assets:check
+
+      - name: Reject unexpected source changes
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
