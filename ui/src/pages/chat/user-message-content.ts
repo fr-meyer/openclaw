@@ -1,7 +1,7 @@
 // Control UI chat module implements user message content behavior.
 import type { MediaKind } from "@openclaw/media-core/constants";
 import type { ChatWorkContext } from "../../../../packages/gateway-protocol/src/chat-work-context.js";
-import type { ChatAttachment, HumanMention } from "../../lib/chat/chat-types.ts";
+import type { ChatAttachment, ChatQueueItem, HumanMention } from "../../lib/chat/chat-types.ts";
 import { trimHumanMentions } from "../../lib/chat/human-mentions.ts";
 import type { SenderIdentity } from "../../lib/chat/sender-label.ts";
 import { hasVideoMediaFileExtension } from "../../lib/media-file-extension.ts";
@@ -151,4 +151,23 @@ export function buildLocalUserMessage(
         : {}),
     },
   };
+}
+
+/** The local send can be hidden from the queue only when its transcript copy exists. */
+export function queuedSendThreadMessage(item: ChatQueueItem): Record<string, unknown> | null {
+  return buildLocalUserMessage({
+    text: item.text,
+    workContext: item.workContext,
+    mentions: item.mentions,
+    attachments: item.attachments,
+    createdAt: item.createdAt,
+    runId: item.sendRunId ?? item.pendingRunId,
+    replyToId: item.replyToId,
+    sender: item.sender,
+    pending: {
+      id: item.id,
+      state: item.sendState,
+      error: item.sendError,
+    },
+  });
 }

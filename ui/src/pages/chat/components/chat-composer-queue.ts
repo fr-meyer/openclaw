@@ -17,6 +17,7 @@ import type {
 import { updateHumanMentions, type HumanMentionInput } from "../../../lib/chat/human-mentions.ts";
 import { isQueuedSendInlineState } from "../chat-progress.ts";
 import { isSteerableQueuedMessage } from "../chat-queue.ts";
+import { queuedSendThreadMessage } from "../user-message-content.ts";
 import { renderChatAuthorAvatar } from "./chat-author-avatar.ts";
 
 type ChatQueueProps = {
@@ -171,9 +172,7 @@ function sendStateLabel(item: ChatQueueItem, offline: boolean): string | null {
 export function renderChatQueue(props: ChatQueueProps) {
   const visibleQueue = (props.displayQueue ?? props.queue).filter(
     (item) =>
-      item.sendState !== "submitting" &&
-      item.sendState !== "sending" &&
-      !isQueuedSendInlineState(item),
+      item.sendState !== "submitting" && item.sendState !== "sending" && !hasInlineQueuedSend(item),
   );
   // A peer can retire the source while this pane is away. Render its retained
   // correction for recovery/cancel; this never recreates a row in the outbox.
@@ -205,8 +204,7 @@ export function renderChatQueue(props: ChatQueueProps) {
   // Keep their unresolved delivery visible beside the messages they block.
   const head = props.queue.find((item) => item.sendState !== "failed" || item.localCommandName);
   const globalState =
-    (head?.sendState === "unconfirmed" || head?.sendState === "held") &&
-    isQueuedSendInlineState(head)
+    (head?.sendState === "unconfirmed" || head?.sendState === "held") && hasInlineQueuedSend(head)
       ? { label: t("chat.queue.states.blockedByUnconfirmed"), tone: "warn" }
       : visibleQueue.some((item) => item.sendState === "waiting-model") && !props.offline
         ? { label: t("chat.queue.states.applyingSettings"), tone: "settings" }
@@ -271,6 +269,10 @@ export function renderChatQueue(props: ChatQueueProps) {
   `;
 }
 
+function hasInlineQueuedSend(item: ChatQueueItem): boolean {
+  return isQueuedSendInlineState(item) && queuedSendThreadMessage(item) !== null;
+}
+
 function setDropTarget(event: DragEvent, active: boolean): void {
   const row = event.currentTarget;
   if (row instanceof HTMLElement) {
@@ -287,6 +289,7 @@ function renderChatQueueItem(
   const hasAuthorAvatar = authorAvatar !== nothing;
   const failed =
     item.sendState === "failed" || item.sendState === "unconfirmed" || item.sendState === "held";
+  const missingInlineProjection = isQueuedSendInlineState(item) && !hasInlineQueuedSend(item);
   const reconnecting =
     !item.serverQueued && !failed && (props.offline || item.sendState === "waiting-reconnect");
   const stateLabel = sendStateLabel(item, !item.serverQueued && props.offline === true);
@@ -579,25 +582,40 @@ function renderChatQueueItem(
         ${
           busy || editing
             ? nothing
-            : html`
-                <openclaw-tooltip .content=${t("chat.queue.removeQueuedMessage")}>
-                  <button
-                    class="chat-queue__remove"
-                    type="button"
-                    ?disabled=${editing || (item.serverQueued && !props.canRemoveServerQueued)}
-                    aria-label=${t("chat.queue.removeQueuedMessage")}
-                    @click=${(event: MouseEvent) => {
-                      // Chromium retargets click 2 after row removal; detail still owns the gesture.
-                      if (event.detail <= 1) {
-                        props.onQueueRemove(item.id);
-                      }
-                    }}
-                    @dblclick=${(event: MouseEvent) => event.stopPropagation()}
-                  >
-                    ${icons.trash}
-                  </button>
-                </openclaw-tooltip>
-              `
+            : missingInlineProjection
+              ? html`<button
+                  class="chat-queue__action chat-queue__discard"
+                  type="button"
+                  title=${t("chat.queue.discardPendingMessage")}
+                  @click=${(event: MouseEvent) => {
+                    // Chromium may retarget click 2 to the next row after removal.
+                    if (event.detail <= 1) {
+                      props.onQueueRemove(item.id);
+                    }
+                  }}
+                  @dblclick=${(event: MouseEvent) => event.stopPropagation()}
+                >
+                  ${t("chat.queue.discard")}
+                </button>`
+              : html`
+                  <openclaw-tooltip .content=${t("chat.queue.removeQueuedMessage")}>
+                    <button
+                      class="chat-queue__remove"
+                      type="button"
+                      ?disabled=${editing || (item.serverQueued && !props.canRemoveServerQueued)}
+                      aria-label=${t("chat.queue.removeQueuedMessage")}
+                      @click=${(event: MouseEvent) => {
+                        // Chromium retargets click 2 after row removal; detail still owns the gesture.
+                        if (event.detail <= 1) {
+                          props.onQueueRemove(item.id);
+                        }
+                      }}
+                      @dblclick=${(event: MouseEvent) => event.stopPropagation()}
+                    >
+                      ${icons.trash}
+                    </button>
+                  </openclaw-tooltip>
+                `
         }
         ${
           editing || !editable

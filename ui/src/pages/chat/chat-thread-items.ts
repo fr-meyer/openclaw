@@ -4,7 +4,7 @@ import { asNullableRecord as asRecord } from "@openclaw/normalization-core/recor
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { CHAT_PENDING_INPUT_MESSAGE_PREFIX } from "../../../../packages/gateway-protocol/src/schema/chat-history-constants.js";
 import { resolveToolUseId } from "../../../../src/chat/tool-content.js";
-import type { ChatItem, ChatQueueItem, ToolCard } from "../../lib/chat/chat-types.ts";
+import type { ChatItem, ToolCard } from "../../lib/chat/chat-types.ts";
 import { extractTextCached, readTranscriptMediaEntries } from "../../lib/chat/message-extract.ts";
 import {
   canvasPreviewsMatch,
@@ -23,7 +23,6 @@ import {
   type ChatMessageRecovery,
 } from "./chat-message-recovery.ts";
 import { chatItemStartsUserTurn, safeNormalizeMessage } from "./chat-turn-boundary.ts";
-import { buildLocalUserMessage } from "./user-message-content.ts";
 
 export function appendCanvasBlockToAssistantMessage(
   message: unknown,
@@ -422,24 +421,6 @@ export function hasRenderableNormalizedMessage(
 export function sanitizeStreamText(text: string): string {
   const stripped = stripMessageDisplayMetadataText(text);
   return stripped.trim().length > 0 ? stripped : "";
-}
-
-export function queuedSendThreadMessage(item: ChatQueueItem): Record<string, unknown> | null {
-  return buildLocalUserMessage({
-    text: item.text,
-    workContext: item.workContext,
-    mentions: item.mentions,
-    attachments: item.attachments,
-    createdAt: item.createdAt,
-    runId: item.sendRunId ?? item.pendingRunId,
-    replyToId: item.replyToId,
-    sender: item.sender,
-    pending: {
-      id: item.id,
-      state: item.sendState,
-      error: item.sendError,
-    },
-  });
 }
 
 export function rawMessageTimestamp(message: unknown): number | null {

@@ -10,10 +10,10 @@ import {
   hasRenderableNormalizedMessage,
   insertChatItemsByTimestamp,
   messageMatchesSearchQuery,
-  queuedSendThreadMessage,
 } from "./chat-thread-items.ts";
 import { selectChatInputDisplay } from "./history-merge.ts";
 import { isLiveTerminalForRun } from "./terminal-message-identity.ts";
+import { queuedSendThreadMessage } from "./user-message-content.ts";
 
 type InputBlock = {
   items: ChatItem[];
