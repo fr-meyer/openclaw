@@ -209,7 +209,7 @@ function retireFailedReply(
         settlement: undefined,
         waitForSettlement: edge.forbidden,
         observeRequests: edge.forbidden,
-        service: edge.forbidden,
+        service() {},
         bindDatabaseAuthority: edge.forbidden,
         finish() {},
       },

@@ -16,6 +16,7 @@ import {
   normalizeDatabasePath,
   readDatabasePathIdentitySync,
 } from "../infra/sqlite-worker-identity.js";
+import { createSqliteWorkerPreNativeOpenRefusal } from "../infra/sqlite-worker-open-refusal.js";
 import {
   requestSqliteWorkerOperationAdmission,
   takeSqliteWorkerOperationAdmissionAttachment,
@@ -140,14 +141,16 @@ function openAgentDatabaseBackend(
   if (opening.databasePath !== input.databasePath) {
     throw new Error("Agent database open does not match its captured execution owner");
   }
-  const admitOpen = () => {
+  const admitOpen = (beforeNativeOpen = false) => {
     try {
       requestSqliteWorkerOperationAdmission({ stage: "open", facts: input });
     } catch (error) {
-      throw new SqliteWorkerOpenRefusedError(error);
+      throw beforeNativeOpen
+        ? createSqliteWorkerPreNativeOpenRefusal(error)
+        : new SqliteWorkerOpenRefusedError(error);
     }
   };
-  admitOpen();
+  admitOpen(true);
   const options = { agentId: input.agentId, path: input.databasePath, env: input.environment };
   let admittedFileIdentity =
     input.creatingIdentity?.key ??

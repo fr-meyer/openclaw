@@ -12,6 +12,7 @@ export class SqliteWorkerInputAdmission {
   private inputPreparationGeneration = {};
   private readonly inputPreparations = new Set<Promise<void>>();
   private readonly openQueue = new Map<string, StoreWriterQueue>();
+  private readonly pendingOpens = new Set<Promise<unknown>>();
 
   constructor(
     private readonly owner: {
@@ -38,7 +39,11 @@ export class SqliteWorkerInputAdmission {
     };
   }
 
-  open<T>(bytes: number, dispatch: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  open<T>(
+    bytes: number,
+    prepare: () => Promise<{ keys?: readonly string[]; dispatch: () => Promise<T> }>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     if (
       bytes > this.owner.maxMessageBytes ||
       this.owner.queuedBytes() + this.bytes + bytes > this.owner.maxQueuedBytes
@@ -48,18 +53,46 @@ export class SqliteWorkerInputAdmission {
       );
     }
     const release = this.retain(bytes);
-    // Physical-file identity must be published before admitting another open alias.
-    return runQueuedStoreWrite({
-      queues: this.openQueue,
-      storePath: "sqlite-open",
-      label: "SQLite worker open",
-      fn: dispatch,
-      signal,
-    }).finally(release);
+    // Identity I/O cannot reorder conflicting callers. Enqueue in request order,
+    // but release preparation before waiting for any native opening to settle.
+    const prepared = Promise.resolve().then(() =>
+      runQueuedStoreWrite({
+        queues: this.openQueue,
+        storePath: "sqlite-open-preparation",
+        label: "SQLite worker open identity",
+        signal,
+        fn: async () => {
+          signal?.throwIfAborted();
+          const { keys, dispatch } = await prepare();
+          signal?.throwIfAborted();
+          return {
+            openingPromise: runQueuedStoreWrite({
+              queues: this.openQueue,
+              storePath: "sqlite-open",
+              label: "SQLite worker open",
+              keys,
+              fn: dispatch,
+              signal,
+            }),
+          };
+        },
+      }),
+    );
+    const opening = prepared
+      .then(({ openingPromise }) => openingPromise)
+      .finally(() => {
+        release();
+        this.pendingOpens.delete(opening);
+      });
+    // Include identity preparation, before it can publish a keyed or exclusive lane.
+    this.pendingOpens.add(opening);
+    return opening;
   }
 
-  joinOpens(): Promise<void> {
-    return this.openQueue.get("sqlite-open")?.drainPromise ?? Promise.resolve();
+  async joinOpens(): Promise<void> {
+    while (this.pendingOpens.size) {
+      await Promise.allSettled(this.pendingOpens);
+    }
   }
 
   invalidatePreparations(): void {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, linkSync, renameSync, writeFileSync } from "node:fs";
-import { parentPort, threadId } from "node:worker_threads";
+import { getEnvironmentData, parentPort, threadId } from "node:worker_threads";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Generated } from "kysely";
 import { clearNodeSqliteKyselyCacheForDatabase } from "./kysely-sync-cache-state.js";
@@ -42,6 +42,7 @@ if (parentPort) {
 }
 
 export type FixtureOpenInput =
+  | { type: "block-open"; gateKey: string }
   | { type: "link"; existingPath: string }
   | { type: "observe"; markerPath: string }
   | { type: "prepare"; markerPath: string; gatePath: string; reject?: boolean; guarded?: boolean }
@@ -103,6 +104,14 @@ function createFixtureBackend(
   databasePath: string,
   existingOnly: boolean,
 ): SqliteWorkerPreparedBackend<FixtureOperations> {
+  if (input?.type === "block-open") {
+    const gate: unknown = getEnvironmentData(input.gateKey);
+    if (!(gate instanceof SharedArrayBuffer)) {
+      throw new Error("Fixture open gate was not supplied to its worker");
+    }
+    parentPort?.postMessage({ sqliteFixtureOpening: databasePath }, []);
+    Atomics.wait(new Int32Array(gate), 0, 0);
+  }
   if (input?.type === "link") {
     linkSync(input.existingPath, databasePath);
   } else if (input?.type === "observe") {

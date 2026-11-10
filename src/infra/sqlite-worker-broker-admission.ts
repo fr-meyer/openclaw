@@ -8,6 +8,7 @@ import { serialize } from "node:v8";
 import { getChildLogger } from "../logging/logger.js";
 import { INCOGNITO_AGENT_SQLITE_BASENAME } from "../state/openclaw-agent-db.paths.js";
 import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
+import { racePromiseWithAbortSignal } from "./abort-signal.js";
 import { assertStateDatabaseAccessAllowed } from "./gateway-state-owner.js";
 import { resolveRuntimeProcessEntrypointUrl } from "./runtime-process-url.js";
 import { runtimeNeedsTypeScriptLoader } from "./runtime-worker-url.js";
@@ -18,7 +19,11 @@ import type {
   Job,
   SqliteWorkerOpenCustody,
 } from "./sqlite-worker-broker.types.js";
-import { readDatabasePathIdentity, type DatabasePathIdentity } from "./sqlite-worker-identity.js";
+import {
+  assertDatabasePathIdentity,
+  readDatabasePathIdentity,
+  type DatabasePathIdentity,
+} from "./sqlite-worker-identity.js";
 import { createSqliteWorkerOperationAdmission } from "./sqlite-worker-operation-admission.js";
 import {
   captureSqliteWorkerStateContext,
@@ -153,6 +158,8 @@ export function captureSqliteWorkerRuntime(moduleUrl: URL) {
 }
 
 export async function prepareSqliteWorkerDatabaseAdmission(options: PreparedSqliteWorkerOpen) {
+  options.signal?.throwIfAborted();
+  options.assertCurrent?.();
   validateSqliteWorkerModuleUrl(options.moduleUrl);
   const databasePath = path.resolve(options.databasePath);
   const inputHash = createHash("sha256").update(options.input).digest("hex");
@@ -162,6 +169,7 @@ export async function prepareSqliteWorkerDatabaseAdmission(options: PreparedSqli
       inputHash,
       key: `ephemeral:${JSON.stringify([options.target.handle, options.target.incarnation])}`,
       identity: undefined,
+      assertCurrent: () => options.assertCurrent?.(),
     };
   }
   const identity = await readDatabasePathIdentity(databasePath);
@@ -169,7 +177,44 @@ export async function prepareSqliteWorkerDatabaseAdmission(options: PreparedSqli
   if (options.expectedIdentity && identity.key !== options.expectedIdentity) {
     throw new Error("SQLite Worker path no longer matches its borrowed native owner");
   }
-  return { databasePath, inputHash, identity, key: identity.key };
+  return {
+    databasePath,
+    inputHash,
+    identity,
+    key: identity.key,
+    assertCurrent: () => {
+      options.assertCurrent?.();
+      if (identity.key.startsWith("file:")) {
+        assertDatabasePathIdentity(databasePath, identity);
+      }
+    },
+  };
+}
+
+export async function prepareSqliteWorkerOpenLane<T>(
+  options: PreparedSqliteWorkerOpen,
+  dispatch: (
+    admission?: Awaited<ReturnType<typeof prepareSqliteWorkerDatabaseAdmission>>,
+  ) => Promise<T>,
+) {
+  const admission = await prepareSqliteWorkerDatabaseAdmission(options);
+  options.signal?.throwIfAborted();
+  options.assertCurrent?.();
+  const existing = admission.identity?.key.startsWith("file:") ? admission.identity : undefined;
+  return {
+    keys: existing
+      ? [admission.key, `path:${existing.canonicalPath}`, `path:${admission.databasePath}`]
+      : options.target
+        ? [admission.key]
+        : undefined,
+    // First-create paths stay exclusive through physical identity publication.
+    // Recapture after earlier creators settle so their actors can be reused.
+    dispatch: () => dispatch(existing || options.target ? admission : undefined),
+  };
+}
+
+export function waitForSqliteOpen<T>(pending: Promise<T>, signal?: AbortSignal) {
+  return racePromiseWithAbortSignal(pending, signal, (aborted) => aborted.reason);
 }
 
 export function captureSqliteWorkerAdmissionPaths(

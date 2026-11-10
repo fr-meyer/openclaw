@@ -2,7 +2,6 @@ import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { createDeferredCore } from "../shared/deferred.js";
 import { notifyListeners } from "../shared/listeners.js";
 import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
-import { racePromiseWithAbortSignal } from "./abort-signal.js";
 import { captureSqliteWorkerClosePolicy } from "./bun-sqlite-library.js";
 import { assertStateDatabaseAccessAllowed } from "./gateway-state-owner.js";
 import { runtimeNeedsTypeScriptLoader } from "./runtime-worker-url.js";
@@ -16,12 +15,14 @@ import {
   findUnclaimedSharedStateActors,
   closeUnclaimedSharedStateActors,
   prepareSqliteWorkerDatabaseAdmission,
+  prepareSqliteWorkerOpenLane,
   resolveOpenedSqliteWorkerIdentity,
   resolveSqliteWorkerModuleUrl,
   retainSqliteWorkerAdmissionCleanup,
   retainSqliteWorkerAdmissionPathReferences,
   suspendSqliteWorkerScheduledMaintenance,
   validateSqliteWorkerDatabaseLocator,
+  waitForSqliteOpen,
 } from "./sqlite-worker-broker-admission.js";
 import { createSqliteWorkerLifecycle } from "./sqlite-worker-broker-lifecycle.js";
 import {
@@ -67,10 +68,6 @@ const MAX_STORES = 64;
 const MAX_QUEUED_COMMAND_BYTES = 64 * 1024 * 1024;
 export const SQLITE_WORKER_MAX_REQUESTS_PER_WORKER = 128;
 const SQLITE_WORKER_MAX_QUEUED_BYTES = 256 * 1024 * 1024;
-
-function waitForSqliteOpen<T>(pending: Promise<T>, signal?: AbortSignal) {
-  return racePromiseWithAbortSignal(pending, signal, (aborted) => aborted.reason);
-}
 
 export class SqliteWorkerBroker {
   private readonly explicitSqliteCloseReleasesNativeResources = captureSqliteWorkerClosePolicy();
@@ -165,7 +162,10 @@ export class SqliteWorkerBroker {
     return this.inputAdmission
       .open(
         sqliteWorkerRequestBytes(snapshot.input, snapshot.stateContext, snapshot.preparation),
-        () => this.openAdmitted<Operations>(snapshot, client),
+        () =>
+          prepareSqliteWorkerOpenLane(snapshot, (admission) =>
+            this.openAdmitted<Operations>(snapshot, client, admission),
+          ),
         snapshot.signal,
       )
       .catch((error: unknown) => {
@@ -177,20 +177,19 @@ export class SqliteWorkerBroker {
   private async openAdmitted<Operations extends SqliteWorkerOperations>(
     options: PreparedSqliteWorkerOpen,
     client: object,
+    preparedAdmission?: Awaited<ReturnType<typeof prepareSqliteWorkerDatabaseAdmission>>,
   ): Promise<SqliteWorkerStore<Operations> | undefined> {
     // Cached client callbacks share this scope; never capture the opening options in it.
-    const { maintenanceScope } = options;
+    const { input, maintenanceScope } = options;
     options.signal?.throwIfAborted();
-    options.assertCurrent?.();
-    const { databasePath, inputHash, identity, key } =
-      await prepareSqliteWorkerDatabaseAdmission(options);
-    options.assertCurrent?.();
+    const admission = preparedAdmission ?? (await prepareSqliteWorkerDatabaseAdmission(options));
+    const { databasePath, inputHash, identity, key, assertCurrent: assertOpening } = admission;
+    assertOpening();
     if (!options.target) {
       assertStateDatabaseAccessAllowed(options.stateDatabasePath ?? databasePath, {
         maintenanceScope: options.maintenanceScope,
       });
     }
-    const input = options.input;
     const admittedPaths = identity
       ? captureSqliteWorkerAdmissionPaths(databasePath, identity, this.actors.values())
       : new Set<string>();
@@ -203,14 +202,14 @@ export class SqliteWorkerBroker {
     }
     const { modulePath, moduleUrl } = await resolveSqliteWorkerModuleUrl(options.moduleUrl);
     options.signal?.throwIfAborted();
-    options.assertCurrent?.();
+    assertOpening();
     let actor = this.actors.get(key);
     let resumeScheduledMaintenance: (() => void) | undefined;
     if (actor?.retirementRequested || actor?.cleanupState === "pending") {
       const pending = actor.retirementRequested ? actor.retirement : actor.closing;
       if (pending) {
         await waitForSqliteOpen(pending, options.signal);
-        return this.openAdmitted(options, client);
+        return this.openAdmitted(options, client, admission);
       }
       throw new SqliteWorkerError(
         actor.retirementRequested
@@ -226,8 +225,8 @@ export class SqliteWorkerBroker {
           unused.pendingOpens -= 1;
           await waitForSqliteOpen(this.lifecycle.retireEmpty(unused), options.signal);
         }
-        // Another opener won; reread identity and authority after retiring the unused carrier.
-        return this.openAdmitted({ ...options, runtimePreparation: undefined }, client);
+        // Another opener won; revalidate pinned identity and authority after retiring the unused carrier.
+        return this.openAdmitted({ ...options, runtimePreparation: undefined }, client, admission);
       }
       if (options.target && actor.databasePath !== databasePath) {
         throw new Error("Ephemeral SQLite handle belongs to another namespace");
@@ -246,7 +245,7 @@ export class SqliteWorkerBroker {
         (replySlot) => this.createReplyOwner(replySlot),
       );
       try {
-        options.assertCurrent?.();
+        assertOpening();
         options.signal?.throwIfAborted();
       } catch (error) {
         return this.lifecycle.rejectSlotAdmission(slot, error);
@@ -303,7 +302,7 @@ export class SqliteWorkerBroker {
         {
           dispatchState: opening.openDispatch,
           signal: options.signal,
-          assertCurrent: options.assertCurrent,
+          assertCurrent: assertOpening,
           maintenanceScope: options.maintenanceScope,
           createAdmission: options.createAdmission ?? options.createOpenAdmission,
         },

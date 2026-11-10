@@ -281,7 +281,12 @@ export function createSqliteWorkerLifecycle({
           "overloaded",
         );
       }
-      const selected = available.reduce((left, right) =>
+      // Do not put an unrelated open behind a native scan when an idle carrier
+      // is eligible, even if the busy carrier currently owns fewer actors.
+      const idle = available.filter(
+        (slot) => !slot.current && !slot.queue.length && !slot.pendingOpens,
+      );
+      const selected = (idle.length ? idle : available).reduce((left, right) =>
         left.actors.size <= right.actors.size ? left : right,
       );
       selected.pendingOpens += 1;

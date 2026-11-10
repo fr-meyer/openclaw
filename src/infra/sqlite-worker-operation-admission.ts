@@ -20,6 +20,10 @@ import {
   SqliteWorkerAdmissionTimeoutError,
   SqliteWorkerError,
 } from "./sqlite-worker-contract.js";
+import {
+  createSqliteWorkerOpenRefusalProof,
+  registerSqliteWorkerOpenRefusalProof,
+} from "./sqlite-worker-open-refusal.js";
 import type {
   RetainedWorkerTransactionAdmission,
   SqliteWorkerNativeSettlement,
@@ -31,17 +35,7 @@ const GRANTED = 1;
 const REFUSED = 2;
 const TIMED_OUT = 3;
 
-/** Only the factory's admission before agent open may certify this refusal. */
-export const SqliteWorkerOpenRefusedError = resolveGlobalSingleton(
-  Symbol.for("openclaw.sqliteWorkerOpenRefusedError"),
-  () =>
-    class OpenRefusedError extends Error {
-      constructor(readonly originalError: unknown) {
-        super("SQLite worker admission was refused before agent open", { cause: originalError });
-        this.name = "SqliteWorkerOpenRefusedError";
-      }
-    },
-);
+export { SqliteWorkerOpenRefusedError } from "./sqlite-worker-open-refusal.js";
 
 export type SqliteWorkerAdmissionRequest = {
   stage: "open" | "prepare" | "transaction" | "commit";
@@ -147,6 +141,7 @@ export function createSqliteWorkerOperationAdmission(
   let observeCommit: ((committed: { facts: unknown }) => void) | undefined;
   let observingCommit = false;
   let failure: { error: unknown; source: AdmissionFailureSource } | undefined;
+  const openRefusal = createSqliteWorkerOpenRefusalProof();
   let committed: SqliteWorkerNativeSettlementOwner["committed"];
   let nativeReceipt: NativeCommitReceipt | undefined;
   let settlement: SqliteWorkerNativeSettlement | undefined;
@@ -161,6 +156,9 @@ export function createSqliteWorkerOperationAdmission(
     | undefined;
   const waiting = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
   const recordFailure = (error: unknown, source: AdmissionFailureSource) => {
+    if (source === "protocol") {
+      openRefusal.recordProtocolFailure(error);
+    }
     // A handled domain refusal cannot hide a later loss of physical custody or protocol failure.
     if (!failure || (failure.source === "domain" && source !== "domain")) {
       failure = { error, source };
@@ -218,6 +216,12 @@ export function createSqliteWorkerOperationAdmission(
   };
   const receive = (message: unknown) => {
     started = true;
+    if (openRefusal.receipt || (isRecord(message) && message.kind === "native-open-not-entered")) {
+      if (!openRefusal.accept(message, Boolean(nativeReceipt || committed || settlement))) {
+        invalidProtocol("native settlement");
+      }
+      return;
+    }
     if (isRecord(message) && message.kind === "native-commit") {
       const receipt = readNativeCommitReceipt(message.committed);
       if (!receipt) {
@@ -472,6 +476,7 @@ export function createSqliteWorkerOperationAdmission(
       }
     },
   };
+  registerSqliteWorkerOpenRefusalProof(admission, openRefusal);
   commitObserverBindings.set(admission, (observer) => {
     if (closed || observeCommit || started) {
       throw new SqliteWorkerError(

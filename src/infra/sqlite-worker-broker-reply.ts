@@ -23,6 +23,11 @@ import {
   type SqliteWorkerReply,
   type SqliteWorkerRequest,
 } from "./sqlite-worker-contract.js";
+import {
+  bindSqliteWorkerOpenRefusal,
+  hasSqliteWorkerOpenRefusalReceipt,
+  getSqliteWorkerOpenRefusalProof,
+} from "./sqlite-worker-open-refusal.js";
 import { createSqliteWorkerOperationAdmission } from "./sqlite-worker-operation-admission.js";
 import type { SqliteWorkerOperationSettlement } from "./sqlite-worker-operation-settlement.js";
 import {
@@ -104,6 +109,12 @@ function prepareSqliteWorkerOperationAdmission(
         nativeLocations: databasePath ? [databasePath] : [],
       };
   try {
+    if (job.request.type === "open") {
+      bindSqliteWorkerOpenRefusal(retained.admission, {
+        id: job.request.id,
+        actor: job.request.actor,
+      });
+    }
     if (databasePath) {
       let schemaLease: StateDatabaseSchemaLease | undefined;
       const assertAccess = () => {
@@ -296,6 +307,25 @@ export type SqliteWorkerReplyOwner = {
   dispatch(): void;
 };
 
+function finalizeSqliteWorkerJobAdmission(job: Job): readonly unknown[] {
+  const retained = job.operationAdmission;
+  if (!retained) {
+    return [];
+  }
+  if (!retained.finalization) {
+    const failures: unknown[] = [];
+    retained.finalization = { failures };
+    for (const finish of [() => retained.admission.finish(), () => retained.releaseService()]) {
+      try {
+        finish();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  }
+  return retained.finalization.failures;
+}
+
 export function receiveSqliteWorkerReply(
   slot: Pick<Slot, "current" | "failed"> & {
     actors: ReadonlySet<Pick<Actor, "id" | "closeReceipt">>;
@@ -309,7 +339,24 @@ export function receiveSqliteWorkerReply(
     owner.fail(new Error("SQLite worker returned an unexpected response"));
     return;
   }
+  if (job.request.type === "open" && job.operationAdmission) {
+    const admission = job.operationAdmission.admission;
+    try {
+      admission.service();
+    } catch (error) {
+      owner.fail(error);
+      return;
+    }
+    if (hasSqliteWorkerOpenRefusalReceipt(admission) && (reply.ok || !reply.preNativeOpenRefusal)) {
+      owner.fail(new Error("SQLite worker open refusal receipt contradicts its reply"));
+      return;
+    }
+  }
   if (!reply.ok) {
+    if (reply.preNativeOpenRefusal && job.request.type !== "open") {
+      owner.fail(new Error("SQLite worker returned an open refusal for another operation"));
+      return;
+    }
     if (reply.cleanupFailure && job.nativeDispatched && !reply.retire) {
       const admission = job.operationAdmission?.admission;
       const failure =
@@ -322,10 +369,73 @@ export function receiveSqliteWorkerReply(
       });
       return;
     }
+    const error = decodeSqliteWorkerReplyError(reply.error);
+    if (job.request.type === "open" && reply.preNativeOpenRefusal) {
+      const admission = job.operationAdmission?.admission;
+      const refusal = admission?.failure ?? error;
+      const fail = (failure: unknown = refusal) =>
+        owner.fail(failure, toErrorObject(failure, error.message));
+      if (
+        !reply.admissionRefused ||
+        reply.openNotEntered ||
+        reply.retire ||
+        !admission ||
+        reply.openOutcome !== "refused-before-agent-open"
+      ) {
+        fail();
+        return;
+      }
+      const hasProof = () => {
+        const committed = admission.committed;
+        const proof = getSqliteWorkerOpenRefusalProof(admission);
+        const marker = proof?.receipt;
+        return (
+          marker?.id === job.request.id &&
+          marker.actor === job.request.actor &&
+          !committed &&
+          !admission.settlement &&
+          proof?.protocolFailure === undefined &&
+          admission.failureSource !== "protocol" &&
+          admission.cleanupFailures.length === 0
+        );
+      };
+      try {
+        // Unproven work retains its admission channel until native retirement.
+        admission.service();
+        if (!hasProof()) {
+          fail();
+          return;
+        }
+        const finalizationFailures = finalizeSqliteWorkerJobAdmission(job);
+        const cleanupFailures = [...finalizationFailures, ...admission.cleanupFailures];
+        if (cleanupFailures.length) {
+          fail(
+            withSqliteWorkerCleanupFailure(
+              toErrorObject(refusal, error.message),
+              new AggregateError(cleanupFailures, "SQLite worker admission cleanup failed"),
+            ),
+          );
+          return;
+        }
+        if (!hasProof()) {
+          fail();
+          return;
+        }
+      } catch (failure) {
+        fail(withSqliteWorkerCleanupFailure(toErrorObject(refusal, error.message), failure));
+        return;
+      }
+      if (job.dispatchState) {
+        job.dispatchState.openNotEntered = true;
+      }
+      slot.current = undefined;
+      owner.finish(job, refusal, undefined, { kind: "not-entered", error: refusal });
+      owner.dispatch();
+      return;
+    }
     if (reply.openNotEntered && job.request.type === "open" && job.dispatchState) {
       job.dispatchState.openNotEntered = true;
     }
-    const error = decodeSqliteWorkerReplyError(reply.error);
     if (job.request.type === "open" && reply.openNotEntered && !reply.retire) {
       slot.current = undefined;
       const refusal = job.operationAdmission?.admission.failure ?? error;
@@ -496,12 +606,14 @@ export function settleSqliteWorkerJob(
   job.settleNative?.(
     settlement ?? (job.nativeDispatched ? { kind: "completed" } : { kind: "not-entered", error }),
   );
-  job.operationAdmission?.admission.finish();
-  job.operationAdmission?.releaseService();
+  const finalizationFailures = finalizeSqliteWorkerJobAdmission(job);
   // finish() drains the receipt port before the separate command reply can acknowledge success.
   const admission = job.operationAdmission?.admission;
   let failure = error ?? (admission?.failureSource === "domain" ? undefined : admission?.failure);
-  const admissionCleanupFailures = job.operationAdmission?.admission.cleanupFailures ?? [];
+  const admissionCleanupFailures = [
+    ...finalizationFailures,
+    ...(job.operationAdmission?.admission.cleanupFailures ?? []),
+  ];
   if (admissionCleanupFailures.length > 0) {
     const cleanupError = new AggregateError(
       admissionCleanupFailures,

@@ -5,10 +5,8 @@ import type {
   SqliteWorkerEphemeralTarget,
   SqliteWorkerPreparedBackend,
 } from "../infra/sqlite-worker-contract.js";
-import {
-  requestSqliteWorkerOperationAdmission,
-  SqliteWorkerOpenRefusedError,
-} from "../infra/sqlite-worker-operation-admission.js";
+import { createSqliteWorkerPreNativeOpenRefusal } from "../infra/sqlite-worker-open-refusal.js";
+import { requestSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
 import {
   closeOpenClawAgentDatabaseByPath,
   retainAgentDatabase,
@@ -36,7 +34,7 @@ export function createIncognitoAgentDatabaseBackend(
   try {
     requestSqliteWorkerOperationAdmission({ stage: "open", facts: input });
   } catch (error) {
-    throw new SqliteWorkerOpenRefusedError(error);
+    throw createSqliteWorkerPreNativeOpenRefusal(error);
   }
   if (getOpenClawAgentDatabaseIfOpen(options)) {
     throw new Error("Incognito actor cannot adopt another native database");

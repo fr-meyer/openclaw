@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { isPromise } from "node:util/types";
 import { deserialize, serialize } from "node:v8";
 import { parentPort, workerData } from "node:worker_threads";
@@ -10,6 +12,8 @@ import {
   type OpenClawStateWorkerErrorPayload,
 } from "../state/openclaw-state-worker-error.js";
 import { captureSqliteNativeRuntimeAdmission } from "./node-sqlite.js";
+import { runtimeProcessEntrypoints } from "./runtime-process-entrypoints.js";
+import { resolveRuntimeWorkerUrl } from "./runtime-worker-url.js";
 import { withSqliteReaderOwner } from "./sqlite-reader-lifecycle.js";
 import { SQLITE_WORKER_SOURCE_FENCE } from "./sqlite-source-fence-contract.js";
 import { runSqliteSourceFence } from "./sqlite-source-fence.js";
@@ -28,7 +32,10 @@ import {
 } from "./sqlite-worker-contract.js";
 import { assertExistingDatabaseIdentity } from "./sqlite-worker-identity.js";
 import {
+  isSqliteWorkerPreNativeOpenRefusal,
   SqliteWorkerOpenRefusedError,
+} from "./sqlite-worker-open-refusal.js";
+import {
   withSqliteWorkerOperationAdmission,
   requestSqliteWorkerOperationAdmission,
   settleSqliteWorkerOperationContext,
@@ -67,6 +74,19 @@ let sourceLoaderRegistered = false;
 let nativeCleanupFailure: OpenClawStateWorkerErrorPayload | undefined;
 let operationAdmission: { actor: number; context: SqliteWorkerOperationContext } | undefined;
 let nativeRuntimeAdmissionSent = false;
+
+// Snapshot the built-in locator before any backend module can run. Unknown
+// layouts and custom/re-exporting modules cannot certify inner factory refusal.
+const agentFactoryModuleUrl = Promise.resolve()
+  .then(
+    async () =>
+      pathToFileURL(
+        await realpath(
+          fileURLToPath(resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.agentDatabaseExecution)),
+        ),
+      ).href,
+  )
+  .catch(() => undefined);
 
 async function loadBackendModule(moduleUrl: string, sourceLoaderUrl?: string): Promise<unknown> {
   if (!sourceLoaderRegistered && sourceLoaderUrl) {
@@ -111,6 +131,8 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
   let completeResult = false;
   let inputNext = false;
   let openNotEntered = false;
+  let preNativeOpenRefusal = false;
+  let trustedAgentFactory = false;
   let commandAdmissionRefused = false;
   try {
     let value: unknown;
@@ -319,6 +341,7 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
       if (request.existingIdentity) {
         assertExistingDatabaseIdentity(request.databasePath, request.existingIdentity);
       }
+      trustedAgentFactory = request.moduleUrl === (await agentFactoryModuleUrl);
       const module = await loadBackendModule(request.moduleUrl, request.sourceLoaderUrl);
       const factoryName = request.existingIdentity
         ? "openExistingSqliteWorkerBackend"
@@ -420,7 +443,16 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
       };
     }
   } catch (error) {
-    if (openNotEntered && request.type === "open") {
+    if (
+      request.type === "open" &&
+      trustedAgentFactory &&
+      isSqliteWorkerPreNativeOpenRefusal(error) &&
+      operationAdmission?.actor === request.actor &&
+      operationAdmission.context.refusal === error.originalError
+    ) {
+      preNativeOpenRefusal = true;
+    }
+    if ((openNotEntered || preNativeOpenRefusal) && request.type === "open") {
       stateContexts.delete(request.actor);
     }
     transfers.cancel();
@@ -450,6 +482,7 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
       ...(retire || (nativeCleanupFailure && executed) ? { retire: true } : {}),
       ...(refusedOpen ? { openOutcome: "refused-before-agent-open" } : {}),
       ...(openNotEntered ? { openNotEntered: true } : {}),
+      ...(preNativeOpenRefusal ? { preNativeOpenRefusal: true } : {}),
       ...(admissionRefused ? { admissionRefused: true } : {}),
       error: {
         name: executed ? "SqliteWorkerError" : failure.name,
@@ -460,6 +493,21 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
     };
   }
   if (!reply.ok || (!pendingInput && !pendingResult)) {
+    if (
+      !reply.ok &&
+      reply.preNativeOpenRefusal &&
+      reply.admissionRefused &&
+      !reply.retire &&
+      !nativeCleanupFailure &&
+      operationAdmission?.actor === request.actor
+    ) {
+      // This is the last message on this request's private admission port.
+      // Observing it fences every preceding receipt independently of parentPort.
+      operationAdmission.context.port.postMessage(
+        { kind: "native-open-not-entered", id: request.id, actor: request.actor },
+        [],
+      );
+    }
     operationAdmission?.context.port.close();
     operationAdmission = undefined;
   }

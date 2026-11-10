@@ -30,7 +30,11 @@ export type Job = {
   signal?: AbortSignal;
   maintenanceScope?: OpenClawDatabaseMaintenanceScope;
   createAdmission?: SqliteWorkerAdmissionFactory;
-  operationAdmission?: { admission: SqliteWorkerOperationAdmission; releaseService(): void };
+  operationAdmission?: {
+    admission: SqliteWorkerOperationAdmission;
+    releaseService(): void;
+    finalization?: { failures: unknown[] };
+  };
   settleNative?: (settlement: SqliteWorkerOperationSettlement) => void;
   nativeDispatched?: boolean;
   requestPosted?: boolean;
