@@ -1,0 +1,172 @@
+name: SQLite refusal lineage qualification
+
+on:
+  push:
+    branches: [fix/sqlite-retirement-refusal-lineage-source307]
+    paths: [.github/workflows/sqlite-refusal-lineage-qualification.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sqlite-refusal-lineage-qualification-20261110
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+  OPENCLAW_LOCAL_CHECK: "0"
+  SOURCE_SHA: d34e5d7648dd3fc015eab43751ec08330d547ba2
+  SOURCE_TREE: 5c2b57e82125afaf53504fea317da5e52dc37b4d
+
+jobs:
+  qualify:
+    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/fix/sqlite-retirement-refusal-lineage-source307'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out the diagnostic definition
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact source parent and definition-only delta
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$EVENT_REPOSITORY" = fr-meyer/openclaw
+          test "$EVENT_REF" = refs/heads/fix/sqlite-retirement-refusal-lineage-source307
+          test "$(git rev-parse HEAD)" = "$EVENT_SHA"
+          test "$(git rev-list --parents -n 1 HEAD | wc -w)" -eq 2
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git rev-parse "$SOURCE_SHA^{tree}")" = "$SOURCE_TREE"
+          test "$(git diff --name-only "$SOURCE_SHA" HEAD)" = .github/workflows/sqlite-refusal-lineage-qualification.yml
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Require visible runner memory and disk headroom
+        run: |
+          python3 - <<'PYRUN'
+          import pathlib
+          import shutil
+
+          memory = {
+              name: int(value.split()[0]) * 1024
+              for name, value in (
+                  line.split(":", 1)
+                  for line in pathlib.Path("/proc/meminfo").read_text().splitlines()
+              )
+          }
+          root = pathlib.Path("/sys/fs/cgroup")
+          group = next(
+              line.split(":", 2)[2]
+              for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
+              if line.startswith("0::")
+          )
+          current = (root / group.lstrip("/")).resolve()
+          limits = []
+          remaining = []
+          observed = []
+          while current == root or root in current.parents:
+              candidate = current / "memory.max"
+              if candidate.is_file():
+                  value = candidate.read_text().strip()
+                  observed.append(value)
+                  if value != "max":
+                      limits.append(int(value))
+                      used = int((current / "memory.current").read_text().strip())
+                      remaining.append(max(0, int(value) - used))
+              if current == root:
+                  break
+              current = current.parent
+          assert observed, "Runner does not expose cgroup memory limits"
+          effective = min([memory["MemTotal"], *limits])
+          available = min([memory["MemAvailable"], effective, *remaining])
+          free_disk = shutil.disk_usage(".").free
+          print(f"Effective memory bytes: {effective}; available bytes: {available}")
+          print(f"Cgroup memory.max values: {observed}; free disk bytes: {free_disk}")
+          assert effective >= 12 * 1024**3, "Insufficient memory above the measured build-process peak"
+          assert available >= 12 * 1024**3, "Insufficient available memory headroom"
+          assert free_disk >= 8 * 1024**3, "Insufficient dependency and build disk headroom"
+          PYRUN
+
+      - name: Install frozen source dependencies without shared caches
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          semantic-checks: "true"
+          install-bun: "false"
+          frozen-lockfile: "true"
+          cache-mode: "off"
+
+      - name: Audit diagnostic workflow with canonical guards
+        run: pnpm check:workflows
+
+      - name: Check out exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          clean: false
+          persist-credentials: false
+
+      - name: Verify source identity
+        id: source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
+          test ! -e .github/workflows/sqlite-refusal-lineage-qualification.yml
+
+      - name: Check production types
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 25
+        run: /usr/bin/time -v pnpm tsgo:prod
+
+      - name: Check test types
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 60
+        run: /usr/bin/time -v pnpm tsgo:test
+
+      - name: Check lint
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 60
+        run: /usr/bin/time -v pnpm lint
+
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        run: pnpm format:check
+
+      - name: Run SQLite refusal lineage regressions
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 20
+        run: |
+          /usr/bin/time -v pnpm test \
+            src/infra/sqlite-worker-broker-reply.cleanup.test.ts \
+            src/infra/sqlite-worker-broker-reply.test.ts \
+            src/infra/sqlite-worker-operation-admission.test.ts \
+            --maxWorkers=1
+
+      - name: Build source
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        timeout-minutes: 40
+        run: /usr/bin/time -v pnpm build
+
+      - name: Check generated plugin assets
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        run: pnpm plugins:assets:check
+
+      - name: Reject unexpected source changes
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
