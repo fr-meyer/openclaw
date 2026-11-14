@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { i18n, t } from "../../i18n/index.ts";
 import type { HumanMention } from "../../lib/chat/chat-types.ts";
 import { renderChatQueue } from "./components/chat-composer-queue.ts";
+import { queuedSendThreadMessage } from "./user-message-content.ts";
 
 afterEach(async () => {
   document.body.replaceChildren();
@@ -14,6 +15,214 @@ afterEach(async () => {
 });
 
 describe("chat composer steering queue", () => {
+  it.each(["held", "unconfirmed"] as const)(
+    "keeps incomplete %s projections visible without duplicate controls",
+    (sendState) => {
+      for (const text of ["caption", "", "   "]) {
+        for (const mixed of [false, true]) {
+          const missing = { id: "missing", mimeType: "image/png" };
+          const attachments = mixed
+            ? [{ id: "available", mimeType: "image/png", previewUrl: "blob:available" }, missing]
+            : [missing];
+          const item = {
+            id: "original",
+            sendRunId: "original-run",
+            text,
+            attachments,
+            createdAt: 1,
+            sendState,
+            sendAttempts: 1,
+          };
+          const before = JSON.stringify(item);
+          const onQueueRetry = vi.fn();
+          const onQueueRemove = vi.fn();
+          expect(queuedSendThreadMessage(item)).toBeNull();
+          const container = renderQueue({
+            queue: [
+              item,
+              { id: "next", text: "Next", createdAt: 2 },
+              { id: "last", text: "Last", createdAt: 3 },
+            ],
+            onQueueRetry,
+            onQueueRemove,
+          });
+          expect(
+            [...container.querySelectorAll(".chat-queue__item")].map((row) =>
+              row.getAttribute("data-chat-queue-item"),
+            ),
+          ).toEqual(["original", "next", "last"]);
+          expect(container.textContent).toContain(t("chat.queue.attachmentPreviewUnavailable"));
+          expect(container.querySelectorAll(".chat-queue__retry")).toHaveLength(1);
+          expect(container.querySelectorAll(".chat-queue__discard")).toHaveLength(1);
+          expect(onQueueRetry).not.toHaveBeenCalled();
+          expect(onQueueRemove).not.toHaveBeenCalled();
+          expect(JSON.stringify(item)).toBe(before);
+          container.remove();
+        }
+      }
+    },
+  );
+
+  it("reprojects delayed preview hydration without dispatching or changing identity", () => {
+    const item = {
+      id: "delayed",
+      pendingRunId: "pending-original",
+      text: "caption",
+      attachments: [
+        {
+          id: "delayed-image",
+          mimeType: "image/png",
+          previewUrl: undefined as string | undefined,
+        },
+      ],
+      createdAt: 1,
+      sendState: "held" as const,
+      sendAttempts: 1,
+    };
+    const onQueueRetry = vi.fn();
+    const onQueueRemove = vi.fn();
+    const container = renderQueue({ queue: [item], onQueueRetry, onQueueRemove });
+    expect(queuedSendThreadMessage(item)).toBeNull();
+    expect(container.textContent).toContain(t("chat.queue.attachmentPreviewUnavailable"));
+    item.attachments[0]!.previewUrl = "blob:hydrated-preview-only";
+    const projected = queuedSendThreadMessage(item);
+    expect(projected?.["__openclaw"]).toMatchObject({
+      id: "delayed",
+      idempotencyKey: "pending-original:user",
+    });
+    expect(projected?.content).toContainEqual(
+      expect.objectContaining({ type: "image", url: "blob:hydrated-preview-only" }),
+    );
+    render(renderChatQueue({ queue: [item], onQueueRetry, onQueueRemove }), container);
+    expect(container.querySelectorAll(".chat-queue__item")).toHaveLength(0);
+    expect(container.querySelectorAll(".chat-queue__retry, .chat-queue__discard")).toHaveLength(0);
+    expect(onQueueRetry).not.toHaveBeenCalled();
+    expect(onQueueRemove).not.toHaveBeenCalled();
+    expect(item.attachments[0]!.id).toBe("delayed-image");
+  });
+
+  it.each(["", "   ", "caption"])("handles empty attachments with text %j", (text) => {
+    const item = {
+      id: "empty",
+      text,
+      attachments: [],
+      createdAt: 1,
+      sendState: "held" as const,
+      sendAttempts: 1,
+    };
+    expect(queuedSendThreadMessage(item) === null).toBe(!text.trim());
+    const container = renderQueue({ queue: [item], onQueueRemove: vi.fn() });
+    expect(container.textContent).not.toContain(t("chat.queue.attachmentPreviewUnavailable"));
+    expect(container.querySelectorAll(".chat-queue__item")).toHaveLength(text.trim() ? 0 : 1);
+  });
+
+  it.each(["unconfirmed", "held"] as const)(
+    "shows the original %s image send in the queue when it has no inline projection",
+    (sendState) => {
+      const onQueueRetry = vi.fn();
+      const onQueueRemove = vi.fn();
+      const onQueueMove = vi.fn();
+      const blocked = {
+        id: "original-image-request",
+        sendRunId: "original-run",
+        text: "",
+        attachments: [{ id: "original-attachment", mimeType: "image/png" }],
+        createdAt: 1,
+        sendState,
+        sendAttempts: 1,
+      };
+      expect(queuedSendThreadMessage(blocked)).toBeNull();
+      const container = renderQueue({
+        queue: [
+          blocked,
+          { id: "later", text: "Later request", createdAt: 2 },
+          { id: "latest", text: "Latest request", createdAt: 3 },
+        ],
+        onQueueRetry,
+        onQueueRemove,
+        onQueueMove,
+      });
+
+      const rows = [...container.querySelectorAll(".chat-queue__item")];
+      expect(rows.map((row) => row.getAttribute("data-chat-queue-item"))).toEqual([
+        blocked.id,
+        "later",
+        "latest",
+      ]);
+      expect(rows[0]?.textContent).toContain("Image (1)");
+      expect(rows[0]?.textContent).toContain(t("chat.queue.states.needsReview"));
+      expect(container.querySelector(".chat-queue__global-state")).toBeNull();
+      expect(rows[0]?.querySelector(".chat-queue__grip")?.hasAttribute("disabled")).toBe(true);
+      expect(rows[0]?.querySelector(".chat-queue__retry")?.textContent).toContain("Retry");
+      expect(rows[0]?.querySelector(".chat-queue__discard")?.textContent?.trim()).toBe("Discard");
+      expect(onQueueRetry).not.toHaveBeenCalled();
+      expect(onQueueRemove).not.toHaveBeenCalled();
+      expect(onQueueMove).not.toHaveBeenCalled();
+
+      rows[0]?.querySelector<HTMLButtonElement>(".chat-queue__retry")?.click();
+      rows[0]?.querySelector<HTMLButtonElement>(".chat-queue__discard")?.click();
+      expect(onQueueRetry).toHaveBeenCalledExactlyOnceWith(blocked.id);
+      expect(onQueueRemove).toHaveBeenCalledExactlyOnceWith(blocked.id);
+      expect(onQueueMove).not.toHaveBeenCalled();
+      expect(blocked.sendRunId).toBe("original-run");
+      expect(blocked.attachments[0]?.id).toBe("original-attachment");
+    },
+  );
+
+  it.each([false, true])(
+    "preserves server removal authority for unprojected images (%s)",
+    (allowed) => {
+      const onQueueRemove = vi.fn();
+      const container = renderQueue({
+        queue: [
+          {
+            id: "server-image",
+            text: "",
+            attachments: [{ id: "server-attachment", mimeType: "image/png" }],
+            createdAt: 1,
+            sendState: "held",
+            sendAttempts: 1,
+            serverQueued: true,
+          },
+        ],
+        canRemoveServerQueued: allowed,
+        onQueueRemove,
+      });
+      const discard = container.querySelector<HTMLButtonElement>(".chat-queue__discard");
+      expect(discard).not.toBeNull();
+      expect(discard?.disabled).toBe(!allowed);
+      discard?.click();
+      expect(onQueueRemove.mock.calls).toEqual(allowed ? [["server-image"]] : []);
+    },
+  );
+
+  it("keeps a renderable image send inline instead of duplicating its queue controls", () => {
+    const image = {
+      id: "image-with-preview",
+      text: "",
+      attachments: [
+        { id: "preview", mimeType: "image/png", dataUrl: "data:image/png;base64,aQ==" },
+      ],
+      createdAt: 1,
+      sendState: "unconfirmed" as const,
+      sendAttempts: 1,
+    };
+    expect(queuedSendThreadMessage(image)).not.toBeNull();
+    const container = renderQueue({
+      queue: [image, { id: "later", text: "Later request", createdAt: 2 }],
+      onQueueRetry: vi.fn(),
+      onQueueRemove: vi.fn(),
+    });
+    expect(
+      [...container.querySelectorAll(".chat-queue__item")].map((row) =>
+        row.getAttribute("data-chat-queue-item"),
+      ),
+    ).toEqual(["later"]);
+    expect(container.querySelector(".chat-queue__global-state")?.textContent).toContain(
+      "in the conversation",
+    );
+  });
+
   it("keeps attempted unconfirmed messages inline while local commands retain retry and discard", () => {
     const onQueueRetry = vi.fn();
     const onQueueRemove = vi.fn();

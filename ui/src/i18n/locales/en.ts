@@ -3486,6 +3486,7 @@ export const en: TranslationMap & {
       sendMessage: "Send message",
     },
     queue: {
+      attachmentPreviewUnavailable: "Attachment preview unavailable",
       reviewEdit: "Review edit",
       reloadBlocked: "Save or cancel your queued message edit before reloading.",
       connectionPending: "Finishing connection recovery. Try sending again when it is ready.",
