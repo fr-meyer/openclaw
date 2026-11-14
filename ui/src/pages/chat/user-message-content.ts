@@ -1,13 +1,10 @@
 import type { MediaKind } from "@openclaw/media-core/constants";
 import type { ChatWorkContext } from "../../../../packages/gateway-protocol/src/chat-work-context.js";
-import type { ChatAttachment, HumanMention } from "../../lib/chat/chat-types.ts";
+import type { ChatAttachment, ChatQueueItem, HumanMention } from "../../lib/chat/chat-types.ts";
 import { trimHumanMentions } from "../../lib/chat/human-mentions.ts";
 import type { SenderIdentity } from "../../lib/chat/sender-label.ts";
 import { hasVideoMediaFileExtension } from "../../lib/media-file-extension.ts";
-import {
-  getChatAttachmentDataUrl,
-  getChatAttachmentPreviewUrl,
-} from "./attachment-payload-store.ts";
+import { getChatAttachmentDataUrl, getChatAttachmentPreviewUrl } from "./attachment-payload-store.ts";
 
 type UserChatMessageContentBlock = {
   type: string;
@@ -69,7 +66,7 @@ export function buildInitialChatSubmission(
 /** Canonical local user-turn projection shared by optimistic and acknowledged sends. */
 export function buildLocalUserMessage(
   input: LocalUserMessageInput,
-  retention?: "available" | "complete",
+  retention?: "available" | "complete" | "preview-complete",
 ): LocalUserMessage | null {
   const { text: message, attachments } = input;
   const content: UserChatMessageContentBlock[] = [];
@@ -80,12 +77,16 @@ export function buildLocalUserMessage(
   for (const attachment of attachments ?? []) {
     // Retained content owns inline bytes before outbox cleanup releases Blob URLs.
     // Initial prompts allow available previews; delivered turns require every byte.
-    const dataUrl = retention ? getChatAttachmentDataUrl(attachment) : undefined;
+    const dataUrl =
+      retention && retention !== "preview-complete" ? getChatAttachmentDataUrl(attachment) : undefined;
     if (retention === "complete" && !dataUrl) {
       return null;
     }
     const previewUrl = dataUrl || getChatAttachmentPreviewUrl(attachment);
     if (!previewUrl) {
+      if (retention === "preview-complete") {
+        return null;
+      }
       continue;
     }
     if (attachment.mimeType.startsWith("image/")) {
@@ -146,4 +147,26 @@ export function buildLocalUserMessage(
         : {}),
     },
   };
+}
+
+/** Hide a local send only when every attachment has a transcript presentation. */
+export function queuedSendThreadMessage(item: ChatQueueItem): Record<string, unknown> | null {
+  return buildLocalUserMessage(
+    {
+      text: item.text,
+      workContext: item.workContext,
+      mentions: item.mentions,
+      attachments: item.attachments,
+      createdAt: item.createdAt,
+      runId: item.sendRunId ?? item.pendingRunId,
+      replyToId: item.replyToId,
+      sender: item.sender,
+      pending: {
+        id: item.id,
+        state: item.sendState,
+        error: item.sendError,
+      },
+    },
+    "preview-complete",
+  );
 }
