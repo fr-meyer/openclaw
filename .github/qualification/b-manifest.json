@@ -1,0 +1,44 @@
+{
+  "lane": "B",
+  "name": "Outbox/image-preview recovery",
+  "repository": "fr-meyer/openclaw",
+  "base": "30786562e236aab6a924981c62aa61b920132c76",
+  "sourceFiles": 6,
+  "patch": "patches/B-outbox-recovery.patch",
+  "sha256": "6244045f9236efd651f5173b63df939f60c8c1ed73a449589e1a40dde0ff2a24",
+  "verdict": "ACCEPT_SCOPED_SOURCE_ONLY",
+  "validation": "Dependency/type/browser/storage/SQLite causality/build tests NOT_EXECUTED",
+  "sourcePins": {
+    "ui/src/i18n/locales/en.ts": "635f8ea88bcecd19619d8b9e269e63806dc26839e7226c9116972c372a0aa97e",
+    "ui/src/pages/chat/chat-composer-queue.test.ts": "b5732c76e03a6ed1196bf449cc41349f2f6d0b82666919a6f86fd1b18d586c5b",
+    "ui/src/pages/chat/chat-thread-inputs.ts": "785c5fe97e5e8721b4d75a605b7f44ee5977a840c3cdb6ebe3ab622d9fd9161e",
+    "ui/src/pages/chat/chat-thread-items.ts": "c581929c76f1bf5b73f46a41be713237ca7c864e6886460fbf3632ff99f140f4",
+    "ui/src/pages/chat/components/chat-composer-queue.ts": "887d7306178d96d4ab3ee21f64e50d692f4c295c5e92925a6706714dadee0626",
+    "ui/src/pages/chat/user-message-content.ts": "6168c8e0f6a506b060414fcdb55e9c7797d522a414bde2b5bc72da2c0d35ade2"
+  },
+  "tests": [
+    "ui/src/pages/chat/chat-composer-queue.test.ts",
+    "ui/src/pages/chat/chat-thread-input-order.test.ts",
+    "ui/src/pages/chat/chat-pending-inputs.test.ts",
+    "ui/src/pages/chat/user-message-content.test.ts"
+  ],
+  "inputSourceSha": "eabe9c6c7a0d56b401f6b7abe600e5736efd7984",
+  "lockSha256": "251877f1497a222979df6b166212da1a3c61c3e45426a9bb22bb04d86b5063ed",
+  "supportRepair": {
+    "version": 8,
+    "freshBranch": "ci/unified-b-outbox-source307-20261114-r5",
+    "workflowParentMustEqualSource": true,
+    "qualification": "NOT_EXECUTED",
+    "capacityBytes": 3221225472,
+    "generatedReserveBytes": 1073741824,
+    "runnerMinimumAvailableBytes": 7516192768,
+    "runnerHeadroomBeyondTmpfsBytes": 4294967296,
+    "capacityAuthority": "gateway-owner option1 2026-11-14T12:06:00+09:00",
+    "formatRepair": {
+      "kind": "two-file independently reviewed whitespace/optional-comma only",
+      "formatterExecuted": false,
+      "review": "B/format-repair-r3-independent-review/result.json",
+      "authority": "approval-20261114-1236-autonomy.json"
+    }
+  }
+}
