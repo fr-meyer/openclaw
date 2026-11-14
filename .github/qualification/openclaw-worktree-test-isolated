@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "usage: $0 <absolute-worktree> [--image <local-image>] [--command [--writable-container]] -- <vitest-args|command...>" >&2
+  exit 64
+}
+
+[[ $# -ge 3 ]] || usage
+worktree_input=$1
+shift
+image=${OPENCLAW_TEST_IMAGE:-}
+if [[ ${1:-} == "--image" ]]; then
+  [[ $# -ge 3 ]] || usage
+  image=$2
+  shift 2
+fi
+run_mode=vitest
+writable_container=false
+if [[ ${1:-} == "--command" ]]; then
+  run_mode=command
+  shift
+  if [[ ${1:-} == "--writable-container" ]]; then
+    writable_container=true
+    shift
+  fi
+fi
+[[ ${1:-} == "--" ]] || usage
+shift
+[[ $# -gt 0 ]] || usage
+[[ $worktree_input == /* ]] || { echo "worktree must be absolute" >&2; exit 65; }
+
+worktree=$(realpath -e -- "$worktree_input")
+allowed_root=${OPENCLAW_WORKTREE_ROOT:-}
+if [[ -n $allowed_root ]]; then
+  allowed_root=$(realpath -e -- "$allowed_root")
+  [[ $worktree == "$allowed_root"/* ]] || { echo "worktree is outside OPENCLAW_WORKTREE_ROOT" >&2; exit 66; }
+else
+  case "$worktree" in
+    /home/node/.openclaw/workspace-franck/.openclaw/tmp/worktrees/*|/home/frmeyer/.openclaw/workspace-franck/.openclaw/tmp/worktrees/*) ;;
+    *) echo "worktree is outside the approved OpenClaw worktree roots" >&2; exit 66 ;;
+  esac
+fi
+
+if repo_root=$(git -C "$worktree" rev-parse --show-toplevel 2>/dev/null); then
+  [[ $(realpath -e -- "$repo_root") == "$worktree" ]] || { echo "path is not an exact Git worktree root" >&2; exit 67; }
+elif [[ -f "$worktree/.git" ]] && grep -Eq '^gitdir: /home/node/\.openclaw/repos/openclaw/\.git/worktrees/[A-Za-z0-9._-]+$' "$worktree/.git"; then
+  # Host-side execution sees container-created worktree metadata through a
+  # different absolute prefix. Accept only the exact OpenClaw gitdir form.
+  :
+else
+  echo "path is not a recognized OpenClaw Git worktree root" >&2
+  exit 67
+fi
+[[ -f "$worktree/package.json" ]] || { echo "OpenClaw package manifest is missing" >&2; exit 68; }
+[[ -f "$worktree/scripts/run-vitest.mjs" ]] || { echo "OpenClaw Vitest runner is missing" >&2; exit 68; }
+projector=$(cd "$(dirname "$0")" && pwd)/openclaw-image-dependency-projector.mjs
+[[ -f "$projector" ]] || { echo "image dependency projector is missing" >&2; exit 68; }
+projector_b64=$(base64 <"$projector" | tr -d '\n')
+image_node_modules=${OPENCLAW_TEST_NODE_MODULES:-/app/node_modules}
+[[ $image_node_modules == /* ]] || { echo "image node_modules path must be absolute" >&2; exit 68; }
+
+docker_bin=${DOCKER_BIN:-docker}
+command -v "$docker_bin" >/dev/null 2>&1 || { echo "docker command unavailabe" >&2; exit 69; }
+if [[ -z $image ]]; then
+  image=$($docker_bin inspect --format '{{.Config.Image}}' openclaw-openclaw-gateway-1)
+fi
+[[ -n $image ]] || { echo "test image is empty" >&2; exit 70; }
+$docker_bin image inspect "$image" >/dev/null
+
+printf 'isolated_test_worktree=%s\nisolated_test_image=%s\n' "$worktree" "$image"
+
+read_only_args=(--read-only)
+if [[ $writable_container == true ]]; then
+  read_only_args=()
+fi
+
+(
+  cd "$worktree"
+  find . -mindepth 1 \
+    \( -path './.git' -o -path './.git/*' \
+       -o -path './node_modules' -o -path './node_modules/*' \
+       -o -path './.artifacts' -o -path './.artifacts/*' \
+       -o -path './coverage' -o -path './coverage/*' \) -prune \
+    -o -print0
+) | tar -C "$worktree" --null --no-recursion -cf - -T - |
+  "$docker_bin" run \
+    --rm \
+    --pull never \
+    --network none \
+    "${read_only_args[@]}" \
+    --tmpfs /tmp:rw,nosuid,nodev,exec,size=3g \
+    --security-opt no-new-privileges \
+    --cap-drop ALL \
+    --pids-limit 512 \
+    --label openclaw.purpose=isolated-worktree-test \
+    --env HOME=/tmp/home \
+    --env XDG_CACHE_HOME=/tmp/cache \
+    --env OPENCLAW_PROJECTOR_B64="$projector_b64" \
+    --env OPENCLAW_IMAGE_NODE_MODULES="$image_node_modules" \
+    --env OPENCLAW_RUN_MODE="$run_mode" \
+    --entrypoint /bin/sh \
+    -i "$image" -c '
+      set -eu
+      test -d "$OPENCLAW_IMAGE_NODE_MODULES/.pnpm"
+      root=/tmp/openclaw-worktree-test
+      mkdir -p "$HOME" "$XDG_CACHE_HOME" "$root/scripts"
+      tar -C "$root" --no-same-owner -xf -
+      printf %s "$OPENCLAW_PROJECTOR_B64" | base64 -d >"$root/scripts/openclaw-image-dependency-projector.mjs"
+      cd "$root"
+      # The host worktree .git file points outside the streamed source and is
+      # intentionally excluded. Recreate disposable metadata before tests so
+      # repository guards and generated-file checks have a clean baseline.
+      git init -q
+      git config user.name openclaw-isolated-validation
+      git config user.email openclaw-isolated-validation@invalid
+      git add -A
+      git commit -q -m "isolated validation baseline"
+      node scripts/openclaw-image-dependency-projector.mjs "$root" "$OPENCLAW_IMAGE_NODE_MODULES"
+      if [ "$OPENCLAW_RUN_MODE" = command ]; then
+        exec "$@"
+      fi
+      exec node scripts/run-vitest.mjs "$@"
+     ' isolated-validation "$@"
