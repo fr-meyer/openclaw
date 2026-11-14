@@ -1,0 +1,85 @@
+name: Unified B source307 qualification 20261114
+on:
+  push:
+    branches: [ci/unified-b-outbox-source307-20261114-r10]
+permissions:
+  contents: read
+concurrency:
+  group: unified-b-source307-20261114-${{ github.run_id }}
+  cancel-in-progress: false
+jobs:
+  qualify-b:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      inputSourceSha: 2c4cec2e47930c7825e8256dc9526bf247fcf6b7
+      CI: 'true'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Exact event workflow support
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: workflow
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Reject missing immutable source or rerun
+        run: |
+          set -euo pipefail
+          [[ "$inputSourceSha" =~ ^[0-9a-f]{40}$ ]]
+          test "$inputSourceSha" != "$GITHUB_SHA"
+          test "$(git -C workflow rev-parse HEAD^)" = "$inputSourceSha"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+      - name: Immutable candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.inputSourceSha }}
+          path: candidate
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Bind support and verify custody
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate rev-parse HEAD)" = "$inputSourceSha"
+          test "$(git -C workflow rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 workflow/.github/qualification/b-tree-guard.py capture candidate workflow "$RUNNER_TEMP/b-full-source.json"
+          mkdir -p candidate/.github/qualification
+          cp -R workflow/.github/qualification/. candidate/.github/qualification/
+          cp "$RUNNER_TEMP/b-full-source.json" "$RUNNER_TEMP/b-full-source.sha256" candidate/.github/qualification/
+          echo "B_SOURCE_MANIFEST_SHA256=$(cat "$RUNNER_TEMP/b-full-source.sha256")" >> "$GITHUB_ENV"
+          cd candidate
+          test "$(cat .github/qualification/input-source-sha)" = "$inputSourceSha"
+          sha256sum -c .github/qualification/helper-SHA256.txt
+          python3 .github/qualification/b-source-check.py .
+          python3 .github/qualification/b-tree-guard.py verify .
+          if test ! -e node_modules && test ! -L node_modules; then echo 'B_ROOT_NODE_MODULES_ABSENT=PASS'; else echo 'B_ROOT_NODE_MODULES_ABSENT=FAIL'; exit 1; fi
+          if test ! -e ui/node_modules && test ! -L ui/node_modules; then echo 'B_UI_NODE_MODULES_ABSENT=PASS'; else echo 'B_UI_NODE_MODULES_ABSENT=FAIL'; exit 1; fi
+          # Staging bound ONLY. Runtime compaction must separately retain 1 GiB free.
+          source_kib=$(du -sk --exclude=.git . | cut -f1)
+          echo "B_STAGING_SOURCE_KIB=$source_kib B_STAGING_MAX_KIB=786432"
+          if test "$source_kib" -gt 786432; then echo 'B_STAGING_CAPACITY=FAIL (768 MiB staging bound, no automatic raise)'; exit 1; fi
+          echo 'B_STAGING_CAPACITY=PASS'
+      - name: Ephemeral local dependency image, no registry publication
+        run: |
+          set -euo pipefail
+          DOCKER_BUILDKIT=1 docker build --pull=false --no-cache --platform=linux/amd64 --iidfile "$RUNNER_TEMP/b-image-id" -f candidate/.github/qualification/Dockerfile candidate
+          image=$(cat "$RUNNER_TEMP/b-image-id")
+          [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "OPENCLAW_TEST_IMAGE=$image" >> "$GITHUB_ENV"
+      - name: Exact helper, streamed source, no-network validation container
+        run: |
+          set -euo pipefail
+          # Fail before helper execution unless its full 3 GiB ceiling plus
+          # 4 GiB additional runner headroom fit CURRENT available host memory.
+          mem_available_kib=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+          docker_memory_bytes=$(docker info --format '{{.MemTotal}}')
+          [[ "$mem_available_kib" =~ ^[0-9]+$ && "$docker_memory_bytes" =~ ^[0-9]+$ ]]
+          required_memory_bytes=7516192768
+          echo "B_RUNNER_MEM_AVAILABLE_KIB=$mem_available_kib B_DOCKER_MEMORY_BYTES=$docker_memory_bytes B_RUNNER_MIN_MEMORY_BYTES=$required_memory_bytes B_TMPFS_LIMIT_BYTES=3221225472 B_EXTRA_HEADROOM_BYTES=4294967296"
+          test "$((mem_available_kib * 1024))" -ge "$required_memory_bytes"
+          test "$docker_memory_bytes" -ge "$required_memory_bytes"
+          export OPENCLAW_WORKTREE_ROOT="$GITHUB_WORKSPACE"
+          bash candidate/.github/qualification/openclaw-worktree-test-isolated "$GITHUB_WORKSPACE/candidate" --command --b-lsm-observation -- bash .github/qualification/b-run.sh --image-id "$OPENCLAW_TEST_IMAGE" --manifest-sha "$B_SOURCE_MANIFEST_SHA256"
