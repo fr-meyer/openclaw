@@ -1,0 +1,2 @@
+06869d53b8cd91b6e8df8da280e2f4f3c3a7d03273b3aee923b066e1b292c938  .github/qualification/openclaw-worktree-test-isolated
+ac5e1c1d9f00ff0079a904cba21535c041bd9d4be9a7421b9e666c6c73b3dd7b  .github/qualification/openclaw-image-dependency-projector.mjs
