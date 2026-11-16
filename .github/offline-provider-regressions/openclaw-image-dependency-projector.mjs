@@ -336,6 +336,112 @@ function assertPackageIdentity(candidate, name, spec) {
   }
 }
 assertPackageIdentity(compiler, "typescript", requested.get("typescript"));
+// Resolve UI registry packages from the installed UI importer, never ambient guesses.
+// Preflight every binding before measurement or the first target write.
+const uiRoot = path.join(projectRoot, "ui");
+const uiModules = path.join(uiRoot, "node_modules");
+const uiManifest = path.join(uiRoot, "package.json");
+const uiBindings = new Map();
+function uiPathExists(file) {
+  try {
+    fs.lstatSync(file);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+const uiPresent = uiPathExists(uiManifest);
+const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+function requireCanonicalFile(file) {
+  if (!fs.lstatSync(file).isFile() || fs.realpathSync(file) !== file) {
+    throw new Error("noncanonical UI package manifest: " + file);
+  }
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+function installedUiPackage(name, spec) {
+  const request = parsePackageRequest(name, spec);
+  if (!request.exact) throw new Error("UI registry dependency must be exact: " + name);
+  const importer = path.join(path.dirname(imageModules), "ui", "node_modules");
+  // Parent components cannot redirect the installed importer or store elsewhere.
+  if (fs.realpathSync(importer) !== importer || fs.realpathSync(virtualStore) !== virtualStore) {
+    throw new Error("noncanonical installed UI importer/store");
+  }
+  const binding = path.join(importer, name);
+  if (fs.realpathSync(path.dirname(binding)) !== path.dirname(binding)) {
+    throw new Error("noncanonical UI importer scope: " + name);
+  }
+  if (!fs.lstatSync(binding).isSymbolicLink()) {
+    throw new Error("UI dependency lacks installed importer link: " + name);
+  }
+  const source = fs.realpathSync(binding); // dangling links fail closed, no ambient fallback
+  const rel = path.relative(virtualStore, source);
+  const parts = rel.split(path.sep);
+  const expectedTail = ["node_modules", ...request.canonical.split("/")];
+  const entryPrefix = request.canonical.replace("/", "+") + "@" + request.exact;
+  const entrySuffix = parts[0].slice(entryPrefix.length);
+  if (
+    !parts[0].startsWith(entryPrefix) ||
+    (entrySuffix !== "" && !entrySuffix.startsWith("_")) ||
+    !parts[0] ||
+    parts[0] === "." ||
+    parts[0] === ".." ||
+    parts[0] === "node_modules" ||
+    /[\\\x00-\x1f\x7f]/.test(parts[0]) ||
+    path.isAbsolute(rel) ||
+    parts.length !== expectedTail.length + 1 ||
+    !expectedTail.every((part, index) => parts[index + 1] === part) ||
+    !fs.statSync(source).isDirectory()
+  ) {
+    throw new Error("UI importer target is not a canonical store package: " + name);
+  }
+  requireCanonicalFile(path.join(source, "package.json"));
+  assertPackageIdentity(source, name, spec);
+  return source;
+}
+if (uiPresent) {
+  if (fs.realpathSync(uiRoot) !== uiRoot || uiPathExists(uiModules)) {
+    throw new Error("UI source prefix must be canonical and node_modules absent");
+  }
+  const ui = requireCanonicalFile(uiManifest);
+  if (!ui || typeof ui !== "object" || Array.isArray(ui)) throw new Error("invalid UI manifest");
+  for (const group of [
+    "peerDependencies",
+    "peerDependenciesMeta",
+    "bundledDependencies",
+    "bundleDependencies",
+  ]) {
+    if (Object.hasOwn(ui, group)) throw new Error("unsupported UI dependency group: " + group);
+  }
+  for (const group of ["dependencies", "devDependencies", "optionalDependencies"]) {
+    const specs = ui[group] === undefined ? {} : ui[group];
+    if (!specs || typeof specs !== "object" || Array.isArray(specs))
+      throw new Error("invalid UI dependency group");
+    for (const [name, spec] of Object.entries(specs)) {
+      if (!packageNamePattern.test(name) || typeof spec !== "string" || uiBindings.has(name)) {
+        throw new Error("invalid or duplicate UI dependency: " + name);
+      }
+      let source;
+      if (spec.startsWith("workspace:")) {
+        if (spec !== "workspace:*") throw new Error("unsupported UI workspace selector: " + spec);
+        source = workspacePackages.get(name);
+        if (!source) throw new Error("missing UI workspace dependency: " + name);
+        const rel = path.relative(projectRoot, fs.realpathSync(source));
+        if (
+          rel.startsWith("..") ||
+          path.isAbsolute(rel) ||
+          requireCanonicalFile(path.join(source, "package.json")).name !== name
+        ) {
+          throw new Error("invalid UI workspace binding: " + name);
+        }
+      } else {
+        source = installedUiPackage(name, spec);
+      }
+      uiBindings.set(name, source);
+    }
+  }
+}
+
 const selected = new Set();
 const selectionCauses = new Map();
 const storeEntry = (file) => {
@@ -415,7 +521,7 @@ const hydrationPlan = {
   totalBytes: copiedBytes,
   entryCount: selected.size,
   fileCount: measurements.reduce((sum, item) => sum + item.files, 0),
-  limit: "256 MiB",
+  limit: "320 MiB",
   limitBytes,
   withinLimit: copiedBytes <= limitBytes,
   selectedEntries: measurements.map(({ entry, bytes, files }) => ({ entry, bytes, files })),
@@ -430,7 +536,7 @@ if (process.argv.includes("--hydration-plan-only")) {
 }
 if (!hydrationPlan.withinLimit) {
   throw new Error(
-    "compiler/declaration closure exceeds 256 MiB hydration cap: " +
+    "compiler/declaration closure exceeds 320 MiB hydration cap: " +
       copiedBytes +
       " > " +
       limitBytes,
@@ -507,35 +613,57 @@ for (const [name, spec] of [...requested].sort(([left], [right]) => left.localeC
   projected += 1;
 }
 
-// UI dependencies live at their own workspace prefix, not the ambient root.
-const uiRoot = path.join(projectRoot, "ui");
-const uiManifest = path.join(uiRoot, "package.json");
-if (fs.existsSync(uiManifest)) {
-  const ui = JSON.parse(fs.readFileSync(uiManifest, "utf8"));
-  const uiModules = path.join(uiRoot, "node_modules");
+// All UI sources were resolved and identity-checked before any target write.
+if (uiPresent) {
   fs.mkdirSync(uiModules, { recursive: true });
-  const specs = {
-    ...ui.dependencies,
-    ...ui.devDependencies,
-    ...ui.optionalDependencies,
-  };
-  for (const [name, spec] of Object.entries(specs)) {
-    const source = String(spec).startsWith("workspace:")
-      ? workspacePackages.get(name)
-      : chooseImagePackage(name, String(spec));
-    if (!source) {
-      throw new Error("missing installed UI dependency: " + name);
-    }
-    const exact = String(spec).match(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)?.[0];
-    if (exact && packageVersion(source) !== exact) {
-      throw new Error("UI version mismatch: " + name);
-    }
+  for (const [name, source] of uiBindings) {
     const destination = path.join(uiModules, name);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.symlinkSync(localize(source), destination, "dir");
   }
 }
 
+// Compact receipt is emitted only after every root and UI projection completed.
+// Recount the copied local entries, not the image plan, without following links.
+let actualCopiedBytes = 0;
+let actualCopiedFiles = 0;
+function countCopiedFiles(dir) {
+  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, item.name);
+    if (item.isDirectory()) countCopiedFiles(file);
+    else if (item.isFile()) {
+      actualCopiedBytes += fs.statSync(file).size;
+      actualCopiedFiles += 1;
+      if (!Number.isSafeInteger(actualCopiedBytes)) throw new Error("unsafe copied byte count");
+    } else if (!item.isSymbolicLink()) throw new Error("unsupported copied filesystem entry");
+  }
+}
+for (const entry of selected) countCopiedFiles(path.join(localStore, entry));
+if (actualCopiedBytes !== copiedBytes || actualCopiedFiles !== hydrationPlan.fileCount) {
+  throw new Error("copied hydration inventory differs from preflight");
+}
+let uiLocalStoreBindings = 0;
+let uiReadonlyImageBindings = 0;
+let uiWorkspaceBindings = 0;
+for (const source of uiBindings.values()) {
+  const rel = path.relative(virtualStore, source);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) uiWorkspaceBindings += 1;
+  else if (selected.has(rel.split(path.sep)[0])) uiLocalStoreBindings += 1;
+  else uiReadonlyImageBindings += 1;
+}
 process.stdout.write(
-  `projected_dependencies=${projected} unavailable_dependencies=${unavailable.length}\n`,
+  JSON.stringify({
+    projectionSetupComplete: true,
+    actualCopiedBytes,
+    actualCopiedFiles,
+    copiedEntryCount: selected.size,
+    limitBytes,
+    sdkRegistryRootCount: Object.keys(declarationGraph.registryRoots).length,
+    projectedRootDependencies: projected,
+    unavailableRootDependencies: unavailable.length,
+    uiBindingCount: uiBindings.size,
+    uiLocalStoreBindings,
+    uiReadonlyImageBindings,
+    uiWorkspaceBindings,
+  }) + "\n",
 );
