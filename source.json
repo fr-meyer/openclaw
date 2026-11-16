@@ -1,0 +1,27 @@
+{
+  "changedFiles": 13,
+  "compressedSha256": "3a6fc5c7eb3c98ea4707822288719d47373e6a28997c81128ffcd63624e5b51e",
+  "expectedCandidateTree": "17ff717f79035f3e155a82f5e8d16d5b174ba283",
+  "files": {
+    "extensions/openai/embedding-batch-classifier.test.ts": "a75c36799a5fe84a2ff5d2f816b7ddcaf02df06a872d8033e508ef06ab02198e",
+    "extensions/openai/embedding-batch-journal.test.ts": "8958c0676aac2e1404cea3b601dfa5b8c3a58476f96d12badd92fe06eefc12e2",
+    "extensions/openai/embedding-batch-journal.ts": "f662e9a95a2baa68017f86d4c88f0331040e6e183f3464aafb48ed2308314942",
+    "extensions/openai/embedding-batch-recovery.test.ts": "2ba6dfe0277ba33ba4ece40521fe03633e7a7cfeaee7b159f65ff4cc6b29ea1d",
+    "extensions/openai/embedding-batch-recovery.ts": "f802ae218a11fa59dd109058122b8121fbaca3ff4c8d6a4fce7b9f323f7a3771",
+    "extensions/openai/embedding-batch-safety.test.ts": "8ff1d9b2582ea4df6cfa58d5287c9a6e74434ff7cf37a982c5e8dbcf67100d85",
+    "extensions/openai/embedding-batch.test-support.ts": "47a16f399dc7cd1f048dbeb2623c5b336d4ecda6644f84a596c9daf6e936f1f7",
+    "extensions/openai/embedding-batch.test.ts": "2e704c7022b9bbb9315f0b5afbaf5c26a25527c36222d586e688b5f24d0ee3a5",
+    "extensions/openai/embedding-batch.ts": "2eda55d053c8eca2c509189c8f057920ce9a6286c1b0fea74051a77c52c15561",
+    "extensions/openai/embedding-provider.ts": "97b8ab6bbae465cc3208f8ea16208f167f6d2fbf72f39d1ebd583af078b1e1dd",
+    "extensions/openai/memory-embedding-adapter.test.ts": "f808112e8e030ee692cc9370683a51807cee045ee4fdf1b341b9d01c635dc6a9",
+    "extensions/openai/memory-embedding-adapter.ts": "3fe0292efe10cc88064c7ac0f3caba8d485e5597aee1a59b760b759b87ff621d",
+    "extensions/openai/memory-embedding-journal.test.ts": "c3439185d3d94f8980ea205f9b6ae8161f010c83154d497735b53a18546c0ed9"
+  },
+  "originalBase": "5a02a59bd02fbb01cefa1d49ae7714bd988dc3c4",
+  "originalCandidateCommitLocalProofOnly": "52354adf56363fb603d3282fd0109e919c83d0ce",
+  "patchEncoding": "gzip",
+  "patchPath": "draft.patch.gz",
+  "patchSha256": "b4a0ec6d2c0a7cd02c391846f992dc3339b5143cba86a1b8d541304a7278e41b",
+  "project": "embeddings",
+  "role": "Lossless frozen patch carrier, NOT candidate product HEAD"
+}
