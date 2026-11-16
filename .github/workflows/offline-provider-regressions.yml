@@ -1,0 +1,53 @@
+name: Offline provider regressions
+on:
+  push:
+    branches: [ci/offline-provider-regressions-20261116]
+permissions:
+  contents: read
+concurrency:
+  group: offline-provider-regressions-20261116
+  cancel-in-progress: false
+jobs:
+  focused:
+    if: github.repository == 'fr-meyer/openclaw' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        project: [bfl, embeddings]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: tooling
+      - name: Resolve exact approved source
+        id: source
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          x=json.load(open('tooling/.github/offline-provider-regressions/sources.json'))[os.environ['PROJECT']]
+          assert all(re.fullmatch('[0-9a-f]{40}',x[k]) for k in ['carrierSha','base','expectedCandidateTree']), 'Unbound carrier/base/tree'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('carrier='+x['carrierSha']+chr(10)+'base='+x['base']+chr(10))
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.carrier }}
+          persist-credentials: false
+          path: carrier
+          fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.base }}
+          persist-credentials: false
+          path: candidate
+          fetch-depth: 1
+      - name: Prepare dependencies then validate without network
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: bash tooling/.github/offline-provider-regressions/run.sh
