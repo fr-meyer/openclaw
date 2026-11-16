@@ -1,10 +1,14 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { builtinModules } from "node:module";
 import path from "node:path";
 
 const [projectInput, imageModulesInput] = process.argv.slice(2);
 if (!projectInput || !imageModulesInput) {
-  throw new Error("usage: openclaw-image-dependency-projector.mjs <project-root> <image-node-modules>");
+  throw new Error(
+    "usage: openclaw-image-dependency-projector.mjs <project-root> <image-node-modules>",
+  );
 }
 
 const projectRoot = fs.realpathSync(projectInput);
@@ -23,7 +27,9 @@ const requested = new Map();
 function addRequestedDependencies(pkg) {
   for (const group of ["dependencies", "devDependencies", "optionalDependencies"]) {
     for (const [name, spec] of Object.entries(pkg[group] ?? {})) {
-      if (!requested.has(name)) requested.set(name, String(spec));
+      if (!requested.has(name)) {
+        requested.set(name, String(spec));
+      }
     }
   }
 }
@@ -34,7 +40,11 @@ if (typeof manifest.name === "string") workspacePackages.set(manifest.name, proj
 function scanWorkspace(directory, depth = 0) {
   if (depth > 4 || !fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (!entry.isDirectory() || ["node_modules", ".git", ".artifacts", "coverage"].includes(entry.name)) continue;
+    if (
+      !entry.isDirectory() ||
+      ["node_modules", ".git", ".artifacts", "coverage"].includes(entry.name)
+    )
+      continue;
     const child = path.join(directory, entry.name);
     const packageJson = path.join(child, "package.json");
     if (fs.existsSync(packageJson)) {
@@ -47,7 +57,8 @@ function scanWorkspace(directory, depth = 0) {
 }
 for (const root of ["packages", "extensions"]) scanWorkspace(path.join(projectRoot, root));
 
-const storeEntries = fs.readdirSync(virtualStore, { withFileTypes: true })
+const storeEntries = fs
+  .readdirSync(virtualStore, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name);
 
@@ -69,7 +80,13 @@ function chooseImagePackage(name, spec) {
       candidates.push(path.join(virtualStore, entry, "node_modules", name));
     }
   }
-  const unique = [...new Set(candidates.filter((candidate) => fs.existsSync(candidate)).map((candidate) => fs.realpathSync(candidate)))];
+  const unique = [
+    ...new Set(
+      candidates
+        .filter((candidate) => fs.existsSync(candidate))
+        .map((candidate) => fs.realpathSync(candidate)),
+    ),
+  ];
   if (unique.length === 0) return null;
   if (unique.length === 1) return unique[0];
   const exact = spec.match(/^(?:npm:)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/)?.[1];
@@ -81,6 +98,199 @@ function chooseImagePackage(name, spec) {
   return null;
 }
 
+// Derive declaration roots from the canonical SDK config and source imports as DATA.
+// No candidate module/config is imported or evaluated. Installed versions are resolved below.
+function declarationRegistryGraph() {
+  const configs = new Map();
+  const inputs = new Map();
+  const roots = new Map();
+  const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/, "")));
+  const inside = (file) => {
+    const resolved = fs.realpathSync(file);
+    const rel = path.relative(projectRoot, resolved);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error("declaration source escapes candidate: " + file);
+    }
+    return resolved;
+  };
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  function config(file) {
+    file = inside(file);
+    if (configs.has(file)) return configs.get(file);
+    const bytes = fs.readFileSync(file, "utf8");
+    inputs.set(file, digest(bytes));
+    const json = bytes.replace(/"(?:\\.|[^"\\])*"|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (part) =>
+      part.startsWith('"') ? part : " ",
+    );
+    const current = JSON.parse(json.replace(/,\s*([}\]])/g, "$1"));
+    let inherited = { options: {}, pathBase: path.dirname(file) };
+    if (current.extends) {
+      if (typeof current.extends !== "string" || !current.extends.startsWith(".")) {
+        throw new Error("unsupported SDK config extends; review graph derivation");
+      }
+      inherited = config(path.resolve(path.dirname(file), current.extends));
+    }
+    const result = {
+      options: { ...inherited.options, ...current.compilerOptions },
+      pathBase: current.compilerOptions?.paths ? path.dirname(file) : inherited.pathBase,
+      include: current.include ?? inherited.include,
+      exclude: current.exclude ?? inherited.exclude ?? [],
+      directory: path.dirname(file),
+    };
+    configs.set(file, result);
+    return result;
+  }
+  const sdk = config(path.join(projectRoot, "packages/plugin-sdk/tsconfig.json"));
+  if (!Array.isArray(sdk.include) || sdk.include.length === 0) {
+    throw new Error("SDK declaration include set absent");
+  }
+  const queue = [...fs.globSync(sdk.include, { cwd: sdk.directory, exclude: sdk.exclude })]
+    .map((name) => path.resolve(sdk.directory, name))
+    .sort();
+  const ambientModules = new Set();
+  for (const file of queue.filter((name) => name.endsWith(".d.ts"))) {
+    for (const match of fs
+      .readFileSync(inside(file), "utf8")
+      .matchAll(/declare\s+module\s+["']([^"']+)["']/g)) {
+      ambientModules.add(match[1]);
+    }
+  }
+  const seen = new Set();
+  const unresolvedLocal = new Set();
+  function localFile(file) {
+    const stem = file.replace(/\.(?:mjs|cjs|js)$/, "");
+    for (const candidate of [
+      file,
+      stem + ".ts",
+      stem + ".tsx",
+      stem + ".mts",
+      stem + ".cts",
+      stem + ".d.ts",
+      path.join(file, "index.ts"),
+      path.join(file, "index.d.ts"),
+    ]) {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return inside(candidate);
+    }
+  }
+  function accept(spec, owner) {
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(spec) || builtins.has(spec) || ambientModules.has(spec))
+      return;
+    if (spec.startsWith(".")) {
+      const file = localFile(path.resolve(path.dirname(owner), spec));
+      if (file) queue.push(file);
+      else unresolvedLocal.add(path.relative(projectRoot, owner) + " -> " + spec);
+      return;
+    }
+    for (const [pattern, targets] of Object.entries(sdk.options.paths ?? {}).sort(
+      ([left], [right]) => right.replace("*", "").length - left.replace("*", "").length,
+    )) {
+      const at = pattern.indexOf("*");
+      const matches =
+        at < 0
+          ? spec === pattern
+          : spec.startsWith(pattern.slice(0, at)) && spec.endsWith(pattern.slice(at + 1));
+      if (!matches) continue;
+      const middle = at < 0 ? "" : spec.slice(at, spec.length - (pattern.length - at - 1));
+      for (const target of targets) {
+        const file = localFile(path.resolve(sdk.pathBase, target.replace("*", middle)));
+        if (file) {
+          queue.push(file);
+          return;
+        }
+      }
+      // TypeScript falls back to registry resolution if a paths substitution is absent.
+    }
+    const name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
+    if (workspacePackages.has(name)) {
+      throw new Error("workspace SDK import lacks canonical source path mapping: " + spec);
+    }
+    if (!requested.has(name))
+      throw new Error(
+        "SDK registry import not declared by streamed manifests: " +
+          name +
+          " in " +
+          path.relative(projectRoot, owner),
+      );
+    if (!roots.has(name)) roots.set(name, path.relative(projectRoot, owner));
+  }
+  for (const name of sdk.options.types ?? []) {
+    accept(
+      name.startsWith("@types/") ? name : "@types/" + name,
+      path.join(projectRoot, "packages/plugin-sdk/tsconfig.json"),
+    );
+  }
+  while (queue.length) {
+    const file = inside(queue.pop());
+    if (seen.has(file)) continue;
+    seen.add(file);
+    if (!/\.(?:[cm]?tsx?|json)$/.test(file)) continue;
+    const text = fs.readFileSync(file, "utf8");
+    inputs.set(file, digest(text));
+    if (file.endsWith(".json")) continue;
+    // Lex quoted module specifiers; comments/templates are not import statements.
+    const tokens =
+      text.match(
+        /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|[A-Za-z_$][\w$]*|[^\s]/g,
+      ) ?? [];
+    const clean = tokens.filter((token) => !token.startsWith("//") && !token.startsWith("/*"));
+    for (let i = 0; i < clean.length; i++) {
+      let literal;
+      const token = clean[i];
+      if (clean[i - 1] === ".") continue;
+      if (token === "import" && /^["']/.test(clean[i + 1] ?? "")) literal = clean[i + 1];
+      if ((token === "import" || token === "require") && clean[i + 1] === "(")
+        literal = clean[i + 2];
+      const exportStart = clean[i + 1] === "type" ? i + 2 : i + 1;
+      const exportClause = token === "export" && ["{", "*"].includes(clean[exportStart]);
+      if ((token === "import" && clean[i + 1] !== "(") || exportClause) {
+        for (let j = i + 1; j < Math.min(i + 150, clean.length); j++) {
+          if ([";", "=", "("].includes(clean[j])) break;
+          if (clean[j] === "from") {
+            literal = clean[j + 1];
+            break;
+          }
+        }
+      }
+      if (!literal || !/^["']/.test(literal)) continue;
+      const spec = literal.slice(1, -1);
+      if (spec.includes("\\")) throw new Error("escaped SDK module specifier needs graph review");
+      accept(spec, file);
+    }
+    for (const match of text.matchAll(/<reference\s+types=["']([^"']+)["']/g)) {
+      accept(match[1].startsWith("@types/") ? match[1] : "@types/" + match[1], file);
+    }
+  }
+  const graph = {
+    config: "packages/plugin-sdk/tsconfig.json",
+    sourceFiles: seen.size,
+    sourceDigest: digest(
+      [...inputs]
+        .sort()
+        .map(([name, sha]) => path.relative(projectRoot, name) + " " + sha)
+        .join("\n"),
+    ),
+    registryRoots: Object.fromEntries([...roots].sort()),
+    unresolvedLocal: [...unresolvedLocal].sort(),
+  };
+  // Missing relative source cannot safely contribute hidden declaration roots.
+  const generatedInputs = new Set([
+    "src/state/openclaw-agent-db.generated.ts -> ../../.artifacts/kysely/openclaw-agent-db.generated.js",
+    "src/state/openclaw-state-db.generated.ts -> ../../.artifacts/kysely/openclaw-state-db.generated.js",
+  ]);
+  if (
+    graph.unresolvedLocal.some((item) => !generatedInputs.has(item)) ||
+    (graph.unresolvedLocal.length > 0 && !roots.has("kysely"))
+  ) {
+    throw new Error(
+      "SDK source graph has unresolved inputs: " + JSON.stringify(graph.unresolvedLocal),
+    );
+  }
+  return graph;
+}
+const declarationGraph = declarationRegistryGraph();
+process.stdout.write(JSON.stringify({ declarationGraph }) + "\n");
+if (process.argv.includes("--declaration-roots-only")) process.exit(0);
+
 // The compiler boundary requires physical checkout-local compiler and native executable.
 // Copy only its installed pnpm entry closure; leave the rest readonly image projections.
 const compiler = chooseImagePackage("typescript", requested.get("typescript") ?? "");
@@ -88,7 +298,8 @@ if (!compiler) throw new Error("missing installed compiler");
 const selected = new Set();
 const storeEntry = (file) => {
   const rel = path.relative(virtualStore, file);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error("compiler closure escapes image store");
+  if (rel.startsWith("..") || path.isAbsolute(rel))
+    throw new Error("compiler closure escapes image store");
   const first = rel.split(path.sep)[0];
   if (!first || first === "node_modules") throw new Error("compiler closure lacks pnpm entry");
   return first;
@@ -107,6 +318,26 @@ function selectEntry(entry) {
   scan(path.join(virtualStore, entry));
 }
 selectEntry(storeEntry(compiler));
+// Native declaration emission admits package files by physical checkout location.
+const typeRoots = new Set([
+  ...Object.keys(declarationGraph.registryRoots),
+  "@types/node",
+  ...Object.keys(declarationGraph.registryRoots)
+    .map((name) => "@types/" + (name.startsWith("@") ? name.slice(1).replace("/", "__") : name))
+    .filter((name) => requested.has(name)),
+]);
+for (const name of [...typeRoots].sort()) {
+  const source = chooseImagePackage(name, requested.get(name) ?? "");
+  if (!source) throw new Error("missing installed declaration root: " + name);
+  const expected = requested.get(name);
+  if (
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(expected ?? "") &&
+    packageVersion(source) !== expected
+  ) {
+    throw new Error("installed declaration root version mismatch: " + name);
+  }
+  selectEntry(storeEntry(source));
+}
 let copiedBytes = 0;
 function countFiles(dir) {
   for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -116,12 +347,14 @@ function countFiles(dir) {
   }
 }
 for (const entry of selected) countFiles(path.join(virtualStore, entry));
-if (copiedBytes > 256 * 1024 * 1024) throw new Error("compiler closure exceeds 256 MiB hydration cap");
+if (copiedBytes > 256 * 1024 * 1024)
+  throw new Error("compiler/declaration closure exceeds 256 MiB hydration cap");
 fs.mkdirSync(targetModules, { mode: 0o755 });
 const localStore = path.join(targetModules, ".pnpm");
 fs.mkdirSync(localStore);
 for (const entry of fs.readdirSync(virtualStore)) {
-  const from = path.join(virtualStore, entry), to = path.join(localStore, entry);
+  const from = path.join(virtualStore, entry);
+  const to = path.join(localStore, entry);
   if (selected.has(entry)) fs.cpSync(from, to, { recursive: true, dereference: false });
   else fs.symlinkSync(from, to);
 }
@@ -133,7 +366,8 @@ function relocateLinks(dir) {
     else if (item.isSymbolicLink() && path.isAbsolute(fs.readlinkSync(file))) {
       const actual = fs.realpathSync(file);
       const local = path.join(localStore, path.relative(virtualStore, actual));
-      fs.unlinkSync(file); fs.symlinkSync(local, file);
+      fs.unlinkSync(file);
+      fs.symlinkSync(local, file);
     }
   }
 }
@@ -144,7 +378,10 @@ const localize = (source) => {
 };
 const bins = path.join(targetModules, ".bin");
 fs.mkdirSync(bins);
-process.stdout.write(JSON.stringify({ compilerHydrationEntries: [...selected], compilerHydrationBytes: copiedBytes }) + "\n");
+process.stdout.write(
+  JSON.stringify({ compilerHydrationEntries: [...selected], compilerHydrationBytes: copiedBytes }) +
+    "\n",
+);
 let projected = 0;
 const unavailable = [];
 for (const [name, spec] of [...requested].sort(([left], [right]) => left.localeCompare(right))) {
@@ -164,16 +401,54 @@ for (const [name, spec] of [...requested].sort(([left], [right]) => left.localeC
   fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o755 });
   fs.symlinkSync(source, destination, "dir");
   const packageManifest = JSON.parse(fs.readFileSync(path.join(source, "package.json"), "utf8"));
-  const packageBins = typeof packageManifest.bin === "string"
-    ? { [name.split("/").at(-1)]: packageManifest.bin } : (packageManifest.bin ?? {});
+  const packageBins =
+    typeof packageManifest.bin === "string"
+      ? { [name.split("/").at(-1)]: packageManifest.bin }
+      : (packageManifest.bin ?? {});
   for (const [binName, relativeBin] of Object.entries(packageBins)) {
     if (!/^[A-Za-z0-9_.-]+$/.test(binName)) throw new Error("invalid dependency bin name");
     const link = path.join(bins, binName);
     let linked = false;
-    try { fs.lstatSync(link); linked = true; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    try {
+      fs.lstatSync(link);
+      linked = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     if (!linked) fs.symlinkSync(path.resolve(source, relativeBin), link);
   }
   projected += 1;
 }
 
-process.stdout.write(`projected_dependencies=${projected} unavailable_dependencies=${unavailable.length}\n`);
+// UI dependencies live at their own workspace prefix, not the ambient root.
+const uiRoot = path.join(projectRoot, "ui");
+const uiManifest = path.join(uiRoot, "package.json");
+if (fs.existsSync(uiManifest)) {
+  const ui = JSON.parse(fs.readFileSync(uiManifest, "utf8"));
+  const uiModules = path.join(uiRoot, "node_modules");
+  fs.mkdirSync(uiModules, { recursive: true });
+  const specs = {
+    ...ui.dependencies,
+    ...ui.devDependencies,
+    ...ui.optionalDependencies,
+  };
+  for (const [name, spec] of Object.entries(specs)) {
+    const source = String(spec).startsWith("workspace:")
+      ? workspacePackages.get(name)
+      : chooseImagePackage(name, String(spec));
+    if (!source) {
+      throw new Error("missing installed UI dependency: " + name);
+    }
+    const exact = String(spec).match(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)?.[0];
+    if (exact && packageVersion(source) !== exact) {
+      throw new Error("UI version mismatch: " + name);
+    }
+    const destination = path.join(uiModules, name);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.symlinkSync(localize(source), destination, "dir");
+  }
+}
+
+process.stdout.write(
+  `projected_dependencies=${projected} unavailable_dependencies=${unavailable.length}\n`,
+);
