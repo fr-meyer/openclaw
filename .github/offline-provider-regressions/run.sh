@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 : "${GITHUB_WORKSPACE:?}" "${GITHUB_RUN_ATTEMPT:?}" "${GITHUB_SHA:?}" "${PROJECT:?}"
 [[ $GITHUB_RUN_ATTEMPT == 1 && ${GITHUB_REPOSITORY} == fr-meyer/openclaw ]]
 [[ ${GITHUB_REF} == refs/heads/ci/offline-provider-regressions-20261116 ]]
@@ -93,6 +93,40 @@ PY
 run_check format-changed 90 node --input-type=module -e 'import fs from "node:fs";import path from "node:path";import {spawnSync} from "node:child_process";const root=fs.realpathSync("node_modules/oxfmt");const p=JSON.parse(fs.readFileSync(path.join(root,"package.json")));const bin=typeof p.bin==="string"?p.bin:p.bin.oxfmt;const r=spawnSync(path.join(root,bin),["--check",...process.argv.slice(1)],{stdio:"inherit"});if(r.error)throw r.error;process.exit(r.status??1);' "${formatPaths[@]}"
 # Retain full-tree check separately; out-of-delta failures are not a proven baseline.
 run_check format-full 90 node --input-type=module -e 'import fs from "node:fs";import path from "node:path";import {spawnSync} from "node:child_process";const root=fs.realpathSync("node_modules/oxfmt");const p=JSON.parse(fs.readFileSync(path.join(root,"package.json")));const bin=typeof p.bin==="string"?p.bin:p.bin.oxfmt;const r=spawnSync(path.join(root,bin),["--check"],{stdio:"inherit"});if(r.error)throw r.error;process.exit(r.status??1);'
-run_check frozen-lock 90 bash -c 'before=$(sha256sum pnpm-lock.yaml); sha256sum -c --quiet /opt/offline-cache.SHA256 && test "$(du -sk /opt/offline-cache | cut -f1)" -le 131072 && mkdir -p /tmp/cache && cp -a /opt/offline-cache/. /tmp/cache/ && sed "s| /opt/offline-cache/| /tmp/cache/|" /opt/offline-cache.SHA256 | sha256sum -c --quiet && XDG_CACHE_HOME=/tmp/cache pnpm install --lockfile-only --offline --frozen-lockfile --ignore-scripts --ignore-pnpmfile --store-dir=/opt/offline-store && test "$before" = "$(sha256sum pnpm-lock.yaml)" && sha256sum -c --quiet /opt/offline-cache.SHA256'
+run_check frozen-lock 90 bash -c 'set -Eeuo pipefail
+step=initialize
+trap '"'"'rc=$?; printf "FROZEN_STEP_END=%s EXIT=%s
+" "$step" "$rc" >&2; exit "$rc"'"'"' ERR
+stage() { step=$1; printf "FROZEN_STEP_BEGIN=%s
+" "$step"; }
+stage lock-before
+before=$(sha256sum pnpm-lock.yaml)
+stage image-cache-hashes
+sha256sum -c --quiet /opt/offline-cache.SHA256
+stage image-cache-measure
+cache_kib=$(du -sk /opt/offline-cache | cut -f1)
+[[ $cache_kib =~ ^[0-9]+$ ]]
+printf "FROZEN_CACHE_ALLOCATED_KIB=%s LIMIT_KIB=131072
+" "$cache_kib"
+printf "FROZEN_CACHE_ALLOCATED_BYTES=%s
+" "$((cache_kib * 1024))"
+stage image-cache-cap
+test "$cache_kib" -le 131072
+stage cache-directory
+mkdir -p /tmp/cache
+stage cache-copy
+cp -a /opt/offline-cache/. /tmp/cache/
+stage copied-cache-hashes
+sed "s| /opt/offline-cache/| /tmp/cache/|" /opt/offline-cache.SHA256 | sha256sum -c --quiet
+stage pnpm-offline-frozen
+XDG_CACHE_HOME=/tmp/cache pnpm install --lockfile-only --offline --frozen-lockfile --ignore-scripts --ignore-pnpmfile --store-dir=/opt/offline-store
+stage lock-after
+after=$(sha256sum pnpm-lock.yaml)
+test "$before" = "$after"
+stage image-cache-hashes-after
+sha256sum -c --quiet /opt/offline-cache.SHA256
+printf "FROZEN_COMPLETE=1
+"
+'
 printf 'PROJECT=%s FINAL_EXIT=%s\n' "$PROJECT" "$status"
 exit "$status"

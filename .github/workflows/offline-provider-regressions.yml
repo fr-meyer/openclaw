@@ -1,4 +1,4 @@
-name: Offline provider regressions
+name: Dependency inventory preflight only
 on:
   push:
     branches: [ci/offline-provider-regressions-20261116]
@@ -8,7 +8,7 @@ concurrency:
   group: offline-provider-regressions-20261116
   cancel-in-progress: false
 jobs:
-  focused:
+  inventory:
     if: github.repository == 'fr-meyer/openclaw' && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -47,7 +47,17 @@ jobs:
           persist-credentials: false
           path: candidate
           fetch-depth: 1
-      - name: Prepare dependencies then validate without network
+      - name: Build pinned dependency image and inventory without hydration
         env:
           PROJECT: ${{ matrix.project }}
-        run: bash tooling/.github/offline-provider-regressions/run.sh
+        run: bash tooling/.github/offline-provider-regressions/inventory-driver.sh
+      - name: Upload complete diagnostic inventory even after failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2, verified official ref
+        with:
+          name: inventory-only-${{ matrix.project }}-${{ github.run_id }}-attempt1
+          path: inventory-artifacts/${{ matrix.project }}/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
+          include-hidden-files: false

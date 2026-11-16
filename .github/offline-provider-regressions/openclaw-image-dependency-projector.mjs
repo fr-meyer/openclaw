@@ -4,7 +4,16 @@ import fs from "node:fs";
 import { builtinModules } from "node:module";
 import path from "node:path";
 
-const [projectInput, imageModulesInput] = process.argv.slice(2);
+const [projectInput, imageModulesInput, ...flags] = process.argv.slice(2);
+const inventoryOnly = flags.includes("--inventory-only");
+if (
+  flags.some(
+    (flag) =>
+      !["--inventory-only", "--declaration-roots-only", "--hydration-plan-only"].includes(flag),
+  ) ||
+  (inventoryOnly && flags.length !== 1)
+)
+  throw new Error("invalid projector mode configuration");
 if (!projectInput || !imageModulesInput) {
   throw new Error(
     "usage: openclaw-image-dependency-projector.mjs <project-root> <image-node-modules>",
@@ -442,178 +451,256 @@ if (uiPresent) {
   }
 }
 
-const selected = new Set();
-const selectionCauses = new Map();
-const storeEntry = (file) => {
-  const rel = path.relative(virtualStore, file);
-  if (rel.startsWith("..") || path.isAbsolute(rel))
-    throw new Error("compiler closure escapes image store");
-  const first = rel.split(path.sep)[0];
-  if (!first || first === "node_modules") throw new Error("compiler closure lacks pnpm entry");
-  return first;
-};
-function selectEntry(entry, cause) {
-  if (selected.has(entry)) return;
-  selected.add(entry);
-  selectionCauses.set(entry, cause);
-  function scan(dir) {
-    const items = fs.readdirSync(dir, { withFileTypes: true });
-    items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    for (const item of items) {
-      const file = path.join(dir, item.name);
-      if (item.isSymbolicLink()) {
-        if (!fs.existsSync(file)) {
-          throw new Error("dangling hydration link: " + path.relative(virtualStore, file));
-        }
-        selectEntry(storeEntry(fs.realpathSync(file)), {
-          kind: "installed-symlink",
-          from: path.relative(virtualStore, file),
-          parent: entry,
-        });
-      } else if (item.isDirectory()) scan(file);
-    }
-  }
-  scan(path.join(virtualStore, entry));
-}
-selectEntry(storeEntry(compiler), { kind: "compiler", root: "typescript" });
-// Native declaration emission admits package files by physical checkout location.
-const typeRoots = new Set([
+// Strict native enumeration admits EVERY symlink child, not merely imports.
+// Preserve the complete installed view; measure all physical files before writes.
+// This may exceed the unchanged cap. Such incompatibility must fail closed.
+const limitBytes = 320 * 1024 * 1024;
+for (const name of new Set([
   ...Object.keys(declarationGraph.registryRoots),
   "@types/node",
   ...Object.keys(declarationGraph.registryRoots)
     .map((name) => "@types/" + (name.startsWith("@") ? name.slice(1).replace("/", "__") : name))
     .filter((name) => requested.has(name)),
-]);
-for (const name of [...typeRoots].sort()) {
+])) {
   const source = chooseImagePackage(name, requested.get(name) ?? "");
   if (!source) throw new Error("missing installed declaration root: " + name);
-  const expected = requested.get(name);
-  assertPackageIdentity(source, name, expected);
-  selectEntry(storeEntry(source), { kind: "declaration-root", root: name });
+  assertPackageIdentity(source, name, requested.get(name));
 }
-// Retain every installed link target. Peer links, executable links, and interior
-// aliases are not evidence that their declaration or metadata reads are unused.
-const limitBytes = 320 * 1024 * 1024;
-function measureEntry(entry) {
-  let bytes = 0;
-  let files = 0;
-  function countFiles(dir) {
-    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-      const file = path.join(dir, item.name);
-      if (item.isDirectory()) countFiles(file);
-      else if (item.isFile()) {
-        bytes += fs.statSync(file).size;
-        files += 1;
-        if (!Number.isSafeInteger(bytes)) throw new Error("unsafe hydration byte count");
-      } else if (!item.isSymbolicLink()) {
-        throw new Error("unsupported hydration filesystem entry");
-      }
-    }
-  }
-  countFiles(path.join(virtualStore, entry));
-  return { entry, bytes, files, selectedCause: selectionCauses.get(entry) };
+const physicalFiles = [];
+const installedLinks = [];
+const directories = [];
+function insideImage(file) {
+  const rel = path.relative(imageModules, file);
+  if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel))
+    throw new Error("installed view escapes image node_modules: " + file);
+  return rel;
 }
-const measurements = [...selected].sort().map(measureEntry);
-const copiedBytes = measurements.reduce((sum, item) => sum + item.bytes, 0);
-if (!Number.isSafeInteger(copiedBytes)) throw new Error("unsafe hydration total");
-const hydrationPlan = {
-  mode: "conservative-installed-link-closure",
-  totalBytes: copiedBytes,
-  entryCount: selected.size,
-  fileCount: measurements.reduce((sum, item) => sum + item.files, 0),
-  limit: "320 MiB",
-  limitBytes,
-  withinLimit: copiedBytes <= limitBytes,
-  selectedEntries: measurements.map(({ entry, bytes, files }) => ({ entry, bytes, files })),
-  largestEntries: [...measurements]
-    .sort((a, b) => b.bytes - a.bytes || (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0))
-    .slice(0, 12),
-};
-// Emit before the first target write, including on over-cap failure.
-process.stdout.write(JSON.stringify({ hydrationPlan }) + "\n");
-if (process.argv.includes("--hydration-plan-only")) {
-  process.exit(hydrationPlan.withinLimit ? 0 : 2);
-}
-if (!hydrationPlan.withinLimit) {
-  throw new Error(
-    "compiler/declaration closure exceeds 320 MiB hydration cap: " +
-      copiedBytes +
-      " > " +
-      limitBytes,
-  );
-}
-fs.mkdirSync(targetModules, { mode: 0o755 });
-const localStore = path.join(targetModules, ".pnpm");
-fs.mkdirSync(localStore);
-for (const entry of fs.readdirSync(virtualStore)) {
-  const from = path.join(virtualStore, entry);
-  const to = path.join(localStore, entry);
-  if (selected.has(entry)) fs.cpSync(from, to, { recursive: true, dereference: false });
-  else fs.symlinkSync(from, to);
-}
-// pnpm normally uses relative links. Relocate any absolute links within copied entries.
-function relocateLinks(dir) {
-  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+function inspectInstalled(dir) {
+  for (const item of fs
+    .readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name))) {
     const file = path.join(dir, item.name);
-    if (item.isDirectory()) relocateLinks(file);
-    else if (item.isSymbolicLink() && path.isAbsolute(fs.readlinkSync(file))) {
-      const actual = fs.realpathSync(file);
-      const local = path.join(localStore, path.relative(virtualStore, actual));
-      fs.unlinkSync(file);
-      fs.symlinkSync(local, file);
-    }
+    const rel = insideImage(file);
+    if (item.isDirectory()) {
+      if (fs.realpathSync(file) !== file)
+        throw new Error("noncanonical installed directory: " + rel);
+      directories.push(rel);
+      inspectInstalled(file);
+    } else if (item.isFile()) {
+      const size = fs.statSync(file).size;
+      physicalFiles.push({ path: rel, bytes: size, mode: fs.statSync(file).mode & 0o777 });
+    } else if (item.isSymbolicLink()) {
+      const actual = fs.realpathSync(file); // dangling/cyclic links fail before writes
+      const relative = path.relative(imageModules, actual);
+      if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+        // Only an exact installed workspace path with matching canonical manifest
+        // may map to its streamed counterpart. Never admit arbitrary external dirs.
+        const imageRoot = path.dirname(imageModules);
+        const matches = [...workspacePackages].filter(([name, source]) => {
+          const expected = path.join(imageRoot, path.relative(projectRoot, source));
+          return (
+            actual === expected &&
+            fs.realpathSync(source) === source &&
+            requireCanonicalFile(path.join(actual, "package.json")).name === name &&
+            requireCanonicalFile(path.join(source, "package.json")).name === name
+          );
+        });
+        if (matches.length !== 1) throw new Error("unrecognized external installed link: " + rel);
+        installedLinks.push({ path: rel, target: matches[0][1], directory: true, workspace: true });
+        continue;
+      }
+      const st = fs.statSync(actual);
+      if (!st.isDirectory() && !st.isFile())
+        throw new Error("unsupported installed link target: " + rel);
+      installedLinks.push({ path: rel, target: insideImage(actual), directory: st.isDirectory() });
+    } else throw new Error("unsupported installed filesystem entry: " + rel);
   }
 }
-for (const entry of selected) relocateLinks(path.join(localStore, entry));
-const localize = (source) => {
+inspectInstalled(imageModules);
+// Authenticate all package-shaped installed links by target manifest and canonical
+// store location. Renamed aliases require exact authoritative streamed npm requests.
+const bindingReceipts = [];
+for (const link of installedLinks) {
+  if (!link.directory || link.workspace) continue;
+  const parts = link.path.split(path.sep);
+  const at = parts.lastIndexOf("node_modules");
+  let name;
+  if (at >= 0) name = parts.slice(at + 1).join("/");
+  else name = link.path.split(path.sep).join("/");
+  if (!packageNamePattern.test(name)) continue; // interior links retain validated physical identity
+  const source = path.join(imageModules, link.target);
+  const metadata = requireCanonicalFile(path.join(source, "package.json"));
+  if (!packageNamePattern.test(metadata.name) || !exactVersionPattern.test(metadata.version))
+    throw new Error("invalid installed binding identity: " + link.path);
   const rel = path.relative(virtualStore, source);
-  return selected.has(rel.split(path.sep)[0]) ? path.join(localStore, rel) : source;
-};
-const bins = path.join(targetModules, ".bin");
-fs.mkdirSync(bins);
-process.stdout.write(
-  JSON.stringify({ compilerHydrationEntries: [...selected], compilerHydrationBytes: copiedBytes }) +
-    "\n",
-);
-let projected = 0;
+  const entry = rel.split(path.sep)[0];
+  const prefix = metadata.name.replace("/", "+") + "@" + metadata.version;
+  const suffix = entry.slice(prefix.length);
+  if (
+    source !== path.join(virtualStore, entry, "node_modules", metadata.name) ||
+    !entry.startsWith(prefix) ||
+    (suffix !== "" && !suffix.startsWith("_"))
+  )
+    throw new Error("noncanonical installed binding target: " + link.path);
+  if (metadata.name !== name) {
+    let spec = requested.get(name);
+    // Entry-local aliases are authenticated by that installed parent's manifest.
+    const components = link.path.split(path.sep);
+    if (
+      components[0] === ".pnpm" &&
+      components[1] !== "node_modules" &&
+      components[2] === "node_modules"
+    ) {
+      const parentModules = path.join(virtualStore, components[1], "node_modules");
+      const parentCandidates = [];
+      for (const child of fs.readdirSync(parentModules, { withFileTypes: true })) {
+        if (!child.isDirectory()) continue;
+        if (child.name.startsWith("@")) {
+          for (const scoped of fs.readdirSync(path.join(parentModules, child.name), {
+            withFileTypes: true,
+          }))
+            if (scoped.isDirectory())
+              parentCandidates.push(path.join(parentModules, child.name, scoped.name));
+        } else parentCandidates.push(path.join(parentModules, child.name));
+      }
+      const specs = new Set();
+      for (const parent of parentCandidates) {
+        const pkg = requireCanonicalFile(path.join(parent, "package.json"));
+        for (const group of ["dependencies", "optionalDependencies", "peerDependencies"])
+          if (typeof pkg[group]?.[name] === "string") specs.add(pkg[group][name]);
+      }
+      if (specs.size !== 1)
+        throw new Error("ambiguous installed parent alias authority: " + link.path);
+      spec = [...specs][0];
+    }
+    if (spec === undefined) {
+      const specs = new Set();
+      for (const file of physicalFiles.filter(
+        (file) => path.basename(file.path) === "package.json",
+      )) {
+        const pkg = requireCanonicalFile(path.join(imageModules, file.path));
+        for (const group of ["dependencies", "optionalDependencies", "peerDependencies"])
+          if (typeof pkg[group]?.[name] === "string" && pkg[group][name].startsWith("npm:"))
+            specs.add(pkg[group][name]);
+      }
+      if (specs.size !== 1)
+        throw new Error("missing or ambiguous installed hoisted alias authority: " + name);
+      spec = [...specs][0];
+    }
+    if (typeof spec !== "string" || !spec.startsWith("npm:"))
+      throw new Error("installed rename lacks authoritative exact npm alias: " + name);
+    assertPackageIdentity(source, name, spec);
+  }
+  bindingReceipts.push({
+    path: link.path,
+    target: link.target,
+    name: metadata.name,
+    version: metadata.version,
+  });
+}
+// Preflight root additions as well; no late resolution failure may leave target writes.
+const rootBindings = new Map();
 const unavailable = [];
-for (const [name, spec] of [...requested].sort(([left], [right]) => left.localeCompare(right))) {
+for (const [name, spec] of requested) {
+  if (!packageNamePattern.test(name)) throw new Error("invalid root dependency name");
   let source;
   if (spec.startsWith("workspace:")) {
     source = workspacePackages.get(name);
-    if (!source) throw new Error(`workspace dependency is missing from streamed source: ${name}`);
+    if (!source) throw new Error("missing workspace root: " + name);
   } else {
     source = chooseImagePackage(name, spec);
     if (!source) {
       unavailable.push(name);
       continue;
     }
+    insideImage(source);
+    assertPackageIdentity(source, name, spec);
   }
-  source = localize(source);
-  const destination = path.join(targetModules, name);
-  fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o755 });
-  fs.symlinkSync(source, destination, "dir");
-  const packageManifest = JSON.parse(fs.readFileSync(path.join(source, "package.json"), "utf8"));
-  const packageBins =
-    typeof packageManifest.bin === "string"
-      ? { [name.split("/").at(-1)]: packageManifest.bin }
-      : (packageManifest.bin ?? {});
-  for (const [binName, relativeBin] of Object.entries(packageBins)) {
-    if (!/^[A-Za-z0-9_.-]+$/.test(binName)) throw new Error("invalid dependency bin name");
-    const link = path.join(bins, binName);
-    let linked = false;
-    try {
-      fs.lstatSync(link);
-      linked = true;
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-    if (!linked) fs.symlinkSync(path.resolve(source, relativeBin), link);
-  }
-  projected += 1;
+  const existing = path.join(imageModules, name);
+  const installedWorkspace = installedLinks.find((link) => link.path === name && link.workspace);
+  if (
+    fs.existsSync(existing) &&
+    (installedWorkspace?.target ?? fs.realpathSync(existing)) !== source
+  )
+    throw new Error("installed root binding conflicts with requested source: " + name);
+  rootBindings.set(name, source);
 }
-
-// All UI sources were resolved and identity-checked before any target write.
+const copiedBytes = physicalFiles.reduce((sum, item) => sum + item.bytes, 0);
+if (!Number.isSafeInteger(copiedBytes)) throw new Error("unsafe installed view size");
+const hydrationPlan = {
+  mode: "complete-installed-physical-view",
+  totalBytes: copiedBytes,
+  fileCount: physicalFiles.length,
+  entryCount: storeEntries.filter((name) => name !== "node_modules").length,
+  limitBytes,
+  withinLimit: copiedBytes <= limitBytes,
+  physicalFiles,
+  bindingReceipts,
+  installedLinks,
+};
+process.stdout.write(JSON.stringify({ hydrationPlan }) + "\n");
+if (inventoryOnly) {
+  process.stdout.write(
+    JSON.stringify({
+      inventoryComplete: true,
+      planComplete: true,
+      diagnosticOnly: true,
+      actualTotalBytes: copiedBytes,
+      actualTotalFiles: physicalFiles.length,
+      actualTotalEntries: hydrationPlan.entryCount,
+      capBytes: limitBytes,
+      withinCap: hydrationPlan.withinLimit,
+      declarationGraph,
+      workspaceMappings: Object.fromEntries(workspacePackages),
+      rootBindings: Object.fromEntries(rootBindings),
+      uiBindings: Object.fromEntries(uiBindings),
+      hydrationPlan,
+    }) + "\n",
+  );
+  process.exit(0); // completed measurement is not product qualification
+}
+if (process.argv.includes("--hydration-plan-only")) process.exit(hydrationPlan.withinLimit ? 0 : 2);
+if (!hydrationPlan.withinLimit)
+  throw new Error(
+    "complete compiler-visible installed view exceeds hydration cap: " +
+      copiedBytes +
+      " > " +
+      limitBytes,
+  );
+// Every actual installed package (including the original SDK/compiler closure)
+// remains present. Internal alias metadata files are counted, not filtered out.
+fs.mkdirSync(targetModules);
+for (const rel of directories) fs.mkdirSync(path.join(targetModules, rel), { recursive: true });
+for (const item of physicalFiles) {
+  const destination = path.join(targetModules, item.path);
+  fs.copyFileSync(path.join(imageModules, item.path), destination);
+  fs.chmodSync(destination, item.mode);
+}
+for (const link of installedLinks) {
+  const destination = path.join(targetModules, link.path);
+  const target = link.workspace ? link.target : path.join(targetModules, link.target);
+  fs.symlinkSync(
+    path.relative(path.dirname(destination), target),
+    destination,
+    link.directory ? "dir" : "file",
+  );
+}
+const localize = (source) => {
+  const rel = path.relative(imageModules, source);
+  return rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)
+    ? source
+    : path.join(targetModules, rel);
+};
+for (const [name, source] of rootBindings) {
+  const destination = path.join(targetModules, name);
+  if (fs.existsSync(destination)) {
+    if (fs.realpathSync(destination) !== fs.realpathSync(localize(source)))
+      throw new Error("installed root binding conflicts with requested source: " + name);
+    continue;
+  }
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.symlinkSync(localize(source), destination, "dir");
+}
 if (uiPresent) {
   fs.mkdirSync(uiModules, { recursive: true });
   for (const [name, source] of uiBindings) {
@@ -622,48 +709,43 @@ if (uiPresent) {
     fs.symlinkSync(localize(source), destination, "dir");
   }
 }
-
-// Compact receipt is emitted only after every root and UI projection completed.
-// Recount the copied local entries, not the image plan, without following links.
 let actualCopiedBytes = 0;
 let actualCopiedFiles = 0;
-function countCopiedFiles(dir) {
+function verifyLocal(dir) {
   for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, item.name);
-    if (item.isDirectory()) countCopiedFiles(file);
+    if (item.isDirectory()) verifyLocal(file);
     else if (item.isFile()) {
       actualCopiedBytes += fs.statSync(file).size;
       actualCopiedFiles += 1;
-      if (!Number.isSafeInteger(actualCopiedBytes)) throw new Error("unsafe copied byte count");
-    } else if (!item.isSymbolicLink()) throw new Error("unsupported copied filesystem entry");
+    } else if (item.isSymbolicLink()) {
+      const rel = path.relative(projectRoot, fs.realpathSync(file));
+      if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel))
+        throw new Error("copied binding escapes checkout: " + file);
+    } else throw new Error("unsupported copied entry");
   }
 }
-for (const entry of selected) countCopiedFiles(path.join(localStore, entry));
-if (actualCopiedBytes !== copiedBytes || actualCopiedFiles !== hydrationPlan.fileCount) {
-  throw new Error("copied hydration inventory differs from preflight");
-}
-let uiLocalStoreBindings = 0;
-let uiReadonlyImageBindings = 0;
-let uiWorkspaceBindings = 0;
-for (const source of uiBindings.values()) {
-  const rel = path.relative(virtualStore, source);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) uiWorkspaceBindings += 1;
-  else if (selected.has(rel.split(path.sep)[0])) uiLocalStoreBindings += 1;
-  else uiReadonlyImageBindings += 1;
-}
+verifyLocal(targetModules);
+if (uiPresent) verifyLocal(uiModules);
+if (actualCopiedBytes !== copiedBytes || actualCopiedFiles !== physicalFiles.length)
+  throw new Error("installed physical view inventory differs from preflight");
 process.stdout.write(
   JSON.stringify({
     projectionSetupComplete: true,
     actualCopiedBytes,
     actualCopiedFiles,
-    copiedEntryCount: selected.size,
+    copiedEntryCount: hydrationPlan.entryCount,
     limitBytes,
     sdkRegistryRootCount: Object.keys(declarationGraph.registryRoots).length,
-    projectedRootDependencies: projected,
+    projectedRootDependencies: rootBindings.size,
     unavailableRootDependencies: unavailable.length,
     uiBindingCount: uiBindings.size,
-    uiLocalStoreBindings,
-    uiReadonlyImageBindings,
-    uiWorkspaceBindings,
+    uiLocalStoreBindings: [...uiBindings.values()].filter((source) =>
+      source.startsWith(virtualStore + path.sep),
+    ).length,
+    uiReadonlyImageBindings: 0,
+    uiWorkspaceBindings: [...uiBindings.values()].filter(
+      (source) => !source.startsWith(virtualStore + path.sep),
+    ).length,
   }) + "\n",
 );
