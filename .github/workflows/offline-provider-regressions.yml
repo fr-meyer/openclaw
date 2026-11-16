@@ -47,7 +47,7 @@ jobs:
           persist-credentials: false
           path: candidate
           fetch-depth: 1
-      - name: Exact installed-image inventory only (no target execution)
+      - name: Prepare dependencies then validate without network
         env:
           PROJECT: ${{ matrix.project }}
         run: bash tooling/.github/offline-provider-regressions/run.sh

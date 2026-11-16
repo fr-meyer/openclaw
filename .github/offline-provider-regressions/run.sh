@@ -54,25 +54,45 @@ docker build --no-cache --progress plain --iidfile "$RUNNER_TEMP/offline-provide
 image=$(cat "$RUNNER_TEMP/offline-provider-image.id")
 [[ $image =~ ^sha256:[0-9a-f]{64}$ ]]
 printf 'IMMUTABLE_IMAGE=%s\n' "$image"
-# Direct readonly measurement route, never the hydrating test wrapper.
-# Exact independently reviewed R2 projector, pinned again inside measurement.
-sha256sum "$tools/openclaw-image-dependency-projector.mjs" "$tools/hydration-inventory.mjs" "$tools/Dockerfile" "$tools/sources.json"
-set +e
-docker run --rm --pull never --network none --read-only \
- --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
- --security-opt no-new-privileges --cap-drop ALL --pids-limit 512 --memory 2g --cpus 2 \
- --mount "type=bind,src=$GITHUB_WORKSPACE/candidate,dst=/candidate,readonly" \
- --mount "type=bind,src=$tools,dst=/trusted,readonly" \
- --env HOME=/tmp --env COREPACK_ENABLE_NETWORK=0 \
- --entrypoint /usr/bin/timeout "$image" --signal=TERM --kill-after=15 900 \
- /usr/local/bin/node /trusted/hydration-inventory.mjs /candidate /app/node_modules /trusted/openclaw-image-dependency-projector.mjs \
- > "$RUNNER_TEMP/hydration-inventory.json" 2> "$RUNNER_TEMP/hydration-inventory.stderr"
-rc=$?
-set -e
-printf 'MEASUREMENT_CONTAINER_EXIT=%s\n' "$rc"
-[[ $(wc -c < "$RUNNER_TEMP/hydration-inventory.stderr") -le 16384 ]] || exit 1
-cat "$RUNNER_TEMP/hydration-inventory.stderr"
-[[ $(wc -c < "$RUNNER_TEMP/hydration-inventory.json") -le 524288 ]] || exit 1
-cat "$RUNNER_TEMP/hydration-inventory.json"
-[[ $rc == 0 ]] || exit 1
-printf 'PROJECT=%s MEASUREMENT_COMPLETE=1 TARGET_VALIDATION=UNRUN\n' "$PROJECT"
+export OPENCLAW_WORKTREE_ROOT=$GITHUB_WORKSPACE
+status=0
+run_check() {
+  local label=$1 seconds=$2 rc
+  shift 2
+  printf 'CHECK_BEGIN=%s COMMAND=' "$label"; printf '%q ' "$@"; printf '\n'
+  # timeout is INSIDE the isolated container, so termination does not detach docker.
+  set +e
+  bash "$tools/openclaw-worktree-test-isolated" "$GITHUB_WORKSPACE/candidate" --image "$image" --command -- env CI=true COREPACK_ENABLE_NETWORK=0 PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false OPENCLAW_NODE_TEST_PLAN_CONTINUE_ON_FAILURE=1 timeout --signal=TERM --kill-after=15 "$seconds" bash -c 'node --import ./scripts/tsx.mjs scripts/generate-kysely-types.mts && exec "$@"' isolated-check "$@" 2>&1 | awk 'BEGIN { n=0; limit=524288 } { if(n<limit) { text=substr($0,1,4096); print text; n+=length(text)+1 } else if(!cut) { print "OUTPUT_TRUNCATED"; cut=1 } }'
+  rc=${PIPESTATUS[0]}
+  set -e
+  printf 'CHECK_END=%s EXIT=%s\n' "$label" "$rc"
+  [[ $rc == 0 ]] || status=1
+}
+mapfile -t tests < <(python3 - "$tools/sources.json" "$PROJECT" <<'PY'
+import json,sys
+for p in json.load(open(sys.argv[1]))[sys.argv[2]]['tests']: print(p)
+PY
+)
+[[ ${#tests[@]} -gt 1 ]]
+for f in "${tests[@]}"; do [[ -f candidate/$f ]] || exit 1; done
+run_check native-dependency-probes 60 node --input-type=module -e 'import {createRequire} from "node:module";const r=createRequire(process.cwd()+"/package.json");r("node:sqlite");r("esbuild").transformSync("const a=1");await import(r.resolve("rastermill"));await import(r.resolve("@openclaw/fs-safe"));console.log("NATIVE_DEPENDENCIES_READY");'
+run_check new-regressions 300 node scripts/run-vitest.mjs run "${tests[0]}" --maxWorkers=1 --pool=forks --passWithNoTests=false
+run_check companion-regressions 600 node scripts/run-vitest.mjs run "${tests[@]:1}" --maxWorkers=1 --pool=forks --passWithNoTests=false
+run_check types-core 240 node scripts/run-tsgo.mjs -p tsconfig.core.json --noEmit --incremental false
+run_check types-extensions 240 node scripts/run-tsgo.mjs -p tsconfig.extensions.json --noEmit --incremental false
+run_check types-extension-tests 240 node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json --noEmit --incremental false
+run_check lint 240 node --import ./scripts/tsx.mjs scripts/run-lint.mts
+# Invoke the actual installed package bin without relying on a projected .bin directory.
+mapfile -t formatPaths < <(python3 - "$tools/sources.json" "$PROJECT" <<'PY'
+import json,re,sys
+for p in json.load(open(sys.argv[1]))[sys.argv[2]]['files']:
+ if re.search(r'\.(?:[cm]?[jt]sx?|jsonc?|md|ya?ml|html|css|scss)$',p): print(p)
+PY
+)
+[[ ${#formatPaths[@]} -gt 0 ]]
+run_check format-changed 90 node --input-type=module -e 'import fs from "node:fs";import path from "node:path";import {spawnSync} from "node:child_process";const root=fs.realpathSync("node_modules/oxfmt");const p=JSON.parse(fs.readFileSync(path.join(root,"package.json")));const bin=typeof p.bin==="string"?p.bin:p.bin.oxfmt;const r=spawnSync(path.join(root,bin),["--check",...process.argv.slice(1)],{stdio:"inherit"});if(r.error)throw r.error;process.exit(r.status??1);' "${formatPaths[@]}"
+# Retain full-tree check separately; out-of-delta failures are not a proven baseline.
+run_check format-full 90 node --input-type=module -e 'import fs from "node:fs";import path from "node:path";import {spawnSync} from "node:child_process";const root=fs.realpathSync("node_modules/oxfmt");const p=JSON.parse(fs.readFileSync(path.join(root,"package.json")));const bin=typeof p.bin==="string"?p.bin:p.bin.oxfmt;const r=spawnSync(path.join(root,bin),["--check"],{stdio:"inherit"});if(r.error)throw r.error;process.exit(r.status??1);'
+run_check frozen-lock 90 bash -c 'before=$(sha256sum pnpm-lock.yaml); sha256sum -c --quiet /opt/offline-cache.SHA256 && test "$(du -sk /opt/offline-cache | cut -f1)" -le 131072 && mkdir -p /tmp/cache && cp -a /opt/offline-cache/. /tmp/cache/ && sed "s| /opt/offline-cache/| /tmp/cache/|" /opt/offline-cache.SHA256 | sha256sum -c --quiet && XDG_CACHE_HOME=/tmp/cache pnpm install --lockfile-only --offline --frozen-lockfile --ignore-scripts --ignore-pnpmfile --store-dir=/opt/offline-store && test "$before" = "$(sha256sum pnpm-lock.yaml)" && sha256sum -c --quiet /opt/offline-cache.SHA256'
+printf 'PROJECT=%s FINAL_EXIT=%s\n' "$PROJECT" "$status"
+exit "$status"

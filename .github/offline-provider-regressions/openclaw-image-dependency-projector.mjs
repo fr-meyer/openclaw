@@ -387,7 +387,7 @@ for (const name of [...typeRoots].sort()) {
 }
 // Retain every installed link target. Peer links, executable links, and interior
 // aliases are not evidence that their declaration or metadata reads are unused.
-const limitBytes = 256 * 1024 * 1024;
+const limitBytes = 320 * 1024 * 1024;
 function measureEntry(entry) {
   let bytes = 0;
   let files = 0;
