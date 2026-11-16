@@ -70,14 +70,43 @@ function packageVersion(candidate) {
   }
 }
 
+// Aliases support exact SemVer only; ordinary range behavior is unchanged.
+const exactVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+const parsedRequests = new Map();
+function parsePackageRequest(name, spec = "") {
+  const key = JSON.stringify([name, spec]);
+  if (parsedRequests.has(key)) return parsedRequests.get(key);
+  let canonical = name;
+  let selector = spec;
+  const alias = spec.startsWith("npm:");
+  if (alias) {
+    const match = /^npm:((?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*)@([^\s@]+)$/.exec(spec);
+    if (!match || !exactVersionPattern.test(match[2])) {
+      throw new Error("unsupported or malformed npm alias: " + name);
+    }
+    canonical = match[1];
+    selector = match[2];
+  }
+  const result = { canonical, exact: exactVersionPattern.test(selector) ? selector : null, alias };
+  parsedRequests.set(key, result);
+  return result;
+}
+
 function chooseImagePackage(name, spec) {
+  const request = parsePackageRequest(name, spec);
   const direct = path.join(imageModules, name);
   const hoisted = path.join(virtualStore, "node_modules", name);
-  const encoded = name.startsWith("@") ? name.replace("/", "+") : name;
+  const canonical = request.canonical;
+  const encoded = canonical.startsWith("@") ? canonical.replace("/", "+") : canonical;
+  const aliasEncoded = name.startsWith("@") ? name.replace("/", "+") : name;
   const candidates = [direct, hoisted];
   for (const entry of storeEntries) {
-    if (entry.startsWith(`${encoded}@`)) {
+    if (entry.startsWith(`${aliasEncoded}@`)) {
       candidates.push(path.join(virtualStore, entry, "node_modules", name));
+    }
+    if (entry.startsWith(`${encoded}@`)) {
+      candidates.push(path.join(virtualStore, entry, "node_modules", canonical));
     }
   }
   const unique = [
@@ -89,11 +118,12 @@ function chooseImagePackage(name, spec) {
   ];
   if (unique.length === 0) return null;
   if (unique.length === 1) return unique[0];
-  const exact = spec.match(/^(?:npm:)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/)?.[1];
+  const exact = request.exact;
   if (exact) {
     const matches = unique.filter((candidate) => packageVersion(candidate) === exact);
     if (matches.length === 1) return matches[0];
   }
+  if (request.alias) return null;
   if (fs.existsSync(direct)) return fs.realpathSync(direct);
   return null;
 }
@@ -295,7 +325,19 @@ if (process.argv.includes("--declaration-roots-only")) process.exit(0);
 // Copy only its installed pnpm entry closure; leave the rest readonly image projections.
 const compiler = chooseImagePackage("typescript", requested.get("typescript") ?? "");
 if (!compiler) throw new Error("missing installed compiler");
+function assertPackageIdentity(candidate, name, spec) {
+  const request = parsePackageRequest(name, spec);
+  const installed = JSON.parse(fs.readFileSync(path.join(candidate, "package.json"), "utf8"));
+  if (installed.name !== request.canonical) {
+    throw new Error("installed package name mismatch: " + name);
+  }
+  if (request.exact && installed.version !== request.exact) {
+    throw new Error("installed package version mismatch: " + name);
+  }
+}
+assertPackageIdentity(compiler, "typescript", requested.get("typescript"));
 const selected = new Set();
+const selectionCauses = new Map();
 const storeEntry = (file) => {
   const rel = path.relative(virtualStore, file);
   if (rel.startsWith("..") || path.isAbsolute(rel))
@@ -304,20 +346,30 @@ const storeEntry = (file) => {
   if (!first || first === "node_modules") throw new Error("compiler closure lacks pnpm entry");
   return first;
 };
-function selectEntry(entry) {
+function selectEntry(entry, cause) {
   if (selected.has(entry)) return;
   selected.add(entry);
+  selectionCauses.set(entry, cause);
   function scan(dir) {
-    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+    const items = fs.readdirSync(dir, { withFileTypes: true });
+    items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const item of items) {
       const file = path.join(dir, item.name);
       if (item.isSymbolicLink()) {
-        if (fs.existsSync(file)) selectEntry(storeEntry(fs.realpathSync(file)));
+        if (!fs.existsSync(file)) {
+          throw new Error("dangling hydration link: " + path.relative(virtualStore, file));
+        }
+        selectEntry(storeEntry(fs.realpathSync(file)), {
+          kind: "installed-symlink",
+          from: path.relative(virtualStore, file),
+          parent: entry,
+        });
       } else if (item.isDirectory()) scan(file);
     }
   }
   scan(path.join(virtualStore, entry));
 }
-selectEntry(storeEntry(compiler));
+selectEntry(storeEntry(compiler), { kind: "compiler", root: "typescript" });
 // Native declaration emission admits package files by physical checkout location.
 const typeRoots = new Set([
   ...Object.keys(declarationGraph.registryRoots),
@@ -330,25 +382,60 @@ for (const name of [...typeRoots].sort()) {
   const source = chooseImagePackage(name, requested.get(name) ?? "");
   if (!source) throw new Error("missing installed declaration root: " + name);
   const expected = requested.get(name);
-  if (
-    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(expected ?? "") &&
-    packageVersion(source) !== expected
-  ) {
-    throw new Error("installed declaration root version mismatch: " + name);
-  }
-  selectEntry(storeEntry(source));
+  assertPackageIdentity(source, name, expected);
+  selectEntry(storeEntry(source), { kind: "declaration-root", root: name });
 }
-let copiedBytes = 0;
-function countFiles(dir) {
-  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-    const file = path.join(dir, item.name);
-    if (item.isDirectory()) countFiles(file);
-    else if (item.isFile()) copiedBytes += fs.statSync(file).size;
+// Retain every installed link target. Peer links, executable links, and interior
+// aliases are not evidence that their declaration or metadata reads are unused.
+const limitBytes = 256 * 1024 * 1024;
+function measureEntry(entry) {
+  let bytes = 0;
+  let files = 0;
+  function countFiles(dir) {
+    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, item.name);
+      if (item.isDirectory()) countFiles(file);
+      else if (item.isFile()) {
+        bytes += fs.statSync(file).size;
+        files += 1;
+        if (!Number.isSafeInteger(bytes)) throw new Error("unsafe hydration byte count");
+      } else if (!item.isSymbolicLink()) {
+        throw new Error("unsupported hydration filesystem entry");
+      }
+    }
   }
+  countFiles(path.join(virtualStore, entry));
+  return { entry, bytes, files, selectedCause: selectionCauses.get(entry) };
 }
-for (const entry of selected) countFiles(path.join(virtualStore, entry));
-if (copiedBytes > 256 * 1024 * 1024)
-  throw new Error("compiler/declaration closure exceeds 256 MiB hydration cap");
+const measurements = [...selected].sort().map(measureEntry);
+const copiedBytes = measurements.reduce((sum, item) => sum + item.bytes, 0);
+if (!Number.isSafeInteger(copiedBytes)) throw new Error("unsafe hydration total");
+const hydrationPlan = {
+  mode: "conservative-installed-link-closure",
+  totalBytes: copiedBytes,
+  entryCount: selected.size,
+  fileCount: measurements.reduce((sum, item) => sum + item.files, 0),
+  limit: "256 MiB",
+  limitBytes,
+  withinLimit: copiedBytes <= limitBytes,
+  selectedEntries: measurements.map(({ entry, bytes, files }) => ({ entry, bytes, files })),
+  largestEntries: [...measurements]
+    .sort((a, b) => b.bytes - a.bytes || (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0))
+    .slice(0, 12),
+};
+// Emit before the first target write, including on over-cap failure.
+process.stdout.write(JSON.stringify({ hydrationPlan }) + "\n");
+if (process.argv.includes("--hydration-plan-only")) {
+  process.exit(hydrationPlan.withinLimit ? 0 : 2);
+}
+if (!hydrationPlan.withinLimit) {
+  throw new Error(
+    "compiler/declaration closure exceeds 256 MiB hydration cap: " +
+      copiedBytes +
+      " > " +
+      limitBytes,
+  );
+}
 fs.mkdirSync(targetModules, { mode: 0o755 });
 const localStore = path.join(targetModules, ".pnpm");
 fs.mkdirSync(localStore);
