@@ -3,7 +3,7 @@
 Derived root JSON is custody/scope binding, NOT independent owner authentication.
 No downloads, installs, daemon reconfiguration or candidate execution.
 """
-import argparse,hashlib,importlib.util,json,os,pathlib,stat,sys,time,uuid
+import argparse,hashlib,importlib.util,json,os,pathlib,stat,sys,time,uuid,re
 HERE=pathlib.Path(__file__).resolve().parent
 KEYS=['GITHUB_REPOSITORY','GITHUB_REF','GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT']
 def require(v,m):
@@ -19,6 +19,57 @@ def admission(env,project,scopehash):
 def tool(path):
  p=pathlib.Path(path).resolve();s=p.stat();require(p.is_file() and s.st_uid==0 and not s.st_mode&0o022 and os.access(p,os.X_OK),'existing root-custody host executable: '+path)
  return {'path':str(p),'sha256':digest(p)}
+def node_mount_points():
+ with open('/proc/self/mountinfo','rb') as f:raw=f.read(1024*1024+1)
+ require(len(raw)<=1024*1024,'bounded managed mount metadata');rows=raw.decode().splitlines();require(len(rows)<=8192,'bounded managed mounts')
+ points=[]
+ for row in rows:
+  fields=row.split();require(len(fields)>=10 and ' - ' in row,'kernel mountinfo shape')
+  value=re.sub(r'\\([0-7]{3})',lambda m:chr(int(m.group(1),8)),fields[4]);points.append(pathlib.PurePosixPath(value))
+ return points
+def managed_node(path):
+ """Existing platform bytes only; canonical managed roots and ancestor custody.
+ No PATH lookup, subprocess/probe, import, download or executable invocation.
+ """
+ original=pathlib.Path(path);p=original.resolve(strict=True)
+ require(p.name in ['node','nodejs'],'managed Node executable identity name')
+ for part in [*reversed(original.parents),original]:
+  v=part.lstat();require(v.st_uid==0 and (stat.S_ISLNK(v.st_mode) or not v.st_mode&0o022),'lexical managed Node custody')
+ roots=[pathlib.Path('/usr'),pathlib.Path('/usr/local'),pathlib.Path('/opt/hostedtoolcache/node')]
+ require(any(p==root or root in p.parents for root in roots),'Node outside approved managed roots')
+ require(not any(m!=pathlib.PurePosixPath('/') and (m==p or m in p.parents) for m in node_mount_points()),'undeclared managed Node ancestor mount')
+ s=p.stat();require(stat.S_ISREG(s.st_mode) and s.st_uid==0 and not s.st_mode&0o022 and s.st_mode&0o111 and os.access(p,os.X_OK),'existing root-custody managed Node executable')
+ # Canonical resolved chain must stay on the managed OS filesystem, with no
+ # writable/non-root ancestors or undeclared child mount boundary.
+ device=pathlib.Path('/').stat().st_dev
+ for parent in [*reversed(p.parents),p]:
+  v=parent.stat();require(v.st_uid==0 and not v.st_mode&0o022 and v.st_dev==device,'managed Node ancestor custody/mount')
+  if parent!=p:require(stat.S_ISDIR(v.st_mode),'managed Node parent directory')
+ return {'path':str(p),'sha256':digest(p)}
+def discover_node():
+ for value in ['/usr/bin/node','/usr/local/bin/node']:
+  try:pathlib.Path(value).lstat()
+  except FileNotFoundError:continue
+  return managed_node(value) # Present but unsafe is a failure, not a hidden fallback.
+ root=pathlib.Path('/opt/hostedtoolcache/node')
+ try:root.lstat()
+ except FileNotFoundError:raise RuntimeError('no existing trusted managed Node')
+ require(root.resolve(strict=True)==root,'managed toolcache root symlink escape')
+ v=root.stat();require(stat.S_ISDIR(v.st_mode) and v.st_uid==0 and not v.st_mode&0o022,'managed toolcache root custody')
+ versions=[]
+ with os.scandir(root) as entries:
+  for entry in entries:
+   require(len(versions)<64,'bounded Node toolcache entries')
+   match=re.fullmatch(r'(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})',entry.name)
+   require(match is not None and entry.is_dir(follow_symlinks=False),'strict managed Node semver directory')
+   versions.append((tuple(map(int,match.groups())),entry.name))
+ # Fixed OS paths first; otherwise highest installed stable semver (numeric).
+ for _,version in sorted(versions,reverse=True):
+  candidate=root/version/'x64/bin/node'
+  try:candidate.lstat()
+  except FileNotFoundError:continue
+  return managed_node(candidate)
+ raise RuntimeError('no existing trusted managed Node')
 def main(argv=None):
  p=argparse.ArgumentParser();p.add_argument('mode',choices=['run','finalize']);p.add_argument('--project',required=True);p.add_argument('--scope-hash',required=True);p.add_argument('--candidate',default='candidate-input');p.add_argument('--carrier',default='carrier-input');p.add_argument('--tooling',default='tooling');p.add_argument('--artifacts',default='phase1-artifacts');a=p.parse_args(argv)
  require(os.geteuid()==0,'exact scoped future workflow sudo entry required');identity=admission(os.environ,a.project,a.scope_hash)
@@ -31,7 +82,7 @@ def main(argv=None):
  # Existing trusted managed image supplies executables/loaders; observed hashes identify
  # these bytes, not independent provenance. Image identity/owner-reviewed dispatch is trust.
  paths={'python':'/usr/bin/python3','docker':'/usr/bin/docker','dockerd':'/usr/bin/dockerd','mkfs':'/usr/sbin/mkfs.ext4','losetup':'/usr/sbin/losetup','mount':'/usr/bin/mount','umount':'/usr/bin/umount'}
- tools={k:tool(v) for k,v in paths.items()};node=tool('/usr/bin/node')
+ tools={k:tool(v) for k,v in paths.items()};node=discover_node()
  provenance={'trust':'owner-approved exact payload and guarded GitHub-hosted workflow_dispatch; managed OS/binaries/loaders are explicit platform trust boundary','ImageOS':os.environ['ImageOS'],'ImageVersion':os.environ['ImageVersion'],'osRelease':pathlib.Path('/etc/os-release').read_text(),'python':sys.version,'tools':tools,'node':node}
  nonce=uuid.uuid4().hex;root='/mnt/openclaw-phase1-'+nonce
  custody=pathlib.Path('/run/openclaw-phase1')

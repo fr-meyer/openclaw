@@ -55,5 +55,19 @@
     "costAuthority": "no added spend; no billing credentials/allowance assumption; no storage fallback",
     "jobSuccess": "recipe+whole-domain verified closure+full bounded framed log emission complete; oversize/invalid/failedemission => nonqualifying job failure",
     "hostMemory": "reuse existing64MiB receipt/control allowance; no independent disk bucket"
+  },
+  "hostNodeSelection": {
+    "revision": 7,
+    "fixedPaths": [
+      "/usr/bin/node",
+      "/usr/local/bin/node"
+    ],
+    "toolcache": "/opt/hostedtoolcache/node/<stableX.Y.Z>/x64/bin/node",
+    "versionsMax": 64,
+    "selection": "fixed paths first, otherwise highest installed numeric stable semver; present unsafe path fails, no hidden fallback",
+    "custody": "resolved/lexical rootuid non-group/world-writable managed parents+regular executable; approved roots; no childmount/device escape; observed SHA existingbytes",
+    "preDomain": "filesystem+bounded proc mountinfo only, no children/imports/Nodeexec/PATH/probe/download",
+    "actualCacheCustody": "unknown; unsafe or missing => failclosed before nonce/custody/domain",
+    "priorGrant": "R6publication+run44008119452 consumed; future R7pub/run requires fresh owner grant"
   }
 }
