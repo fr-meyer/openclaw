@@ -69,5 +69,14 @@
     "preDomain": "filesystem+bounded proc mountinfo only, no children/imports/Nodeexec/PATH/probe/download",
     "actualCacheCustody": "unknown; unsafe or missing => failclosed before nonce/custody/domain",
     "priorGrant": "R6publication+run44008119452 consumed; future R7pub/run requires fresh owner grant"
+  },
+  "nodeRejectionDiagnostics": {
+    "revision": 8,
+    "status": "DIAGNOSTICS_ONLY_NO_HOST_CUSTODY_COMPATIBILITY_PROOF",
+    "maxBytes": 2048,
+    "format": "NODE_REJECTION_V1 JSONASCII with prefix; fixed reason/stage and bounded managedpath classifications/already-read stat metadata",
+    "semantics": "R7 exact conditions/order/uid0/no022/symlink/mount/device/selection/hash unchanged; no new fallback/location/runtimephase",
+    "privacy": "no outsidepath/target/env/PATH/workspace/sourcecontent/fullmountinfo/rawexception fields; no success log or newlookup",
+    "grant": "R7run44081141282 consumed; currentparent46c82de53cb281f4b9adac667338b8a1c335f3d0; no third publication/run/rerun authorized"
   }
 }

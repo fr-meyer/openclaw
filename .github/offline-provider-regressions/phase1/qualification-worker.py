@@ -2,7 +2,7 @@
 import hashlib,importlib.util,json,os,pathlib,sys,argparse
 HERE=pathlib.Path(__file__).resolve().parent
 PINNED_PHASE1='2ada8587a4ab899591e2d9f6b758f8055e5a334bad2a8067a9d510e53a3a815e'
-PINNED_PAYLOAD='1e60e7b485a0bead8c32732b0e81958ff6c0037465d991c9dd967a1cc5ed6f75'
+PINNED_PAYLOAD='81673b7edf9925bce8113d0f89136b2e37cce3b65ca0d602980193b7873cdb80'
 def main():
  if hashlib.sha256((HERE/'phase1.py').read_bytes()).hexdigest()!=PINNED_PHASE1 or hashlib.sha256((HERE/'PAYLOAD-SHA256.json').read_bytes()).hexdigest()!=PINNED_PAYLOAD:raise RuntimeError('externally bound worker trusted entry/payload pin')
  manifest=json.loads((HERE/'worker-closure.json').read_text())

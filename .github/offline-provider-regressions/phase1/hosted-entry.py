@@ -19,6 +19,27 @@ def admission(env,project,scopehash):
 def tool(path):
  p=pathlib.Path(path).resolve();s=p.stat();require(p.is_file() and s.st_uid==0 and not s.st_mode&0o022 and os.access(p,os.X_OK),'existing root-custody host executable: '+path)
  return {'path':str(p),'sha256':digest(p)}
+def node_check(value,stage,reason,lexical=None,canonical=None,ancestor=None,metadata=None):
+ """Diagnostics only: same condition/order/error; no new filesystem reads."""
+ if value:return
+ def safe_path(path):
+  if path is None:return 'UNKNOWN'
+  text=str(path)
+  fixed=['/','/usr','/usr/bin','/usr/local','/usr/local/bin','/usr/bin/node','/usr/local/bin/node','/opt','/opt/hostedtoolcache','/opt/hostedtoolcache/node']
+  if text not in fixed and not text.startswith(('/usr/','/opt/hostedtoolcache/node/')):return 'OUTSIDE_MANAGED_ROOTS'
+  if len(text)>256 or not text.isascii():return 'REDACTED_PATH'
+  if text in fixed or re.fullmatch(r'/opt/hostedtoolcache/node/(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})(/x64(/bin(/node)?)?)?',text):return text
+  return 'MANAGED_OTHER' if text.startswith(('/usr/','/opt/hostedtoolcache/node/')) and not any(x in text.split('/') for x in ['.','..']) and re.fullmatch(r'/[A-Za-z0-9_./-]+',text) else 'OUTSIDE_MANAGED_ROOTS'
+ def number(key):
+  value=getattr(metadata,key,None) if metadata is not None else None
+  return value if type(value) is int and 0<=value<2**64 else None
+ mode=number('st_mode');mode=mode if mode is not None and mode<2**32 else None
+ kind='UNKNOWN' if mode is None else 'symlink' if stat.S_ISLNK(mode) else 'directory' if stat.S_ISDIR(mode) else 'regular' if stat.S_ISREG(mode) else 'other'
+ record={'schema':'NODE_REJECTION_V1','stage':stage if re.fullmatch(r'[a-z_]{1,48}',stage) else 'REDACTED','reason':reason if reason in NODE_REASONS else 'managed Node invariant rejected','lexical':safe_path(lexical),'canonical':safe_path(canonical),'ancestor':safe_path(ancestor),'uid':number('st_uid'),'gid':number('st_gid'),'mode':oct(stat.S_IMODE(mode)) if mode is not None else None,'filetype':kind,'device':number('st_dev')}
+ message=json.dumps(record,sort_keys=True,separators=(',',':'),ensure_ascii=True)
+ if len(message.encode())>2016:message='{"schema":"NODE_REJECTION_V1","stage":"diagnostic_bound","reason":"managed Node invariant rejected"}'
+ raise RuntimeError('NODE_REJECTION '+message)
+NODE_REASONS=frozenset(['managed Node executable identity name','lexical managed Node custody','Node outside approved managed roots','undeclared managed Node ancestor mount','existing root-custody managed Node executable','managed Node ancestor custody/mount','managed Node parent directory','managed toolcache root symlink escape','managed toolcache root custody','bounded Node toolcache entries','strict managed Node semver directory','no existing trusted managed Node'])
 def node_mount_points():
  with open('/proc/self/mountinfo','rb') as f:raw=f.read(1024*1024+1)
  require(len(raw)<=1024*1024,'bounded managed mount metadata');rows=raw.decode().splitlines();require(len(rows)<=8192,'bounded managed mounts')
@@ -32,19 +53,19 @@ def managed_node(path):
  No PATH lookup, subprocess/probe, import, download or executable invocation.
  """
  original=pathlib.Path(path);p=original.resolve(strict=True)
- require(p.name in ['node','nodejs'],'managed Node executable identity name')
+ node_check(p.name in ['node','nodejs'],'canonical_identity','managed Node executable identity name',original,p)
  for part in [*reversed(original.parents),original]:
-  v=part.lstat();require(v.st_uid==0 and (stat.S_ISLNK(v.st_mode) or not v.st_mode&0o022),'lexical managed Node custody')
+  v=part.lstat();node_check(v.st_uid==0 and (stat.S_ISLNK(v.st_mode) or not v.st_mode&0o022),'lexical_custody','lexical managed Node custody',original,p,part,v)
  roots=[pathlib.Path('/usr'),pathlib.Path('/usr/local'),pathlib.Path('/opt/hostedtoolcache/node')]
- require(any(p==root or root in p.parents for root in roots),'Node outside approved managed roots')
- require(not any(m!=pathlib.PurePosixPath('/') and (m==p or m in p.parents) for m in node_mount_points()),'undeclared managed Node ancestor mount')
- s=p.stat();require(stat.S_ISREG(s.st_mode) and s.st_uid==0 and not s.st_mode&0o022 and s.st_mode&0o111 and os.access(p,os.X_OK),'existing root-custody managed Node executable')
+ node_check(any(p==root or root in p.parents for root in roots),'canonical_boundary','Node outside approved managed roots',original,p)
+ node_check(not any(m!=pathlib.PurePosixPath('/') and (m==p or m in p.parents) for m in node_mount_points()),'canonical_mount','undeclared managed Node ancestor mount',original,p)
+ s=p.stat();node_check(stat.S_ISREG(s.st_mode) and s.st_uid==0 and not s.st_mode&0o022 and s.st_mode&0o111 and os.access(p,os.X_OK),'canonical_executable','existing root-custody managed Node executable',original,p,p,s)
  # Canonical resolved chain must stay on the managed OS filesystem, with no
  # writable/non-root ancestors or undeclared child mount boundary.
  device=pathlib.Path('/').stat().st_dev
  for parent in [*reversed(p.parents),p]:
-  v=parent.stat();require(v.st_uid==0 and not v.st_mode&0o022 and v.st_dev==device,'managed Node ancestor custody/mount')
-  if parent!=p:require(stat.S_ISDIR(v.st_mode),'managed Node parent directory')
+  v=parent.stat();node_check(v.st_uid==0 and not v.st_mode&0o022 and v.st_dev==device,'canonical_custody','managed Node ancestor custody/mount',original,p,parent,v)
+  if parent!=p:node_check(stat.S_ISDIR(v.st_mode),'canonical_parent_type','managed Node parent directory',original,p,parent,v)
  return {'path':str(p),'sha256':digest(p)}
 def discover_node():
  for value in ['/usr/bin/node','/usr/local/bin/node']:
@@ -53,15 +74,15 @@ def discover_node():
   return managed_node(value) # Present but unsafe is a failure, not a hidden fallback.
  root=pathlib.Path('/opt/hostedtoolcache/node')
  try:root.lstat()
- except FileNotFoundError:raise RuntimeError('no existing trusted managed Node')
- require(root.resolve(strict=True)==root,'managed toolcache root symlink escape')
- v=root.stat();require(stat.S_ISDIR(v.st_mode) and v.st_uid==0 and not v.st_mode&0o022,'managed toolcache root custody')
+ except FileNotFoundError:node_check(False,'node_missing','no existing trusted managed Node')
+ node_check(root.resolve(strict=True)==root,'cache_boundary','managed toolcache root symlink escape',root)
+ v=root.stat();node_check(stat.S_ISDIR(v.st_mode) and v.st_uid==0 and not v.st_mode&0o022,'cache_custody','managed toolcache root custody',root,None,root,v)
  versions=[]
  with os.scandir(root) as entries:
   for entry in entries:
-   require(len(versions)<64,'bounded Node toolcache entries')
+   node_check(len(versions)<64,'cache_entries','bounded Node toolcache entries',root)
    match=re.fullmatch(r'(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})',entry.name)
-   require(match is not None and entry.is_dir(follow_symlinks=False),'strict managed Node semver directory')
+   node_check(match is not None and entry.is_dir(follow_symlinks=False),'cache_semver','strict managed Node semver directory',root)
    versions.append((tuple(map(int,match.groups())),entry.name))
  # Fixed OS paths first; otherwise highest installed stable semver (numeric).
  for _,version in sorted(versions,reverse=True):
@@ -69,7 +90,7 @@ def discover_node():
   try:candidate.lstat()
   except FileNotFoundError:continue
   return managed_node(candidate)
- raise RuntimeError('no existing trusted managed Node')
+ node_check(False,'node_missing','no existing trusted managed Node')
 def main(argv=None):
  p=argparse.ArgumentParser();p.add_argument('mode',choices=['run','finalize']);p.add_argument('--project',required=True);p.add_argument('--scope-hash',required=True);p.add_argument('--candidate',default='candidate-input');p.add_argument('--carrier',default='carrier-input');p.add_argument('--tooling',default='tooling');p.add_argument('--artifacts',default='phase1-artifacts');a=p.parse_args(argv)
  require(os.geteuid()==0,'exact scoped future workflow sudo entry required');identity=admission(os.environ,a.project,a.scope_hash)
