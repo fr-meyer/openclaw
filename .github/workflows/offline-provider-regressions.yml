@@ -1,63 +1,60 @@
-name: Dependency inventory preflight only
+name: Offline provider phase1 image feasibility
 on:
-  push:
-    branches: [ci/offline-provider-regressions-20261116]
+  workflow_dispatch:
+    inputs:
+      scope_sha256:
+        description: Exact separately approved phase1 authorization-scope.json SHA256 (direction approval is insufficient)
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: offline-provider-regressions-20261116
+  group: offline-phase1-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  inventory:
-    if: github.repository == 'fr-meyer/openclaw' && github.run_attempt == 1
+  image-feasibility:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        project: [bfl, embeddings]
+        include:
+          - project: bfl
+            base: 30786562e236aab6a924981c62aa61b920132c76
+          - project: embeddings
+            base: 5a02a59bd02fbb01cefa1d49ae7714bd988dc3c4
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
           path: tooling
-      - name: Resolve exact approved source
-        id: source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.base }}
+          persist-credentials: false
+          path: candidate-input
+          fetch-depth: 1
+      - if: matrix.project == 'embeddings'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: b94316f2357b998967c3cd50bb2aaf1034355ebe
+          persist-credentials: false
+          path: carrier-input
+          fetch-depth: 1
+      - name: Single bounded phase1 attempt — no products
         env:
           PROJECT: ${{ matrix.project }}
-        run: |
-          python3 - <<'PY'
-          import json, os, re
-          x=json.load(open('tooling/.github/offline-provider-regressions/sources.json'))[os.environ['PROJECT']]
-          assert all(re.fullmatch('[0-9a-f]{40}',x[k]) for k in ['carrierSha','base','expectedCandidateTree']), 'Unbound carrier/base/tree'
-          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
-              f.write('carrier='+x['carrierSha']+chr(10)+'base='+x['base']+chr(10))
-          PY
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.source.outputs.carrier }}
-          persist-credentials: false
-          path: carrier
-          fetch-depth: 1
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.source.outputs.base }}
-          persist-credentials: false
-          path: candidate
-          fetch-depth: 1
-      - name: Build pinned dependency image and inventory without hydration
-        env:
-          PROJECT: ${{ matrix.project }}
-        run: bash tooling/.github/offline-provider-regressions/inventory-driver.sh
-      - name: Upload complete diagnostic inventory even after failure
+          OPENCLAW_PHASE1_OWNER_AUTHORIZED: ${{ inputs.scope_sha256 }}
+        run: sudo -n --preserve-env=GITHUB_ACTIONS,GITHUB_EVENT_NAME,GITHUB_REPOSITORY,GITHUB_REF,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,RUNNER_ENVIRONMENT,RUNNER_OS,ImageOS,ImageVersion,OPENCLAW_PHASE1_OWNER_AUTHORIZED,PROJECT /usr/bin/python3 -I -S -B tooling/.github/offline-provider-regressions/phase1/hosted-entry.py run --project "$PROJECT" --scope-hash "$OPENCLAW_PHASE1_OWNER_AUTHORIZED" --candidate candidate-input --carrier carrier-input --tooling tooling --artifacts phase1-artifacts
+      - name: Independent always-run closure finalizer — no disposal proof
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2, verified official ref
-        with:
-          name: inventory-only-${{ matrix.project }}-${{ github.run_id }}-attempt1
-          path: inventory-artifacts/${{ matrix.project }}/
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 6
-          include-hidden-files: false
+        env:
+          PROJECT: ${{ matrix.project }}
+          OPENCLAW_PHASE1_OWNER_AUTHORIZED: ${{ inputs.scope_sha256 }}
+        run: sudo -n --preserve-env=GITHUB_ACTIONS,GITHUB_EVENT_NAME,GITHUB_REPOSITORY,GITHUB_REF,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,RUNNER_ENVIRONMENT,RUNNER_OS,ImageOS,ImageVersion,OPENCLAW_PHASE1_OWNER_AUTHORIZED,PROJECT /usr/bin/python3 -I -S -B tooling/.github/offline-provider-regressions/phase1/hosted-entry.py finalize --project "$PROJECT" --scope-hash "$OPENCLAW_PHASE1_OWNER_AUTHORIZED" --artifacts phase1-artifacts
+      - name: Complete bounded public receipts — standard workflow logs only
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: /usr/bin/python3 -I -S -B tooling/.github/offline-provider-regressions/phase1/receipt-logs.py --directory phase1-artifacts --project "$PROJECT"

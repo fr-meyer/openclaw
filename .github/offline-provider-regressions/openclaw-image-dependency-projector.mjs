@@ -5,11 +5,17 @@ import { builtinModules } from "node:module";
 import path from "node:path";
 
 const [projectInput, imageModulesInput, ...flags] = process.argv.slice(2);
-const inventoryOnly = flags.includes("--inventory-only");
+const inPlace = flags.includes("--in-place-inventory-only");
+const inventoryOnly = flags.includes("--inventory-only") || inPlace;
 if (
   flags.some(
     (flag) =>
-      !["--inventory-only", "--declaration-roots-only", "--hydration-plan-only"].includes(flag),
+      ![
+        "--inventory-only",
+        "--in-place-inventory-only",
+        "--declaration-roots-only",
+        "--hydration-plan-only",
+      ].includes(flag),
   ) ||
   (inventoryOnly && flags.length !== 1)
 )
@@ -27,7 +33,9 @@ const targetModules = path.join(projectRoot, "node_modules");
 if (!fs.statSync(virtualStore).isDirectory()) {
   throw new Error(`image virtual store is missing: ${virtualStore}`);
 }
-if (fs.existsSync(targetModules)) {
+if (inPlace && (projectRoot !== path.dirname(imageModules) || targetModules !== imageModules))
+  throw new Error("in-place inventory requires exact candidate/dependency co-location");
+if (!inPlace && fs.existsSync(targetModules)) {
   throw new Error(`project node_modules must be absent: ${targetModules}`);
 }
 
@@ -44,27 +52,105 @@ function addRequestedDependencies(pkg) {
 }
 addRequestedDependencies(manifest);
 
+const exactVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+function canonicalWorkspaceString(pattern, value) {
+  return typeof value === "string" && pattern.exec(value)?.[0] === value;
+}
+function validateWorkspaceManifest(pkg) {
+  if (!canonicalWorkspaceString(packageNamePattern, pkg.name))
+    throw new Error("noncanonical workspace package name");
+  if (Object.hasOwn(pkg, "version") && !canonicalWorkspaceString(exactVersionPattern, pkg.version))
+    throw new Error("noncanonical workspace package version");
+  return pkg;
+}
+function sameWorkspaceIdentity(left, right) {
+  validateWorkspaceManifest(left);
+  validateWorkspaceManifest(right);
+  const present = Object.hasOwn(left, "version");
+  return (
+    left.name === right.name &&
+    present === Object.hasOwn(right, "version") &&
+    (!present || left.version === right.version)
+  );
+}
 const workspacePackages = new Map();
-if (typeof manifest.name === "string") workspacePackages.set(manifest.name, projectRoot);
-function scanWorkspace(directory, depth = 0) {
-  if (depth > 4 || !fs.existsSync(directory)) return;
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (
-      !entry.isDirectory() ||
-      ["node_modules", ".git", ".artifacts", "coverage"].includes(entry.name)
-    )
-      continue;
-    const child = path.join(directory, entry.name);
-    const packageJson = path.join(child, "package.json");
-    if (fs.existsSync(packageJson)) {
-      const pkg = JSON.parse(fs.readFileSync(packageJson, "utf8"));
-      if (typeof pkg.name === "string") workspacePackages.set(pkg.name, child);
-      addRequestedDependencies(pkg);
-    }
-    scanWorkspace(child, depth + 1);
+// Parse only the repository's explicit, bounded packages-list policy. This is not
+// a general YAML/glob interpreter: unsupported forms fail closed, never broaden.
+const workspacePolicyFile = path.join(projectRoot, "pnpm-workspace.yaml");
+if (fs.realpathSync(workspacePolicyFile) !== workspacePolicyFile)
+  throw new Error("noncanonical workspace policy");
+const policyLines = fs.readFileSync(workspacePolicyFile, "utf8").split(/\r?\n/);
+// Authoritative stanza must begin the document: never discover keys inside a
+// preceding multiline scalar. Unrelated YAML is NOT parsed heuristically: its
+// complete reviewed suffix is hash-bound, or absent in the minimal supported form.
+// Any other suffix (duplicate keys of any spelling, merge/alias/document/scalar
+// ambiguity or unrelated configuration edits) needs explicit parser/policy review.
+if (!/^packages:(?: *| +#.*)$/.test(policyLines[0]))
+  throw new Error("workspace packages stanza must start the bounded document");
+let sectionEnd = policyLines.findIndex((line, index) => index > 0 && /^[^\s#]/.test(line));
+if (sectionEnd < 0) sectionEnd = policyLines.length;
+const suffix = policyLines.slice(sectionEnd).join("\n");
+if (
+  suffix !== "" &&
+  createHash("sha256").update(suffix).digest("hex") !==
+    "1f5bc67fa0362bf4fe15b8cd7a3c930c60382aeea1901499ee6b382fb0bd562f"
+)
+  throw new Error("unreviewed or ambiguous workspace policy suffix");
+const workspacePatterns = [];
+for (const line of policyLines.slice(1, sectionEnd)) {
+  if (/^\s*(?:#.*)?$/.test(line)) continue;
+  const match = /^  - (?:"([^"]+)"|'([^']+)'|([^\s#]+))(?: +#.*)? *$/.exec(line);
+  const pattern = match && (match[1] ?? match[2] ?? match[3]);
+  if (
+    !pattern ||
+    !/^(?:\.|[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)*(?:\/\*)?)$/.test(
+      pattern,
+    ) ||
+    pattern
+      .split("/")
+      .some((part) => ["node_modules", ".git", ".artifacts", "coverage"].includes(part)) ||
+    workspacePatterns.includes(pattern)
+  )
+    throw new Error("unsupported workspace pattern: " + line);
+  workspacePatterns.push(pattern);
+}
+if (workspacePatterns.length === 0) throw new Error("empty workspace packages list");
+function registerWorkspace(directory) {
+  if (fs.realpathSync(directory) !== directory)
+    throw new Error("noncanonical declared workspace: " + directory);
+  const packageJson = path.join(directory, "package.json");
+  if (!fs.existsSync(packageJson)) return;
+  if (fs.realpathSync(packageJson) !== packageJson)
+    throw new Error("noncanonical workspace manifest");
+  const pkg = JSON.parse(fs.readFileSync(packageJson, "utf8"));
+  validateWorkspaceManifest(pkg);
+  if (workspacePackages.has(pkg.name) && workspacePackages.get(pkg.name) !== directory)
+    throw new Error("ambiguous declared workspace identity: " + pkg.name);
+  workspacePackages.set(pkg.name, directory);
+  // Preserve the existing dependency-request aggregation boundary. Membership
+  // discovery additionally covers declared root/UI/examples without merging UI
+  // or example importer dependency versions into the root importer.
+  const rel = path.relative(projectRoot, directory).split(path.sep);
+  if (["packages", "extensions"].includes(rel[0])) addRequestedDependencies(pkg);
+}
+for (const pattern of workspacePatterns) {
+  if (!pattern.endsWith("/*")) {
+    const directory = path.join(projectRoot, pattern);
+    if (fs.existsSync(directory)) registerWorkspace(directory);
+    continue;
+  }
+  const parent = path.join(projectRoot, pattern.slice(0, -2));
+  if (!fs.existsSync(parent)) continue;
+  if (fs.realpathSync(parent) !== parent) throw new Error("noncanonical workspace parent");
+  for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
+    if (entry.isSymbolicLink())
+      throw new Error("symlinked declared workspace child: " + entry.name);
+    if (entry.isDirectory() && !entry.name.startsWith("."))
+      registerWorkspace(path.join(parent, entry.name));
   }
 }
-for (const root of ["packages", "extensions"]) scanWorkspace(path.join(projectRoot, root));
 
 const storeEntries = fs
   .readdirSync(virtualStore, { withFileTypes: true })
@@ -80,8 +166,6 @@ function packageVersion(candidate) {
 }
 
 // Aliases support exact SemVer only; ordinary range behavior is unchanged.
-const exactVersionPattern =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const parsedRequests = new Map();
 function parsePackageRequest(name, spec = "") {
   const key = JSON.stringify([name, spec]);
@@ -361,7 +445,6 @@ function uiPathExists(file) {
   }
 }
 const uiPresent = uiPathExists(uiManifest);
-const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 function requireCanonicalFile(file) {
   if (!fs.lstatSync(file).isFile() || fs.realpathSync(file) !== file) {
     throw new Error("noncanonical UI package manifest: " + file);
@@ -409,7 +492,11 @@ function installedUiPackage(name, spec) {
   return source;
 }
 if (uiPresent) {
-  if (fs.realpathSync(uiRoot) !== uiRoot || uiPathExists(uiModules)) {
+  if (
+    fs.realpathSync(uiRoot) !== uiRoot ||
+    (!inPlace && uiPathExists(uiModules)) ||
+    (inPlace && uiPathExists(uiModules) && fs.realpathSync(uiModules) !== uiModules)
+  ) {
     throw new Error("UI source prefix must be canonical and node_modules absent");
   }
   const ui = requireCanonicalFile(uiManifest);
@@ -496,13 +583,19 @@ function inspectInstalled(dir) {
         // Only an exact installed workspace path with matching canonical manifest
         // may map to its streamed counterpart. Never admit arbitrary external dirs.
         const imageRoot = path.dirname(imageModules);
+        const bindingParts = rel.split(path.sep);
+        const bindingAt = bindingParts.lastIndexOf("node_modules");
+        const bindingName = bindingParts.slice(bindingAt + 1).join("/");
         const matches = [...workspacePackages].filter(([name, source]) => {
           const expected = path.join(imageRoot, path.relative(projectRoot, source));
           return (
+            bindingName === name &&
             actual === expected &&
             fs.realpathSync(source) === source &&
-            requireCanonicalFile(path.join(actual, "package.json")).name === name &&
-            requireCanonicalFile(path.join(source, "package.json")).name === name
+            sameWorkspaceIdentity(
+              requireCanonicalFile(path.join(actual, "package.json")),
+              requireCanonicalFile(path.join(source, "package.json")),
+            )
           );
         });
         if (matches.length !== 1) throw new Error("unrecognized external installed link: " + rel);
@@ -643,6 +736,9 @@ if (inventoryOnly) {
   process.stdout.write(
     JSON.stringify({
       inventoryComplete: true,
+      inPlaceImmutable: inPlace,
+      hydrationPerformed: false,
+      compilerRoot: projectRoot,
       planComplete: true,
       diagnosticOnly: true,
       actualTotalBytes: copiedBytes,

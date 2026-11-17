@@ -1,0 +1,59 @@
+{
+  "status": "PROPOSED_EXACT_FUTURE_PUBLICATION_AND_RUNTIME_NOT_GRANTED",
+  "repository": "fr-meyer/openclaw",
+  "branch": "ci/offline-provider-regressions-20261116",
+  "jobs": 2,
+  "maxParallel": 2,
+  "minutesPerJob": 45,
+  "freshAttempts": 1,
+  "reruns": 0,
+  "noAddedSpend": true,
+  "publicationSeparate": true,
+  "bootstrapSha256": "7726d3fd955a24df15c5ca7f08c6241b80e45b1262a4cbd8732b4a3cdffe1fa5",
+  "runner": "GitHub-hosted ubuntu-24.04 existing disposable job storage; owner-approved exact payload+guarded dispatch trust handoff, planned scoped trusted sudo bootstrap, no candidate privilege or new resources",
+  "runtime": {
+    "cpu": 2,
+    "memoryBytes": 6442450944,
+    "swap": 0,
+    "pids": 512,
+    "physicalCapacityBytes": 12884901888,
+    "imageMonitoredBytes": 8589934592,
+    "contextMonitoredBytes": 2147483648,
+    "hostFreeFloorBytes": 8589934592,
+    "outsideAllowanceBytes": 134217728,
+    "runtimeWritableMiB": {
+      "tmp": 1088,
+      "artifacts": 256,
+      "sdk": 256,
+      "qualification": 256,
+      "shm": 128,
+      "hostReceipts": 64
+    }
+  },
+  "operation": "metadata-only trusted dependency acquisition, exact BFL73/Emb13 source assembly, complete graph/provenance observation, genuine offline31d then constant trusted NOOP",
+  "excluded": [
+    "products",
+    "compiler",
+    "lint",
+    "native probes",
+    "provider credentials",
+    "new cloud resources",
+    "cost",
+    "production mutations",
+    "shared engine",
+    "candidate privileges",
+    "security loosening"
+  ],
+  "currentAuthority": "local source/stdlib fixtures/syntax/existing trusted offline formatter only; direction granted, publication/runtime not granted",
+  "delivery": {
+    "mode": "standard workflow logs ONLY; no Actions artifact/cache/package/custom-image storage writes",
+    "rawBytesPerJob": 1048576,
+    "encodedStdoutBytesPerJob": 2097152,
+    "maxFrameBytes": 8192,
+    "rawChunkBytes": 4096,
+    "source": "GitHub official billing docs observed by parent2026-11-17T01:55Z: public standard compute free; logs/jobsummary not artifact allowance; artifact storage separately metered",
+    "costAuthority": "no added spend; no billing credentials/allowance assumption; no storage fallback",
+    "jobSuccess": "recipe+whole-domain verified closure+full bounded framed log emission complete; oversize/invalid/failedemission => nonqualifying job failure",
+    "hostMemory": "reuse existing64MiB receipt/control allowance; no independent disk bucket"
+  }
+}
