@@ -181,6 +181,7 @@ export function buildSecureMcpBridgeLaunchPlan(
       callback.port,
       "--host",
       normalizeHostname(callback.hostname),
+      ...(normalizeHostname(callback.hostname) === "::1" ? ["--bind-host", "::1"] : []),
       "--transport",
       "http-only",
       "--auth-timeout",

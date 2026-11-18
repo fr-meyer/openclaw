@@ -43,6 +43,16 @@ describe("secure MCP bridge", () => {
     });
   });
 
+  it("binds IPv6 loopback callbacks on IPv6 instead of the default IPv4 listener", () => {
+    const plan = buildSecureMcpBridgeLaunchPlan({
+      ...fixture(),
+      callbackUrl: "http://[::1]:7331/oauth/callback",
+    });
+    const bindIndex = plan.args.indexOf("--bind-host");
+    expect(bindIndex).toBeGreaterThan(-1);
+    expect(plan.args[bindIndex + 1]).toBe("::1");
+  });
+
   it("loads only explicitly named protected credential environment bindings", () => {
     expect(
       loadProtectedCredentialsFromEnvironment(
