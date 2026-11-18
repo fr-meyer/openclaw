@@ -1129,6 +1129,7 @@ function collectOverrideViolations(
   if (!packages) {
     return [];
   }
+  const stablePackages = packages;
   type Edge = { name: string; spec: string | undefined; path: string };
   type State = { path: string; contexts: ExactOverrideRules[] };
   const outgoing = new Map<string, Edge[]>();
@@ -1188,7 +1189,7 @@ function collectOverrideViolations(
     if (!rule?.version) {
       return;
     }
-    const metadata = packages[lockPath];
+    const metadata = stablePackages[lockPath];
     const version =
       isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
     const actualName =
@@ -1213,7 +1214,7 @@ function collectOverrideViolations(
     rule: ExactOverrideRule | undefined,
     contexts: ExactOverrideRules[],
   ) {
-    const metadata = packages[lockPath];
+    const metadata = stablePackages[lockPath];
     const version =
       isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
     const actualName =
@@ -1240,7 +1241,7 @@ function collectOverrideViolations(
     if (!name) {
       return;
     }
-    const metadata = packages[lockPath];
+    const metadata = stablePackages[lockPath];
     const version =
       isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
     const rule = match(name, version, [overrideRules]);

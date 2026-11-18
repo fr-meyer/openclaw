@@ -25,6 +25,11 @@ import { expandNativeSecurityTestOwnership } from "../vitest-projects-config.tes
 import { fullSuiteVitestShards } from "../vitest/vitest.test-shards.mjs";
 import { toolingIsolatedTestFiles } from "../vitest/vitest.tooling-isolated-paths.mjs";
 
+const firstNativeSecurityTest = NATIVE_SECURITY_TEST_FILES[0];
+if (!firstNativeSecurityTest) {
+  throw new Error("Native security test ownership must not be empty");
+}
+
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const ISOLATED = "test/vitest/vitest.tooling-isolated.config.ts";
 const DOCKER_STANDALONE = [
@@ -77,7 +82,7 @@ describe("native security suite ownership", () => {
         "// Synthetic metadata-only adapter.\n",
       );
       const reasons: string[] = [];
-      const shards = createChangedNodeTestShards([NATIVE_SECURITY_TEST_FILES[0]], {
+      const shards = createChangedNodeTestShards([firstNativeSecurityTest], {
         cwd: root,
         runnerBackend: "github",
         onFallback: (reason) => reasons.push(reason),
@@ -144,7 +149,7 @@ describe("native security suite ownership", () => {
       ).toHaveLength(1);
     }
     // Do not erase a direct duplicate; the aggregate auditor must still reject it.
-    const [member] = NATIVE_SECURITY_TEST_FILES;
+    const member = firstNativeSecurityTest;
     expect(
       expandNativeSecurityTestOwnership([NATIVE_SECURITY_ADAPTER, member]).filter(
         (file) => file === member,
@@ -186,7 +191,7 @@ describe("native security suite ownership", () => {
 
   it("retains a removed declared member and adapter as nonempty changed owners", () => {
     const missingRoot = path.join(ROOT, ".native-ownership-missing-fixture");
-    for (const file of [NATIVE_SECURITY_TEST_FILES[0], NATIVE_SECURITY_ADAPTER]) {
+    for (const file of [firstNativeSecurityTest, NATIVE_SECURITY_ADAPTER]) {
       expect(resolveChangedTestTargetPlan([file], { cwd: missingRoot })).toMatchObject({
         mode: "targets",
         targets: [NATIVE_SECURITY_ADAPTER],
