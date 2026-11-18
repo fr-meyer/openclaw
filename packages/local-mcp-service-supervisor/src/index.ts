@@ -40,11 +40,15 @@ function assertAbsolutePath(label: string, value: string): void {
   }
 }
 
-export function isLoopbackHost(host: string): boolean {
-  const normalized = host
+function normalizeLoopbackHost(host: string): string {
+  return host
     .trim()
     .toLowerCase()
     .replace(/^\[(.*)\]$/, "$1");
+}
+
+export function isLoopbackHost(host: string): boolean {
+  const normalized = normalizeLoopbackHost(host);
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
 }
 
@@ -198,7 +202,8 @@ export async function probeLocalMcpHealth(
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) {
     throw new Error("health probe timeout must be an integer between 1 and 30000 milliseconds");
   }
-  const host = spec.host === "::1" ? "[::1]" : "127.0.0.1";
+  const normalizedHost = normalizeLoopbackHost(spec.host);
+  const host = normalizedHost === "::1" ? "[::1]" : "127.0.0.1";
   const url = `http://${host}:${spec.port}${healthPath}`;
   const response = await (options.fetchImpl ?? fetch)(url, {
     method: "GET",

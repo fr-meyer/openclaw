@@ -110,6 +110,15 @@ describe("local MCP service supervisor", () => {
     );
   });
 
+  it.each(["::1", "[::1]", " ::1 ", " [::1] "])(
+    "probes accepted IPv6 loopback spelling %s without switching families",
+    async (host) => {
+      const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+      const result = await probeLocalMcpHealth({ ...fixture(), host }, { fetchImpl });
+      expect(result.url).toBe("http://[::1]:7332/healthz");
+    },
+  );
+
   it("fails closed on unhealthy responses and unsafe health paths", async () => {
     await expect(
       probeLocalMcpHealth(fixture(), {
