@@ -2,7 +2,7 @@
 
 This bundled security plugin blocks explicit per-call `model` overrides on `sessions_spawn`. It keeps the configured subagent default and fallback chain authoritative instead of allowing a caller to select a different model for one spawn.
 
-The policy is enabled by default for every agent. Configuration can narrow it to selected coordinator agents, change the denial message, or also block explicit `thinking` overrides.
+The bundled plugin is opt-in: enable it with `plugins.entries` as shown below. Once the plugin is enabled, its policy applies to every agent by default. Configuration can narrow it to selected coordinator agents, change the denial message, or also block explicit `thinking` overrides.
 
 ```json5
 {
