@@ -425,6 +425,7 @@ describe("provider local service", () => {
     let socketClosed = false;
     const sockets = new Set<net.Socket>();
     const server = net.createServer((socket) => {
+      socket.resume();
       sockets.add(socket);
       socket.on("error", () => undefined);
       socket.on("close", () => {

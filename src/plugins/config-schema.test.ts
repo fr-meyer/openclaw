@@ -26,6 +26,25 @@ function expectJsonSchema(
 }
 
 describe("buildPluginConfigSchema", () => {
+  it("rejects oversized bounded input before validating plugin elements", () => {
+    const validateElement = vi.fn();
+    const result = buildPluginConfigSchema(
+      z.object({ items: z.array(z.string().superRefine(validateElement)).max(1) }),
+    );
+
+    expect(result.safeParse?.({ items: ["first", "second"] })).toMatchObject({
+      success: false,
+      error: { issues: [{ path: ["items"] }] },
+    });
+    expect(validateElement).not.toHaveBeenCalled();
+
+    expect(result.safeParse?.({ items: ["first"] })).toEqual({
+      success: true,
+      data: { items: ["first"] },
+    });
+    expect(validateElement).toHaveBeenCalledTimes(1);
+  });
+
   it("builds json schema in input mode", () => {
     const schema = z.strictObject({ enabled: z.boolean().default(true) });
     const result = buildPluginConfigSchema(schema);

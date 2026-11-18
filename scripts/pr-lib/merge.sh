@@ -124,6 +124,54 @@ require_clawsweeper_review() {
   validate_clawsweeper_review_comments "$pr" "$head_sha"
 }
 
+uses_fork_codex_review() {
+  [ "$1" = fr-meyer/openclaw ] && [ "$2" = github.com ]
+}
+
+require_initial_external_review() {
+  local pr="$1" head_sha="$2" repo_name="${3:-}" repo_host="${4:-}" repo_json
+  if [ -z "$repo_name" ] || [ -z "$repo_host" ]; then
+    repo_json=$(pr_gh_plain repo view --json nameWithOwner,url) || return 1
+    repo_name=$(printf '%s\n' "$repo_json" | jq -er '.nameWithOwner') || return 1
+    repo_host=$(printf '%s\n' "$repo_json" | jq -er '.url | capture("^https://(?<host>[^/]+)/").host') || return 1
+  fi
+  if uses_fork_codex_review "$repo_name" "$repo_host"; then
+    # The prepared independent review is still required above. Run the fork's
+    # fresh external review once, after CI, immediately before merge admission.
+    echo "Fork Codex review is pending final exact-head admission."
+    return 0
+  fi
+  require_clawsweeper_review "$pr" "$head_sha" "$repo_name" "$repo_host"
+}
+
+require_final_external_review() {
+  local pr="$1" head_sha="$2" base_sha="$3" route="$4" method="$5"
+  MERGE_EXTERNAL_REVIEW_KIND="clawsweeperReview"
+  MERGE_EXTERNAL_REVIEW_EVIDENCE=""
+  if uses_fork_codex_review "$MERGE_REPO_NAME" "$MERGE_REPO_HOST"; then
+    # This local review cannot follow a deferred queue/auto-merge candidate.
+    # Immediate squash uses the existing expected-head dispatch and authority
+    # recheck; no admin or alternate merge route inherits this review policy.
+    if [ "$route" != immediate ] || [ "$method" != squash ]; then
+      merge_outcome_stop "Fork Codex review requires immediate squash; deferred or alternate routes need a fresh landing-time review contract"
+      return 1
+    fi
+    MERGE_EXTERNAL_REVIEW_KIND="codexReview"
+    MERGE_EXTERNAL_REVIEW_EVIDENCE=$(python3 -I "$script_parent_dir/pr-lib/fork-codex-review.py" \
+      --checkout "$PWD" --repository "$MERGE_REPO_NAME" --host "$MERGE_REPO_HOST" \
+      --pr "$pr" --base-sha "$base_sha" --head-sha "$head_sha") || return 1
+    merge_outcome_stable "$pr" || return 1
+  else
+    fetch_clawsweeper_review_comments "$pr" "$MERGE_REPO_NAME" "$MERGE_REPO_HOST" || return 1
+    if ! merge_outcome_stable "$pr"; then
+      unset CLAWSWEEPER_REVIEW_COMMENTS
+      return 1
+    fi
+    validate_clawsweeper_review_comments "$pr" "$head_sha" || return 1
+    MERGE_EXTERNAL_REVIEW_EVIDENCE="$CLAWSWEEPER_REVIEW_EVIDENCE"
+  fi
+}
+
 # Return 0 for relevant drift, 1 for unrelated drift, and 2 for failed evaluation.
 # The caller uses a conditional, so every fallible evidence operation is checked.
 mainline_drift_requires_sync() (
@@ -277,7 +325,7 @@ merge_verify() {
 
   fetch_pr_head "$pr" "$PREP_HEAD_SHA" "refs/heads/pr-$pr" "$json" || return 1
   json="$PR_HEAD_OBSERVATION"
-  require_clawsweeper_review "$pr" "$pr_head_sha" \
+  require_initial_external_review "$pr" "$pr_head_sha" \
     "${MERGE_REPO_NAME:-}" "${MERGE_REPO_HOST:-}" || return 1
   mark_pr_operation_side_effects_started || return 1
   if [ "$github_pending" = true ]; then
@@ -888,12 +936,7 @@ merge_run() {
       merge_outcome_stop "main changed during final admin admission"; return 1;
     }
   fi
-  fetch_clawsweeper_review_comments "$pr" "$MERGE_REPO_NAME" "$MERGE_REPO_HOST" || return 1
-  if ! merge_outcome_stable "$pr"; then
-    unset CLAWSWEEPER_REVIEW_COMMENTS
-    return 1
-  fi
-  validate_clawsweeper_review_comments "$pr" "$PREP_HEAD_SHA" || return 1
+  require_final_external_review "$pr" "$PREP_HEAD_SHA" "$observed_main" "$route" "$merge_method" || return 1
   if [ -n "$recovery_artifact_head" ]; then
     if [ "$recovery_artifacts" != "$(pr_git hash-object --no-filters -- "${required_artifacts[@]}")" ]; then
       merge_outcome_stop "recovery artifacts changed during admission"
@@ -945,11 +988,11 @@ merge_run() {
   intent=$(printf '%s\n' "$MERGE_OBSERVATION" | jq -c --argjson repo "$MERGE_REPO" \
     --arg method "$merge_method" --arg route "$route" --arg attempt "$attempt" \
     --arg localHead "${LOCAL_PREP_HEAD_SHA:-$PREP_HEAD_SHA}" --arg transport "$MERGE_TRANSPORT" \
-    --argjson review "$CLAWSWEEPER_REVIEW_EVIDENCE" '
+    --arg reviewKind "$MERGE_EXTERNAL_REVIEW_KIND" --argjson review "$MERGE_EXTERNAL_REVIEW_EVIDENCE" '
     {version:1,repo:$repo,pr:.pr.number,prId:.pr.id,base:.pr.baseRefName,head:.pr.headRefOid,
      localHead:$localHead,
      main:.main,method:$method,route:$route,attempt:$attempt,phase:"intent",accepted:false,landed:null,
-     clawsweeperReview:$review} + (if $transport == "rest" then {transport:"rest"} else {} end)
+     ($reviewKind):$review} + (if $transport == "rest" then {transport:"rest"} else {} end)
   ') || return 1
   if [ -n "$legacy_directory" ]; then
     intent=$(printf '%s\n' "$intent" | jq -c --argjson legacy "$legacy_refusal" --arg actor "$recovery_actor" '.legacyRefusal=($legacy + {actor:$actor})') || return 1

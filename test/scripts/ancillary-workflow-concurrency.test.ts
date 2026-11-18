@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
@@ -80,9 +81,17 @@ const WORKFLOWS: {
 
 type Job = {
   if?: string | boolean;
+  "runs-on"?: string;
   concurrency?: Concurrency;
   outputs?: Record<string, string>;
-  steps: { id?: string; name?: string; if?: string; uses?: string; with?: { script?: string } }[];
+  steps: {
+    id?: string;
+    name?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    with?: { script?: string };
+  }[];
 };
 type Concurrency = { group: string; "cancel-in-progress": string | boolean };
 type Workflow = {
@@ -641,6 +650,50 @@ describe.each(WORKFLOWS)("ancillary admission: $file", (policy) => {
       expectDraftSkipped(converted);
     });
   }
+});
+
+describe("ARM Testbox PR and dispatch routing", () => {
+  const workflow = parse(
+    readFileSync(".github/workflows/ci-check-arm-testbox.yml", "utf8"),
+  ) as Workflow;
+  const job = workflow.jobs["check-arm"]!;
+
+  it.each([
+    { eventName: "pull_request", runner: "ubuntu-24.04-arm", lifecycle: false },
+    {
+      eventName: "workflow_dispatch",
+      runner: "blacksmith-16vcpu-ubuntu-2404-arm",
+      lifecycle: true,
+    },
+  ])(
+    "routes $eventName without changing dispatch ownership",
+    ({ eventName, runner, lifecycle }) => {
+      const context = { github: { event_name: eventName } };
+      expect(evaluate(job["runs-on"]!, context)).toBe(runner);
+      for (const name of ["Begin Testbox", "Run Testbox"]) {
+        const step = job.steps.find((entry) => entry.name === name)!;
+        expect(evaluate(step.if ?? true, context, true), name).toBe(lifecycle);
+      }
+      expect(job.steps.find((entry) => entry.name === "Run Testbox")?.if).toContain("always()");
+    },
+  );
+
+  it.each([
+    { architecture: "aarch64", succeeds: true },
+    { architecture: "arm64", succeeds: true },
+    { architecture: "x86_64", succeeds: false },
+  ])("checks the actual $architecture runner", ({ architecture, succeeds }) => {
+    const script = job.steps.find((entry) => entry.name === "Verify ARM runner")!.run!;
+    const result = spawnSync(
+      "bash",
+      ["-c", `uname() { printf '%s\\n' '${architecture}'; }\n${script}`],
+      {
+        encoding: "utf8",
+      },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status === 0, `${result.stdout}\n${result.stderr}`).toBe(succeeds);
+  });
 });
 
 it("honors cancellation after a schedule-only scope job is skipped", () => {

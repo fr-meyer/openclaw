@@ -1,0 +1,14 @@
+diff --git a/package.json b/package.json
+index 2ec0ba02f9572bfe7c5750a5b7ed001a56644623..3c4d1b3251a9bae830fbcc0d6e6492fba968dfd6 100644
+--- a/package.json
++++ b/package.json
+@@ -60,6 +60,6 @@
+     "@lit/context": "^1.1.6",
+     "lit": "^3.3.3",
+     "signal-utils": "^0.21.1",
+-    "zod": "^3.25.76"
++    "zod": "4.6.6"
+   }
+-}
+\ No newline at end of file
++}

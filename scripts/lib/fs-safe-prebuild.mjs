@@ -8,6 +8,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -271,6 +272,9 @@ export function restoreFsSafePrebuild(packageRoot, env = process.env, log = cons
     writeFileSync(path.join(stageRoot, "package.json"), '{"private":true}\n');
     runNpmInstall(npmCli, ownerRoot, stageRoot, `${probe.name}@${probe.version}`, env);
     const stagedPackage = path.join(stageRoot, "node_modules", probe.name);
+    if (!lstatSync(stagedPackage).isDirectory()) {
+      throw new Error("the staged native package is not a real directory");
+    }
     const installed = JSON.parse(readFileSync(path.join(stagedPackage, "package.json"), "utf8"));
     if (installed.name !== probe.name || installed.version !== probe.version) {
       throw new Error("npm did not install the matching native package");
@@ -281,7 +285,13 @@ export function restoreFsSafePrebuild(packageRoot, env = process.env, log = cons
     // An exclusive directory reservation preserves any pre-existing package.
     mkdirSync(destination);
     installedRoot = destination;
-    cpSync(stagedPackage, destination, { recursive: true, force: false, errorOnExist: true });
+    for (const entry of readdirSync(stagedPackage)) {
+      cpSync(path.join(stagedPackage, entry), path.join(destination, entry), {
+        recursive: true,
+        force: false,
+        errorOnExist: true,
+      });
+    }
     if (runProbe(packageRoot, env).status !== "ready") {
       throw new Error("the restored native binding could not be loaded or used");
     }

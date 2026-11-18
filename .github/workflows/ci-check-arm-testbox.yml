@@ -61,10 +61,12 @@ jobs:
     permissions:
       contents: read
     name: "check-arm"
-    runs-on: blacksmith-16vcpu-ubuntu-2404-arm
+    # PRs validate ARM hydration; only dispatched sessions need Blacksmith metadata.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04-arm' || 'blacksmith-16vcpu-ubuntu-2404-arm' }}
     timeout-minutes: 120
     steps:
       - name: Begin Testbox
+        if: github.event_name == 'workflow_dispatch'
         uses: useblacksmith/begin-testbox@233448af4bfdc6fca509a7f0974411ac6d8a8043 # v2
         with:
           testbox_id: ${{ inputs.testbox_id }}
@@ -155,6 +157,6 @@ jobs:
         # Temporary local-listener fix: https://github.com/useblacksmith/run-testbox/pull/15
         # Return to useblacksmith/run-testbox after the fix lands upstream.
         uses: steipete/run-testbox@2b6b1be536ec7f3c73757fedf5460a27ab4856b4
-        if: always()
+        if: github.event_name == 'workflow_dispatch' && always()
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

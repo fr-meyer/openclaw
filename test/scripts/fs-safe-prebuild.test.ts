@@ -93,13 +93,18 @@ async function createFixture() {
     if (process.env.FIXTURE_NPM_FAIL) process.exit(1);
     const prefix = args[args.indexOf("--prefix") + 1];
     const target = path.join(prefix, "node_modules", ${JSON.stringify(NATIVE_NAME)});
-    fs.mkdirSync(target, { recursive: true });
-    fs.writeFileSync(path.join(target, "package.json"), JSON.stringify({
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const source = process.env.FIXTURE_SYMLINK_STAGED_ROOT
+      ? path.join(prefix, "real-native")
+      : target;
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, "package.json"), JSON.stringify({
       name: ${JSON.stringify(NATIVE_NAME)}, version: process.env.FIXTURE_WRONG_VERSION ? "9.9.9" : ${JSON.stringify(NATIVE_VERSION)}, main: "index.cjs",
     }));
-    fs.writeFileSync(path.join(target, "index.cjs"), process.env.FIXTURE_BROKEN_DOWNLOAD
+    fs.writeFileSync(path.join(source, "index.cjs"), process.env.FIXTURE_BROKEN_DOWNLOAD
       ? "throw new Error('addon load failed')"
       : "module.exports.readCloneFileMetadata = (paths) => paths;");
+    if (process.env.FIXTURE_SYMLINK_STAGED_ROOT) fs.symlinkSync(source, target, "dir");
   `,
   );
   const env = {
@@ -201,6 +206,16 @@ describe("packaged fs-safe prebuild restoration", () => {
     const result = fixture.run(env);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain(warning);
+    expect(result.stdout).not.toContain("restored");
+    await expect(fs.access(fixture.nativeRoot)).rejects.toHaveProperty("code", "ENOENT");
+    await expectCompleted(fixture);
+  });
+
+  it.skipIf(process.platform === "win32")("refuses a symlinked staged package root", async () => {
+    const fixture = await createFixture();
+    const result = fixture.run({ FIXTURE_SYMLINK_STAGED_ROOT: "1" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain("staged native package is not a real directory");
     expect(result.stdout).not.toContain("restored");
     await expect(fs.access(fixture.nativeRoot)).rejects.toHaveProperty("code", "ENOENT");
     await expectCompleted(fixture);
