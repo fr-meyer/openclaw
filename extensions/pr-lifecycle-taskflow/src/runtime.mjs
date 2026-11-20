@@ -1,3 +1,72 @@
+function requireLifecycleHost(api) {
+  const tasks = api.runtime?.tasks;
+  const capability = tasks?.lifecycleController;
+  if (
+    tasks?.authorityVersion !== 1 ||
+    capability?.authorityVersion !== 1 ||
+    capability.pluginId !== "pr-lifecycle-taskflow" ||
+    capability.source !== api.source ||
+    capability.rootDir !== api.rootDir ||
+    capability.managedFlows !== true ||
+    capability.taskRuns !== true ||
+    capability.nativeLaunch !== true ||
+    typeof tasks.managedFlows?.bindSession !== "function" ||
+    typeof tasks.runs?.bindSession !== "function" ||
+    typeof api.runtime?.subagent?.run !== "function"
+  ) {
+    throw new Error("pr_lifecycle_host_capability_unavailable");
+  }
+  return capability;
+}
+import { AsyncLocalStorage } from "node:async_hooks";
+const taskBindingScopes = new AsyncLocalStorage();
+const bindingCleanupFailures = new WeakMap();
+async function trackTaskBinding(pending) {
+  const scope = taskBindingScopes.getStore();
+  if (!scope || scope.closed) throw new Error("pr_lifecycle_binding_scope_unavailable");
+  const binding = await pending;
+  if (typeof binding?.close !== "function")
+    throw new Error("pr_lifecycle_binding_close_unavailable");
+  scope.bindings.add(binding);
+  return binding;
+}
+async function withTaskBindings(operation) {
+  const existing = taskBindingScopes.getStore();
+  if (existing && !existing.closed) return await operation();
+  const scope = { bindings: new Set(), closed: false };
+  return await taskBindingScopes.run(scope, async () => {
+    let primary;
+    let failed = false;
+    try {
+      return await operation();
+    } catch (error) {
+      failed = true;
+      primary = error;
+      throw error;
+    } finally {
+      scope.closed = true;
+      const failures = [];
+      for (const binding of scope.bindings) {
+        try {
+          await binding.close();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (
+        failures.length &&
+        failed &&
+        primary &&
+        (typeof primary === "object" || typeof primary === "function")
+      ) {
+        bindingCleanupFailures.set(primary, Object.freeze(failures));
+      }
+      if (failures.length && !failed) {
+        throw new AggregateError(failures, "PR lifecycle binding cleanup failed");
+      }
+    }
+  });
+}
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -460,38 +529,40 @@ function remediationReportFromEvidence(api, state, config = {}) {
 }
 
 async function reconcileRemediationEvidence(api, config, boundFlows, flow) {
-  const state = stateOf(flow);
-  if (!state || state.activeWorker?.kind !== "remediation") {
-    return { changed: false, flow, reason: "no_active_remediation" };
-  }
-  let input;
-  try {
-    input = remediationReportFromEvidence(api, state, config);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "unknown";
-    const blocked = blockState(state, `remediation_evidence_invalid:${detail.slice(0, 240)}`);
-    const blockedFlow = requireApplied(persistState(boundFlows, flow, blocked.state));
-    await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
-    return { changed: true, flow: blockedFlow, reason: "remediation_evidence_invalid" };
-  }
-  if (!input) {
-    return { changed: false, flow, reason: "remediation_evidence_missing" };
-  }
-  const transition = applyWorkerReport(state, input, state.activeWorker.sessionKey);
-  let nextState = transition.state;
-  let nextEffect = transition.effect;
-  let nextFlow = requireApplied(persistState(boundFlows, flow, nextState));
-  const gate = enforceModeGate(nextState);
-  if (gate.changed) {
-    nextState = gate.state;
-    nextEffect = gate.effect;
-    nextFlow = requireApplied(persistState(boundFlows, nextFlow, nextState));
-  }
-  await applyEffect(api, config, boundFlows, nextFlow, nextState, nextEffect, {
-    dispatchImmediately: true,
+  return await withTaskBindings(async () => {
+    const state = stateOf(flow);
+    if (!state || state.activeWorker?.kind !== "remediation") {
+      return { changed: false, flow, reason: "no_active_remediation" };
+    }
+    let input;
+    try {
+      input = remediationReportFromEvidence(api, state, config);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown";
+      const blocked = blockState(state, `remediation_evidence_invalid:${detail.slice(0, 240)}`);
+      const blockedFlow = requireApplied(await persistState(boundFlows, flow, blocked.state));
+      await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
+      return { changed: true, flow: blockedFlow, reason: "remediation_evidence_invalid" };
+    }
+    if (!input) {
+      return { changed: false, flow, reason: "remediation_evidence_missing" };
+    }
+    const transition = applyWorkerReport(state, input, state.activeWorker.sessionKey);
+    let nextState = transition.state;
+    let nextEffect = transition.effect;
+    let nextFlow = requireApplied(await persistState(boundFlows, flow, nextState));
+    const gate = enforceModeGate(nextState);
+    if (gate.changed) {
+      nextState = gate.state;
+      nextEffect = gate.effect;
+      nextFlow = requireApplied(await persistState(boundFlows, nextFlow, nextState));
+    }
+    await applyEffect(api, config, boundFlows, nextFlow, nextState, nextEffect, {
+      dispatchImmediately: true,
+    });
+    nextFlow = (await boundFlows.get(nextFlow.flowId)) ?? nextFlow;
+    return { changed: true, flow: nextFlow, reason: "remediation_evidence_reconciled" };
   });
-  nextFlow = boundFlows.get(nextFlow.flowId) ?? nextFlow;
-  return { changed: true, flow: nextFlow, reason: "remediation_evidence_reconciled" };
 }
 
 function isDisposableRuntimePath(value) {
@@ -992,68 +1063,76 @@ function mergedState(state, receipt, now = Date.now()) {
   };
 }
 
-function persistMergedReceipt(boundFlows, flow, state, receipt) {
-  let currentFlow = boundFlows.get(flow.flowId);
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const currentState = stateOf(currentFlow);
-    if (!currentFlow || !currentState) {
-      throw new Error("automatic_merge_receipt_flow_missing");
-    }
-    if (currentState.phase === PHASE.MERGED) {
-      if (
-        currentState.headSha === state.headSha &&
-        currentState.baseSha === state.baseSha &&
-        currentState.merged?.receipt?.sha === receipt.sha
-      ) {
-        return currentFlow;
+async function persistMergedReceipt(boundFlows, flow, state, receipt) {
+  return await withTaskBindings(async () => {
+    let currentFlow = await boundFlows.get(flow.flowId);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const currentState = stateOf(currentFlow);
+      if (!currentFlow || !currentState) {
+        throw new Error("automatic_merge_receipt_flow_missing");
       }
-      throw new Error("automatic_merge_receipt_conflict");
+      if (currentState.phase === PHASE.MERGED) {
+        if (
+          currentState.headSha === state.headSha &&
+          currentState.baseSha === state.baseSha &&
+          currentState.merged?.receipt?.sha === receipt.sha
+        ) {
+          return currentFlow;
+        }
+        throw new Error("automatic_merge_receipt_conflict");
+      }
+      if (
+        currentState.phase !== PHASE.MERGE_QUEUED ||
+        currentState.repo !== state.repo ||
+        currentState.prNumber !== state.prNumber ||
+        currentState.headSha !== state.headSha ||
+        currentState.baseSha !== state.baseSha ||
+        currentState.baseRef !== state.baseRef ||
+        currentState.mergePolicyDigest !== state.mergePolicyDigest ||
+        currentState.mergeAuthorization?.digest !== state.mergeAuthorization?.digest ||
+        currentState.mergeReady?.authorizationDigest !== state.mergeReady?.authorizationDigest
+      ) {
+        throw new Error("automatic_merge_receipt_state_conflict");
+      }
+      const mutation = await persistState(
+        boundFlows,
+        currentFlow,
+        mergedState(currentState, receipt),
+      );
+      if (mutation.applied) {
+        return mutation.flow;
+      }
+      if (mutation.code !== "revision_conflict") {
+        return requireApplied(mutation);
+      }
+      currentFlow = mutation.current ?? (await boundFlows.get(flow.flowId));
     }
+    throw new Error("automatic_merge_receipt_persistence_exhausted");
+  });
+}
+
+async function requireCurrentAutoMergeState(boundFlows, flow, state, policy) {
+  return await withTaskBindings(async () => {
+    const currentFlow = await boundFlows.get(flow.flowId);
+    const currentState = stateOf(currentFlow);
     if (
+      !currentFlow ||
+      currentFlow.revision !== flow.revision ||
+      !currentState ||
       currentState.phase !== PHASE.MERGE_QUEUED ||
-      currentState.repo !== state.repo ||
-      currentState.prNumber !== state.prNumber ||
       currentState.headSha !== state.headSha ||
       currentState.baseSha !== state.baseSha ||
       currentState.baseRef !== state.baseRef ||
+      currentState.wait?.kind === "check_suite" ||
       currentState.mergePolicyDigest !== state.mergePolicyDigest ||
       currentState.mergeAuthorization?.digest !== state.mergeAuthorization?.digest ||
       currentState.mergeReady?.authorizationDigest !== state.mergeReady?.authorizationDigest
     ) {
-      throw new Error("automatic_merge_receipt_state_conflict");
+      throw new AutoMergeRevisionChangedError(currentFlow);
     }
-    const mutation = persistState(boundFlows, currentFlow, mergedState(currentState, receipt));
-    if (mutation.applied) {
-      return mutation.flow;
-    }
-    if (mutation.code !== "revision_conflict") {
-      return requireApplied(mutation);
-    }
-    currentFlow = mutation.current ?? boundFlows.get(flow.flowId);
-  }
-  throw new Error("automatic_merge_receipt_persistence_exhausted");
-}
-
-function requireCurrentAutoMergeState(boundFlows, flow, state, policy) {
-  const currentFlow = boundFlows.get(flow.flowId);
-  const currentState = stateOf(currentFlow);
-  if (
-    !currentFlow ||
-    currentFlow.revision !== flow.revision ||
-    !currentState ||
-    currentState.phase !== PHASE.MERGE_QUEUED ||
-    currentState.headSha !== state.headSha ||
-    currentState.baseSha !== state.baseSha ||
-    currentState.baseRef !== state.baseRef ||
-    currentState.wait?.kind === "check_suite" ||
-    currentState.mergePolicyDigest !== state.mergePolicyDigest ||
-    currentState.mergeAuthorization?.digest !== state.mergeAuthorization?.digest ||
-    currentState.mergeReady?.authorizationDigest !== state.mergeReady?.authorizationDigest
-  ) {
-    throw new AutoMergeRevisionChangedError(currentFlow);
-  }
-  requireAutoMergePolicy(currentState, policy);
-  return currentState;
+    requireAutoMergePolicy(currentState, policy);
+    return currentState;
+  });
 }
 
 function reconciledMergeReceipt(state, remote, expectedActor) {
@@ -1132,7 +1211,7 @@ async function autoMergeReceipt(
   if (typeof headRef !== "string" || !headRef.trim()) {
     throw new Error("automatic_merge_head_ref_missing");
   }
-  const mergeState = typeof revalidate === "function" ? revalidate() : state;
+  const mergeState = typeof revalidate === "function" ? await revalidate() : state;
   if (typeof assertMergeLock === "function") {
     assertMergeLock();
   }
@@ -1345,8 +1424,31 @@ function normalizeRuntimeConfig(input = {}) {
   };
 }
 
-function bindFlowsForSession(api, sessionKey) {
-  return api.runtime.tasks.managedFlows.bindSession({ sessionKey });
+async function bindFlowsForSession(api, sessionKey) {
+  return await withTaskBindings(async () => {
+    requireLifecycleHost(api);
+    const bound = await trackTaskBinding(
+      api.runtime.tasks.managedFlows.bindSession({ sessionKey }),
+    );
+    const required = [
+      "get",
+      "list",
+      "createManaged",
+      "finish",
+      "fail",
+      "setWaiting",
+      "resume",
+      "capacitySnapshot",
+      "reserve",
+      "captureNativeLaunch",
+      "assertCurrent",
+      "close",
+    ];
+    if (required.some((name) => typeof bound[name] !== "function")) {
+      throw new Error("pr_lifecycle_host_flow_contract_unavailable");
+    }
+    return bound;
+  });
 }
 
 function ownerSessionKeyForRepo(config, repo) {
@@ -1379,61 +1481,69 @@ function uniqueOwnerSessionKeys(config) {
   return keys;
 }
 
-function collectLifecycleFlows(api, config) {
-  const flows = [];
-  const seen = new Set();
-  for (const sessionKey of uniqueOwnerSessionKeys(config)) {
-    for (const flow of bindFlowsForSession(api, sessionKey).list()) {
-      if (seen.has(flow.flowId) || flow.controllerId !== CONTROLLER_ID) {
+async function collectLifecycleFlows(api, config) {
+  return await withTaskBindings(async () => {
+    const flows = [];
+    const seen = new Set();
+    for (const sessionKey of uniqueOwnerSessionKeys(config)) {
+      for (const flow of await (await bindFlowsForSession(api, sessionKey)).list()) {
+        if (seen.has(flow.flowId) || flow.controllerId !== CONTROLLER_ID) {
+          continue;
+        }
+        seen.add(flow.flowId);
+        flows.push(flow);
+      }
+    }
+    return flows;
+  });
+}
+
+async function allBoundFlows(api, config) {
+  return await withTaskBindings(async () => {
+    return {
+      async list() {
+        return await collectLifecycleFlows(api, config);
+      },
+    };
+  });
+}
+
+async function resolveFlowBinding(api, config, flowId, preferredSessionKey) {
+  return await withTaskBindings(async () => {
+    const keys = uniqueOwnerSessionKeys(config);
+    const ordered = preferredSessionKey
+      ? [preferredSessionKey, ...keys.filter((key) => key !== preferredSessionKey)]
+      : keys;
+    for (const sessionKey of ordered) {
+      if (!sessionKey) {
         continue;
       }
-      seen.add(flow.flowId);
-      flows.push(flow);
+      const boundFlows = await bindFlowsForSession(api, sessionKey);
+      const flow = await boundFlows.get(flowId);
+      if (flow && flow.controllerId === CONTROLLER_ID && stateOf(flow)) {
+        return { boundFlows, flow, sessionKey };
+      }
     }
-  }
-  return flows;
+    throw new Error("flow_not_found");
+  });
 }
 
-function allBoundFlows(api, config) {
-  return {
-    list() {
-      return collectLifecycleFlows(api, config);
-    },
-  };
-}
-
-function resolveFlowBinding(api, config, flowId, preferredSessionKey) {
-  const keys = uniqueOwnerSessionKeys(config);
-  const ordered = preferredSessionKey
-    ? [preferredSessionKey, ...keys.filter((key) => key !== preferredSessionKey)]
-    : keys;
-  for (const sessionKey of ordered) {
-    if (!sessionKey) {
-      continue;
+async function findMatchingFlow(api, config, repo, prNumber, options = {}) {
+  return await withTaskBindings(async () => {
+    const preferred = ownerSessionKeyForRepo(config, repo);
+    const keys = [preferred, ...uniqueOwnerSessionKeys(config).filter((key) => key !== preferred)];
+    for (const sessionKey of keys) {
+      if (!sessionKey) {
+        continue;
+      }
+      const boundFlows = await bindFlowsForSession(api, sessionKey);
+      const flow = latestMatchingFlow(await boundFlows.list(), repo, prNumber, options);
+      if (flow) {
+        return { boundFlows, flow, sessionKey };
+      }
     }
-    const boundFlows = bindFlowsForSession(api, sessionKey);
-    const flow = boundFlows.get(flowId);
-    if (flow && flow.controllerId === CONTROLLER_ID && stateOf(flow)) {
-      return { boundFlows, flow, sessionKey };
-    }
-  }
-  throw new Error("flow_not_found");
-}
-
-function findMatchingFlow(api, config, repo, prNumber, options = {}) {
-  const preferred = ownerSessionKeyForRepo(config, repo);
-  const keys = [preferred, ...uniqueOwnerSessionKeys(config).filter((key) => key !== preferred)];
-  for (const sessionKey of keys) {
-    if (!sessionKey) {
-      continue;
-    }
-    const boundFlows = bindFlowsForSession(api, sessionKey);
-    const flow = latestMatchingFlow(boundFlows.list(), repo, prNumber, options);
-    if (flow) {
-      return { boundFlows, flow, sessionKey };
-    }
-  }
-  return null;
+    return null;
+  });
 }
 
 function stateOf(flow) {
@@ -1463,61 +1573,63 @@ function flowWaitJson(state) {
   return state.wait ?? { kind: "controller", phase: state.phase };
 }
 
-function persistState(boundFlows, flow, state) {
-  const nextRevision = flow.revision + 1;
-  state = {
-    ...state,
-    flowId: flow.flowId,
-    latestExternalMilestone:
-      state.latestExternalMilestone && state.latestExternalMilestone.observedRevision === null
-        ? { ...state.latestExternalMilestone, observedRevision: nextRevision }
-        : state.latestExternalMilestone,
-    terminalSupersession:
-      state.terminalSupersession && state.terminalSupersession.sourceRevision == null
-        ? { ...state.terminalSupersession, sourceRevision: nextRevision }
-        : state.terminalSupersession,
-  };
-  const common = {
-    flowId: flow.flowId,
-    expectedRevision: flow.revision,
-    currentStep: state.phase,
-    stateJson: state,
-    updatedAt: state.updatedAt,
-  };
-  if (state.phase === PHASE.MERGED) {
-    return boundFlows.finish({
+async function persistState(boundFlows, flow, state) {
+  return await withTaskBindings(async () => {
+    const nextRevision = flow.revision + 1;
+    state = {
+      ...state,
+      flowId: flow.flowId,
+      latestExternalMilestone:
+        state.latestExternalMilestone && state.latestExternalMilestone.observedRevision === null
+          ? { ...state.latestExternalMilestone, observedRevision: nextRevision }
+          : state.latestExternalMilestone,
+      terminalSupersession:
+        state.terminalSupersession && state.terminalSupersession.sourceRevision == null
+          ? { ...state.terminalSupersession, sourceRevision: nextRevision }
+          : state.terminalSupersession,
+    };
+    const common = {
       flowId: flow.flowId,
       expectedRevision: flow.revision,
+      currentStep: state.phase,
       stateJson: state,
       updatedAt: state.updatedAt,
-      endedAt: state.updatedAt,
-    });
-  }
-  if (state.phase === PHASE.FAILED) {
-    return boundFlows.fail({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      stateJson: state,
-      blockedSummary: state.blocker ?? "PR lifecycle failed",
-      updatedAt: state.updatedAt,
-      endedAt: state.updatedAt,
-    });
-  }
-  if (
-    state.phase === PHASE.BLOCKED ||
-    state.phase === PHASE.MERGE_READY ||
-    state.phase === PHASE.REVIEW_WAITING ||
-    state.phase === PHASE.WAITING_HEAD_EVENT
-  ) {
-    return boundFlows.setWaiting({
-      ...common,
-      waitJson: flowWaitJson(state),
-      ...(state.phase === PHASE.BLOCKED
-        ? { blockedSummary: state.blocker ?? "Manual intervention required" }
-        : {}),
-    });
-  }
-  return boundFlows.resume({ ...common, status: "running" });
+    };
+    if (state.phase === PHASE.MERGED) {
+      return await boundFlows.finish({
+        flowId: flow.flowId,
+        expectedRevision: flow.revision,
+        stateJson: state,
+        updatedAt: state.updatedAt,
+        endedAt: state.updatedAt,
+      });
+    }
+    if (state.phase === PHASE.FAILED) {
+      return await boundFlows.fail({
+        flowId: flow.flowId,
+        expectedRevision: flow.revision,
+        stateJson: state,
+        blockedSummary: state.blocker ?? "PR lifecycle failed",
+        updatedAt: state.updatedAt,
+        endedAt: state.updatedAt,
+      });
+    }
+    if (
+      state.phase === PHASE.BLOCKED ||
+      state.phase === PHASE.MERGE_READY ||
+      state.phase === PHASE.REVIEW_WAITING ||
+      state.phase === PHASE.WAITING_HEAD_EVENT
+    ) {
+      return await boundFlows.setWaiting({
+        ...common,
+        waitJson: flowWaitJson(state),
+        ...(state.phase === PHASE.BLOCKED
+          ? { blockedSummary: state.blocker ?? "Manual intervention required" }
+          : {}),
+      });
+    }
+    return await boundFlows.resume({ ...common, status: "running" });
+  });
 }
 
 function requireApplied(mutation) {
@@ -1733,22 +1845,24 @@ function notificationAlreadyRendered(state, kind) {
 }
 
 async function persistTerminalCleanup(api, config, boundFlows, flow, state, kind) {
-  const cleanup = await clearTerminalArtifacts(api, config, flow);
-  const eventId =
-    state.terminalSupersession?.eventId ?? `terminal:${flow.flowId}:${state.headSha}:${kind}`;
-  let terminalFlow = flow;
-  let terminalState = state;
-  if (state.terminalCleanup?.eventId !== eventId) {
-    terminalState = {
-      ...state,
-      terminalCleanup: { schemaVersion: 1, eventId, ...cleanup, completedAt: Date.now() },
-      updatedAt: Date.now(),
-    };
-    terminalFlow = requireApplied(persistState(boundFlows, flow, terminalState));
-    terminalState = stateOf(terminalFlow);
-  }
-  await notifyLifecycleOutcome(api, config, terminalFlow, terminalState, kind);
-  return terminalFlow;
+  return await withTaskBindings(async () => {
+    const cleanup = await clearTerminalArtifacts(api, config, flow);
+    const eventId =
+      state.terminalSupersession?.eventId ?? `terminal:${flow.flowId}:${state.headSha}:${kind}`;
+    let terminalFlow = flow;
+    let terminalState = state;
+    if (state.terminalCleanup?.eventId !== eventId) {
+      terminalState = {
+        ...state,
+        terminalCleanup: { schemaVersion: 1, eventId, ...cleanup, completedAt: Date.now() },
+        updatedAt: Date.now(),
+      };
+      terminalFlow = requireApplied(await persistState(boundFlows, flow, terminalState));
+      terminalState = stateOf(terminalFlow);
+    }
+    await notifyLifecycleOutcome(api, config, terminalFlow, terminalState, kind);
+    return terminalFlow;
+  });
 }
 
 async function notifyMergeReady(api, config, flow, state) {
@@ -1756,107 +1870,133 @@ async function notifyMergeReady(api, config, flow, state) {
 }
 
 async function performAutoMerge(api, config, boundFlows, flow, state) {
-  let mergeLock;
-  try {
-    mergeLock = acquireMergeLock(api, flow, state);
-    if (!mergeLock) {
-      const waiting = {
-        ...state,
-        wait: {
-          kind: "merge_slot",
-          since: Date.now(),
-          repository: state.repo,
-          baseRef: state.baseRef,
-        },
-        updatedAt: Date.now(),
-      };
-      const waitingFlow = requireApplied(persistState(boundFlows, flow, waiting));
-      await scheduleWake(api, config, waitingFlow, "recover");
-      return waitingFlow;
-    }
-    const policy = config.repositories.get(state.repo);
-    const receipt = await autoMergeReceipt(
-      api,
-      state,
-      policy,
-      () => requireCurrentAutoMergeState(boundFlows, flow, state, policy),
-      () => {
-        if (!mergeLock.assertAndRenew()) {
-          throw new Error("merge_lock_lost");
-        }
-      },
-      config,
-    );
-    const mergedFlow = persistMergedReceipt(boundFlows, flow, state, receipt);
-    return await persistTerminalCleanup(
-      api,
-      config,
-      boundFlows,
-      mergedFlow,
-      stateOf(mergedFlow),
-      "merged",
-    );
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "unknown";
-    if (error instanceof AutoMergeRevisionChangedError && error.currentFlow) {
-      return error.currentFlow;
-    }
-    if (error instanceof AutoMergeGateError) {
-      const diagnostics = error.diagnostics;
-      if (error.waitForEvent) {
-        const blockedChecks = [
-          ...(diagnostics.gates.requiredChecks?.failed ?? []),
-          ...(diagnostics.gates.requiredChecks?.pending ?? []),
-        ];
-        const latestCheck = blockedChecks.find((run) => run.url) ?? null;
-        const next = {
+  return await withTaskBindings(async () => {
+    let mergeLock;
+    try {
+      mergeLock = acquireMergeLock(api, flow, state);
+      if (!mergeLock) {
+        const waiting = {
           ...state,
-          mergeGates: diagnostics,
-          prEffects: latestCheck ? "check_published" : state.prEffects,
-          latestExternalMilestone: latestCheck
-            ? {
-                kind: "check_published",
-                headSha: state.headSha,
-                observedAt: diagnostics.observedAt,
-                observedRevision: null,
-                url: latestCheck.url,
-                receipt: { check: latestCheck },
-              }
-            : state.latestExternalMilestone,
           wait: {
-            kind: "check_suite",
-            origin: "gate_snapshot",
+            kind: "merge_slot",
             since: Date.now(),
-            headSha: state.headSha,
-            failedChecks: diagnostics.gates.requiredChecks?.failed ?? [],
-            pendingChecks: diagnostics.gates.requiredChecks?.pending ?? [],
+            repository: state.repo,
+            baseRef: state.baseRef,
           },
           updatedAt: Date.now(),
         };
-        const waitingFlow = requireApplied(persistState(boundFlows, flow, next));
-        await clearWake(api, config, waitingFlow);
-        if (state.wait?.kind !== "check_suite") {
-          await notifyLifecycleOutcome(
-            api,
-            config,
-            waitingFlow,
-            stateOf(waitingFlow),
-            "check_wait",
-          );
-        }
+        const waitingFlow = requireApplied(await persistState(boundFlows, flow, waiting));
+        await scheduleWake(api, config, waitingFlow, "recover");
         return waitingFlow;
       }
-      const failedGates = Object.entries(diagnostics.gates)
-        .filter(([, gate]) => gate.ready !== true)
-        .map(([name]) => name)
-        .join(",");
-      const blocked = blockState(state, `auto_merge_gate_blocked:${failedGates}`);
-      const blockedState = {
-        ...blocked.state,
-        mergeReady: state.mergeReady,
-        mergeGates: diagnostics,
-      };
-      const blockedFlow = requireApplied(persistState(boundFlows, flow, blockedState));
+      const policy = config.repositories.get(state.repo);
+      const receipt = await autoMergeReceipt(
+        api,
+        state,
+        policy,
+        async () => await requireCurrentAutoMergeState(boundFlows, flow, state, policy),
+        () => {
+          if (!mergeLock.assertAndRenew()) {
+            throw new Error("merge_lock_lost");
+          }
+        },
+        config,
+      );
+      const mergedFlow = await persistMergedReceipt(boundFlows, flow, state, receipt);
+      return await persistTerminalCleanup(
+        api,
+        config,
+        boundFlows,
+        mergedFlow,
+        stateOf(mergedFlow),
+        "merged",
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown";
+      if (error instanceof AutoMergeRevisionChangedError && error.currentFlow) {
+        return error.currentFlow;
+      }
+      if (error instanceof AutoMergeGateError) {
+        const diagnostics = error.diagnostics;
+        if (error.waitForEvent) {
+          const blockedChecks = [
+            ...(diagnostics.gates.requiredChecks?.failed ?? []),
+            ...(diagnostics.gates.requiredChecks?.pending ?? []),
+          ];
+          const latestCheck = blockedChecks.find((run) => run.url) ?? null;
+          const next = {
+            ...state,
+            mergeGates: diagnostics,
+            prEffects: latestCheck ? "check_published" : state.prEffects,
+            latestExternalMilestone: latestCheck
+              ? {
+                  kind: "check_published",
+                  headSha: state.headSha,
+                  observedAt: diagnostics.observedAt,
+                  observedRevision: null,
+                  url: latestCheck.url,
+                  receipt: { check: latestCheck },
+                }
+              : state.latestExternalMilestone,
+            wait: {
+              kind: "check_suite",
+              origin: "gate_snapshot",
+              since: Date.now(),
+              headSha: state.headSha,
+              failedChecks: diagnostics.gates.requiredChecks?.failed ?? [],
+              pendingChecks: diagnostics.gates.requiredChecks?.pending ?? [],
+            },
+            updatedAt: Date.now(),
+          };
+          const waitingFlow = requireApplied(await persistState(boundFlows, flow, next));
+          await clearWake(api, config, waitingFlow);
+          if (state.wait?.kind !== "check_suite") {
+            await notifyLifecycleOutcome(
+              api,
+              config,
+              waitingFlow,
+              stateOf(waitingFlow),
+              "check_wait",
+            );
+          }
+          return waitingFlow;
+        }
+        const failedGates = Object.entries(diagnostics.gates)
+          .filter(([, gate]) => gate.ready !== true)
+          .map(([name]) => name)
+          .join(",");
+        const blocked = blockState(state, `auto_merge_gate_blocked:${failedGates}`);
+        const blockedState = {
+          ...blocked.state,
+          mergeReady: state.mergeReady,
+          mergeGates: diagnostics,
+        };
+        const blockedFlow = requireApplied(await persistState(boundFlows, flow, blockedState));
+        return await persistTerminalCleanup(
+          api,
+          config,
+          boundFlows,
+          blockedFlow,
+          stateOf(blockedFlow),
+          "blocked",
+        );
+      }
+      const retryCount = Math.max(0, Number(state.infrastructureRetryCount) || 0);
+      if (retryCount < state.maxRetries) {
+        const next = {
+          ...state,
+          infrastructureRetryCount: retryCount + 1,
+          infrastructureLastFailure: `auto_merge:${reason}`.slice(0, 500),
+          wait: { kind: "auto_merge_retry", since: Date.now() },
+          updatedAt: Date.now(),
+        };
+        const retryFlow = requireApplied(await persistState(boundFlows, flow, next));
+        await scheduleWake(api, config, retryFlow, "recover");
+        return retryFlow;
+      }
+      const blocked = blockState(state, `auto_merge_failed:${reason}`);
+      const blockedState = { ...blocked.state, mergeReady: state.mergeReady };
+      const blockedFlow = requireApplied(await persistState(boundFlows, flow, blockedState));
       return await persistTerminalCleanup(
         api,
         config,
@@ -1865,34 +2005,10 @@ async function performAutoMerge(api, config, boundFlows, flow, state) {
         stateOf(blockedFlow),
         "blocked",
       );
+    } finally {
+      mergeLock?.release?.();
     }
-    const retryCount = Math.max(0, Number(state.infrastructureRetryCount) || 0);
-    if (retryCount < state.maxRetries) {
-      const next = {
-        ...state,
-        infrastructureRetryCount: retryCount + 1,
-        infrastructureLastFailure: `auto_merge:${reason}`.slice(0, 500),
-        wait: { kind: "auto_merge_retry", since: Date.now() },
-        updatedAt: Date.now(),
-      };
-      const retryFlow = requireApplied(persistState(boundFlows, flow, next));
-      await scheduleWake(api, config, retryFlow, "recover");
-      return retryFlow;
-    }
-    const blocked = blockState(state, `auto_merge_failed:${reason}`);
-    const blockedState = { ...blocked.state, mergeReady: state.mergeReady };
-    const blockedFlow = requireApplied(persistState(boundFlows, flow, blockedState));
-    return await persistTerminalCleanup(
-      api,
-      config,
-      boundFlows,
-      blockedFlow,
-      stateOf(blockedFlow),
-      "blocked",
-    );
-  } finally {
-    mergeLock?.release?.();
-  }
+  });
 }
 
 function enforceModeGate(state, now = Date.now()) {
@@ -1918,49 +2034,51 @@ function enforceModeGate(state, now = Date.now()) {
 }
 
 async function applyEffect(api, config, boundFlows, flow, state, effect, options = {}) {
-  const reconciled = await reconcileOrphanBeforeEffect(api, config, boundFlows, flow, state);
-  if (!reconciled.safe) {
-    return;
-  }
-  flow = reconciled.flow;
-  state = reconciled.state;
-  if (effect === "reconcile") {
-    await reconcileGithubHead(api, config, boundFlows, flow, state);
-    return;
-  }
-  if (effect === "merge_ready") {
-    if (state.phase === PHASE.MERGE_QUEUED) {
-      await performAutoMerge(api, config, boundFlows, flow, state);
+  return await withTaskBindings(async () => {
+    const reconciled = await reconcileOrphanBeforeEffect(api, config, boundFlows, flow, state);
+    if (!reconciled.safe) {
       return;
     }
-    await clearWake(api, config, flow);
-    await notifyMergeReady(api, config, flow, state);
-    return;
-  }
-  if (effect === "continue") {
-    const gate = enforceModeGate(state);
-    if (gate.changed) {
-      const gatedFlow = requireApplied(persistState(boundFlows, flow, gate.state));
-      await applyEffect(api, config, boundFlows, gatedFlow, gate.state, gate.effect, options);
+    flow = reconciled.flow;
+    state = reconciled.state;
+    if (effect === "reconcile") {
+      await reconcileGithubHead(api, config, boundFlows, flow, state);
       return;
     }
-    if (gate.reason !== "observe_mode") {
-      if (options.dispatchImmediately === true) {
-        await clearWake(api, config, flow);
-        await dispatchWorker(api, config, boundFlows, flow);
+    if (effect === "merge_ready") {
+      if (state.phase === PHASE.MERGE_QUEUED) {
+        await performAutoMerge(api, config, boundFlows, flow, state);
+        return;
+      }
+      await clearWake(api, config, flow);
+      await notifyMergeReady(api, config, flow, state);
+      return;
+    }
+    if (effect === "continue") {
+      const gate = enforceModeGate(state);
+      if (gate.changed) {
+        const gatedFlow = requireApplied(await persistState(boundFlows, flow, gate.state));
+        await applyEffect(api, config, boundFlows, gatedFlow, gate.state, gate.effect, options);
+        return;
+      }
+      if (gate.reason !== "observe_mode") {
+        if (options.dispatchImmediately === true) {
+          await clearWake(api, config, flow);
+          await dispatchWorker(api, config, boundFlows, flow);
+        } else {
+          await scheduleWake(api, config, flow, "continue");
+        }
+      }
+      return;
+    }
+    if (effect === "wait" || effect === "blocked") {
+      if (effect === "blocked") {
+        await persistTerminalCleanup(api, config, boundFlows, flow, state, "blocked");
       } else {
-        await scheduleWake(api, config, flow, "continue");
+        await scheduleWake(api, config, flow, "recover");
       }
     }
-    return;
-  }
-  if (effect === "wait" || effect === "blocked") {
-    if (effect === "blocked") {
-      await persistTerminalCleanup(api, config, boundFlows, flow, state, "blocked");
-    } else {
-      await scheduleWake(api, config, flow, "recover");
-    }
-  }
+  });
 }
 
 function workerAgentId(policy, kind) {
@@ -2003,32 +2121,34 @@ function sharesReviewContentionDomain(left, right, policies) {
   return Boolean(leftWorkspace && rightWorkspace && leftWorkspace === rightWorkspace);
 }
 
-function activeReviewLeaseHolder(boundFlows, excludedFlowId, candidate, policies) {
-  return boundFlows
-    .list()
-    .filter((flow) => flow.controllerId === CONTROLLER_ID && flow.flowId !== excludedFlowId)
-    .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status))
-    .find((flow) => {
-      const other = stateOf(flow);
-      if (!holdsReviewLease(other)) {
-        return false;
-      }
-      return sharesReviewContentionDomain(other, candidate, policies);
-    });
+async function activeReviewLeaseHolder(boundFlows, excludedFlowId, candidate, policies) {
+  return await withTaskBindings(async () => {
+    return (await boundFlows.list())
+      .filter((flow) => flow.controllerId === CONTROLLER_ID && flow.flowId !== excludedFlowId)
+      .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status))
+      .find((flow) => {
+        const other = stateOf(flow);
+        if (!holdsReviewLease(other)) {
+          return false;
+        }
+        return sharesReviewContentionDomain(other, candidate, policies);
+      });
+  });
 }
 
-function activeAuthorLeaseHolder(boundFlows, excludedFlowId, candidate, policies) {
-  return boundFlows
-    .list()
-    .filter((flow) => flow.controllerId === CONTROLLER_ID && flow.flowId !== excludedFlowId)
-    .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status))
-    .find((flow) => {
-      const other = stateOf(flow);
-      if (other?.activeWorker?.kind !== "remediation") {
-        return false;
-      }
-      return sharesReviewContentionDomain(other, candidate, policies);
-    });
+async function activeAuthorLeaseHolder(boundFlows, excludedFlowId, candidate, policies) {
+  return await withTaskBindings(async () => {
+    return (await boundFlows.list())
+      .filter((flow) => flow.controllerId === CONTROLLER_ID && flow.flowId !== excludedFlowId)
+      .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status))
+      .find((flow) => {
+        const other = stateOf(flow);
+        if (other?.activeWorker?.kind !== "remediation") {
+          return false;
+        }
+        return sharesReviewContentionDomain(other, candidate, policies);
+      });
+  });
 }
 
 function occupyingWorkerKind(state) {
@@ -2036,32 +2156,37 @@ function occupyingWorkerKind(state) {
   return kind === "review" || kind === "remediation" ? kind : null;
 }
 
-function lifecycleFlows(boundFlows) {
-  return boundFlows
-    .list()
-    .filter((flow) => flow.controllerId === CONTROLLER_ID)
-    .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status));
-}
-
-function domainOccupants(boundFlows, excludedFlowId, candidate, policies) {
-  return lifecycleFlows(boundFlows).filter((flow) => {
-    if (flow.flowId === excludedFlowId) {
-      return false;
-    }
-    const other = stateOf(flow);
-    if (!occupyingWorkerKind(other)) {
-      return false;
-    }
-    return sharesReviewContentionDomain(other, candidate, policies);
+async function lifecycleFlows(boundFlows) {
+  return await withTaskBindings(async () => {
+    return (await boundFlows.list())
+      .filter((flow) => flow.controllerId === CONTROLLER_ID)
+      .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status));
   });
 }
 
-function globalOccupants(boundFlows, excludedFlowId) {
-  return lifecycleFlows(boundFlows).filter((flow) => {
-    if (flow.flowId === excludedFlowId) {
-      return false;
-    }
-    return Boolean(occupyingWorkerKind(stateOf(flow)));
+async function domainOccupants(boundFlows, excludedFlowId, candidate, policies) {
+  return await withTaskBindings(async () => {
+    return (await lifecycleFlows(boundFlows)).filter((flow) => {
+      if (flow.flowId === excludedFlowId) {
+        return false;
+      }
+      const other = stateOf(flow);
+      if (!occupyingWorkerKind(other)) {
+        return false;
+      }
+      return sharesReviewContentionDomain(other, candidate, policies);
+    });
+  });
+}
+
+async function globalOccupants(boundFlows, excludedFlowId) {
+  return await withTaskBindings(async () => {
+    return (await lifecycleFlows(boundFlows)).filter((flow) => {
+      if (flow.flowId === excludedFlowId) {
+        return false;
+      }
+      return Boolean(occupyingWorkerKind(stateOf(flow)));
+    });
   });
 }
 
@@ -2072,30 +2197,32 @@ function readySince(state) {
   return Number(state?.updatedAt) || 0;
 }
 
-function olderReadyWaiter(boundFlows, flow, state, policies) {
-  return lifecycleFlows(boundFlows)
-    .filter((other) => other.flowId !== flow.flowId)
-    .filter((other) => {
-      const otherState = stateOf(other);
-      if (!otherState || occupyingWorkerKind(otherState)) {
-        return false;
-      }
-      if (
-        otherState.phase !== PHASE.REVIEW_QUEUED &&
-        otherState.phase !== PHASE.REMEDIATION_QUEUED
-      ) {
-        return false;
-      }
-      if (otherState.wait?.kind !== "parallel_slot") {
-        return false;
-      }
-      if (!sharesReviewContentionDomain(otherState, state, policies)) {
-        return false;
-      }
-      const otherReady = readySince(otherState);
-      const selfReady = readySince(state);
-      return otherReady < selfReady || (otherReady === selfReady && other.flowId < flow.flowId);
-    })[0];
+async function olderReadyWaiter(boundFlows, flow, state, policies) {
+  return await withTaskBindings(async () => {
+    return (await lifecycleFlows(boundFlows))
+      .filter((other) => other.flowId !== flow.flowId)
+      .filter((other) => {
+        const otherState = stateOf(other);
+        if (!otherState || occupyingWorkerKind(otherState)) {
+          return false;
+        }
+        if (
+          otherState.phase !== PHASE.REVIEW_QUEUED &&
+          otherState.phase !== PHASE.REMEDIATION_QUEUED
+        ) {
+          return false;
+        }
+        if (otherState.wait?.kind !== "parallel_slot") {
+          return false;
+        }
+        if (!sharesReviewContentionDomain(otherState, state, policies)) {
+          return false;
+        }
+        const otherReady = readySince(otherState);
+        const selfReady = readySince(state);
+        return otherReady < selfReady || (otherReady === selfReady && other.flowId < flow.flowId);
+      })[0];
+  });
 }
 
 function resolveMaxParallelPrs(config, repo) {
@@ -2224,218 +2351,226 @@ function isWorkspaceHeadMismatchBlock(state) {
 }
 
 async function revalidateWorkspaceHeadBlock(api, config, resolved, input, event) {
-  let flow = resolved.flow;
-  const state = stateOf(flow);
-  if (!isWorkspaceHeadMismatchBlock(state)) {
-    return null;
-  }
-  if (input.expectedRevision === undefined) {
-    throw new Error("workspace_revalidation_requires_expected_revision");
-  }
-  if (input.expectedRevision !== flow.revision) {
-    return {
-      ok: true,
-      staleWake: true,
-      expectedRevision: input.expectedRevision,
-      flow: statusView(flow),
-    };
-  }
-  if (
-    event.repo !== state.repo ||
-    event.prNumber !== state.prNumber ||
-    event.headSha !== state.headSha ||
-    event.baseSha !== state.baseSha ||
-    event.baseRef !== state.baseRef
-  ) {
-    throw new Error("workspace_revalidation_scope_mismatch");
-  }
-  if (state.activeWorker || state.orphanedWorker) {
-    throw new Error("workspace_revalidation_worker_not_quiescent");
-  }
-  const policy = config.repositories.get(state.repo);
-  if (!policy || !policy.enabled) {
-    throw new Error("repository_policy_missing_or_disabled");
-  }
+  return await withTaskBindings(async () => {
+    let flow = resolved.flow;
+    const state = stateOf(flow);
+    if (!isWorkspaceHeadMismatchBlock(state)) {
+      return null;
+    }
+    if (input.expectedRevision === undefined) {
+      throw new Error("workspace_revalidation_requires_expected_revision");
+    }
+    if (input.expectedRevision !== flow.revision) {
+      return {
+        ok: true,
+        staleWake: true,
+        expectedRevision: input.expectedRevision,
+        flow: statusView(flow),
+      };
+    }
+    if (
+      event.repo !== state.repo ||
+      event.prNumber !== state.prNumber ||
+      event.headSha !== state.headSha ||
+      event.baseSha !== state.baseSha ||
+      event.baseRef !== state.baseRef
+    ) {
+      throw new Error("workspace_revalidation_scope_mismatch");
+    }
+    if (state.activeWorker || state.orphanedWorker) {
+      throw new Error("workspace_revalidation_worker_not_quiescent");
+    }
+    const policy = config.repositories.get(state.repo);
+    if (!policy || !policy.enabled) {
+      throw new Error("repository_policy_missing_or_disabled");
+    }
 
-  let workspace;
-  let identity;
-  try {
-    // Resolve from the current repository policy, never from the stale workspace
-    // metadata that produced the persisted mismatch blocker.
-    workspace = await ensureFlowWorkspace(api, policy, {
-      ...state,
-      flowWorkspace: null,
-      workspacePreflight: null,
-    });
-    identity = await readWorkspaceIdentity(api, workspace, state.headSha, state.repo);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "unknown";
+    let workspace;
+    let identity;
+    try {
+      // Resolve from the current repository policy, never from the stale workspace
+      // metadata that produced the persisted mismatch blocker.
+      workspace = await ensureFlowWorkspace(api, policy, {
+        ...state,
+        flowWorkspace: null,
+        workspacePreflight: null,
+      });
+      identity = await readWorkspaceIdentity(api, workspace, state.headSha, state.repo);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown";
+      return {
+        ok: true,
+        admit: {
+          accepted: false,
+          created: false,
+          flowId: flow.flowId,
+          revision: flow.revision,
+          reason: `owner_admit_workspace_revalidation_failed:${detail.slice(0, 300)}`,
+        },
+        flow: statusView(flow),
+      };
+    }
+    const failure =
+      identity?.topLevel !== workspace
+        ? "workspace_top_level_mismatch"
+        : identity?.repository !== state.repo
+          ? "workspace_repository_mismatch"
+          : identity?.clean !== true
+            ? "workspace_dirty"
+            : identity?.headSha !== state.headSha
+              ? `workspace_head_mismatch:expected=${state.headSha}:actual=${identity?.headSha ?? "missing"}`
+              : null;
+    if (failure) {
+      return {
+        ok: true,
+        admit: {
+          accepted: false,
+          created: false,
+          flowId: flow.flowId,
+          revision: flow.revision,
+          reason: `owner_admit_workspace_revalidation_failed:${failure}`,
+        },
+        flow: statusView(flow),
+      };
+    }
+
+    const now = Date.now();
+    const refreshed = refreshPolicySnapshot(state, policy, now, { resetDeadline: true }).state;
+    const next = {
+      ...refreshed,
+      phase:
+        policy.mode === "active" && state.findings.length > 0
+          ? PHASE.REMEDIATION_QUEUED
+          : PHASE.REVIEW_QUEUED,
+      workerGeneration: workerGenerationForState(state) + 1,
+      activeWorker: null,
+      orphanedWorker: null,
+      wait: null,
+      blocker: null,
+      flowWorkspace: {
+        path: workspace,
+        headSha: identity.headSha,
+        provisionedAt: now,
+      },
+      workspacePreflight: {
+        workspace,
+        headSha: identity.headSha,
+        checkedAt: now,
+      },
+      updatedAt: now,
+    };
+    flow = requireApplied(await persistState(resolved.boundFlows, flow, next));
+    await applyEffect(api, config, resolved.boundFlows, flow, next, "continue");
     return {
       ok: true,
       admit: {
-        accepted: false,
+        accepted: true,
         created: false,
         flowId: flow.flowId,
         revision: flow.revision,
-        reason: `owner_admit_workspace_revalidation_failed:${detail.slice(0, 300)}`,
+        reason: "owner_admit_reopen_workspace_head_mismatch",
       },
       flow: statusView(flow),
     };
-  }
-  const failure =
-    identity?.topLevel !== workspace
-      ? "workspace_top_level_mismatch"
-      : identity?.repository !== state.repo
-        ? "workspace_repository_mismatch"
-        : identity?.clean !== true
-          ? "workspace_dirty"
-          : identity?.headSha !== state.headSha
-            ? `workspace_head_mismatch:expected=${state.headSha}:actual=${identity?.headSha ?? "missing"}`
-            : null;
-  if (failure) {
-    return {
-      ok: true,
-      admit: {
-        accepted: false,
-        created: false,
-        flowId: flow.flowId,
-        revision: flow.revision,
-        reason: `owner_admit_workspace_revalidation_failed:${failure}`,
-      },
-      flow: statusView(flow),
-    };
-  }
-
-  const now = Date.now();
-  const refreshed = refreshPolicySnapshot(state, policy, now, { resetDeadline: true }).state;
-  const next = {
-    ...refreshed,
-    phase:
-      policy.mode === "active" && state.findings.length > 0
-        ? PHASE.REMEDIATION_QUEUED
-        : PHASE.REVIEW_QUEUED,
-    workerGeneration: workerGenerationForState(state) + 1,
-    activeWorker: null,
-    orphanedWorker: null,
-    wait: null,
-    blocker: null,
-    flowWorkspace: {
-      path: workspace,
-      headSha: identity.headSha,
-      provisionedAt: now,
-    },
-    workspacePreflight: {
-      workspace,
-      headSha: identity.headSha,
-      checkedAt: now,
-    },
-    updatedAt: now,
-  };
-  flow = requireApplied(persistState(resolved.boundFlows, flow, next));
-  await applyEffect(api, config, resolved.boundFlows, flow, next, "continue");
-  return {
-    ok: true,
-    admit: {
-      accepted: true,
-      created: false,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: "owner_admit_reopen_workspace_head_mismatch",
-    },
-    flow: statusView(flow),
-  };
+  });
 }
 
-function evaluateParallelSlot(config, boundFlows, flow, state, kind) {
-  const policies = config.repositories;
-  const repoCap = resolveMaxParallelPrs(config, state.repo);
-  const occupants = domainOccupants(boundFlows, flow.flowId, state, policies);
-  const sharedWorkspaceOtherRepo = occupants.find(
-    (other) => stateOf(other)?.repo && stateOf(other).repo !== state.repo,
-  );
-  if (sharedWorkspaceOtherRepo) {
-    return {
-      ok: false,
-      wait: {
-        kind: "parallel_slot",
-        since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
-        position: 1,
-        cap: 1,
-        scope: "shared_workspace",
-        aheadFlowId: sharedWorkspaceOtherRepo.flowId,
-      },
-    };
-  }
-  if (occupants.length >= repoCap) {
-    return {
-      ok: false,
-      wait: {
-        kind: "parallel_slot",
-        since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
-        position: occupants.length,
-        cap: repoCap,
-        scope: "repo",
-      },
-    };
-  }
-  if (Number.isInteger(config.maxParallelPrsGlobal)) {
-    const global = globalOccupants(boundFlows, flow.flowId);
-    if (global.length >= config.maxParallelPrsGlobal) {
+async function evaluateParallelSlot(config, boundFlows, flow, state, kind) {
+  return await withTaskBindings(async () => {
+    const policies = config.repositories;
+    const repoCap = resolveMaxParallelPrs(config, state.repo);
+    const occupants = await domainOccupants(boundFlows, flow.flowId, state, policies);
+    const sharedWorkspaceOtherRepo = occupants.find(
+      (other) => stateOf(other)?.repo && stateOf(other).repo !== state.repo,
+    );
+    if (sharedWorkspaceOtherRepo) {
       return {
         ok: false,
         wait: {
           kind: "parallel_slot",
           since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
-          position: global.length,
-          cap: config.maxParallelPrsGlobal,
-          scope: "global",
+          position: 1,
+          cap: 1,
+          scope: "shared_workspace",
+          aheadFlowId: sharedWorkspaceOtherRepo.flowId,
         },
       };
     }
-  }
-  if (kind === "review" && activeReviewLeaseHolder(boundFlows, flow.flowId, state, policies)) {
-    return {
-      ok: false,
-      wait: {
-        kind: "parallel_slot",
-        since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
-        position: occupants.length + 1,
-        cap: repoCap,
-        scope: "review_apply",
-      },
-    };
-  }
-  const older = olderReadyWaiter(boundFlows, flow, state, policies);
-  if (older) {
-    return {
-      ok: false,
-      wait: {
-        kind: "parallel_slot",
-        since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
-        position: occupants.length + 1,
-        cap: repoCap,
-        scope: "fifo",
-        aheadFlowId: older.flowId,
-      },
-    };
-  }
-  return { ok: true };
+    if (occupants.length >= repoCap) {
+      return {
+        ok: false,
+        wait: {
+          kind: "parallel_slot",
+          since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
+          position: occupants.length,
+          cap: repoCap,
+          scope: "repo",
+        },
+      };
+    }
+    if (Number.isInteger(config.maxParallelPrsGlobal)) {
+      const global = await globalOccupants(boundFlows, flow.flowId);
+      if (global.length >= config.maxParallelPrsGlobal) {
+        return {
+          ok: false,
+          wait: {
+            kind: "parallel_slot",
+            since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
+            position: global.length,
+            cap: config.maxParallelPrsGlobal,
+            scope: "global",
+          },
+        };
+      }
+    }
+    if (
+      kind === "review" &&
+      (await activeReviewLeaseHolder(boundFlows, flow.flowId, state, policies))
+    ) {
+      return {
+        ok: false,
+        wait: {
+          kind: "parallel_slot",
+          since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
+          position: occupants.length + 1,
+          cap: repoCap,
+          scope: "review_apply",
+        },
+      };
+    }
+    const older = await olderReadyWaiter(boundFlows, flow, state, policies);
+    if (older) {
+      return {
+        ok: false,
+        wait: {
+          kind: "parallel_slot",
+          since: state.wait?.kind === "parallel_slot" ? state.wait.since : Date.now(),
+          position: occupants.length + 1,
+          cap: repoCap,
+          scope: "fifo",
+          aheadFlowId: older.flowId,
+        },
+      };
+    }
+    return { ok: true };
+  });
 }
 
-function activeWorkerLeaseHolder(boundFlows, excludedFlowId, candidate, policies) {
-  return boundFlows
-    .list()
-    .filter((flow) => flow.controllerId === CONTROLLER_ID && flow.flowId !== excludedFlowId)
-    .filter((flow) => {
-      const state = stateOf(flow);
-      return !TERMINAL_FLOW_STATUSES.has(flow.status) || Boolean(state?.orphanedWorker);
-    })
-    .find((flow) => {
-      const other = stateOf(flow);
-      return Boolean(
-        holdsWorkerLease(other) && sharesReviewContentionDomain(other, candidate, policies),
-      );
-    });
+async function activeWorkerLeaseHolder(boundFlows, excludedFlowId, candidate, policies) {
+  return await withTaskBindings(async () => {
+    return (await boundFlows.list())
+      .filter((flow) => flow.controllerId === CONTROLLER_ID && flow.flowId !== excludedFlowId)
+      .filter((flow) => {
+        const state = stateOf(flow);
+        return !TERMINAL_FLOW_STATUSES.has(flow.status) || Boolean(state?.orphanedWorker);
+      })
+      .find((flow) => {
+        const other = stateOf(flow);
+        return Boolean(
+          holdsWorkerLease(other) && sharesReviewContentionDomain(other, candidate, policies),
+        );
+      });
+  });
 }
 
 function contentionLockStore(api) {
@@ -2546,61 +2681,89 @@ function acquireContentionLock(api, config, flow, state, kind, now = Date.now())
   };
 }
 
-function reserveWorkerWithContentionLock(api, config, boundFlows, flow, kind) {
-  const initialState = stateOf(flow);
-  if (!initialState) {
-    throw new Error("flow_state_invalid");
-  }
-  const lock = acquireContentionLock(api, config, flow, initialState, kind);
-  if (!lock) {
-    return { reserved: false, flow, reason: "contention_lock_held" };
-  }
-  try {
-    let current = boundFlows.get(flow.flowId) ?? flow;
-    let state = stateOf(current);
-    if (!state) {
+async function reserveWorkerWithContentionLock(api, config, boundFlows, flow, kind) {
+  return await withTaskBindings(async () => {
+    const initialState = stateOf(flow);
+    if (!initialState) {
       throw new Error("flow_state_invalid");
     }
-    if (workerKindForPhase(state.phase) !== kind) {
-      return { reserved: false, flow: current, reason: "phase_not_dispatchable" };
+    const lock = acquireContentionLock(api, config, flow, initialState, kind);
+    if (!lock) {
+      return { reserved: false, flow, reason: "contention_lock_held" };
     }
-    const policy = config.repositories.get(state.repo);
-    const expectedWorkspace = flowWorkspacePath(policy, state);
-    if (
-      state.workspacePreflight?.workspace !== expectedWorkspace ||
-      state.workspacePreflight?.headSha !== state.headSha
-    ) {
-      return { reserved: false, flow: current, reason: "workspace_preflight_stale" };
-    }
-    const slot = evaluateParallelSlot(config, allBoundFlows(api, config), current, state, kind);
-    if (!slot.ok) {
-      state = { ...state, wait: slot.wait, updatedAt: Date.now() };
-      current = requireApplied(persistState(boundFlows, current, state));
-      return { reserved: false, flow: current, reason: "parallel_slot_held" };
-    }
-    const sessionKey = createWorkerSessionKey(policy, current, state, kind);
-    const reserved = reserveWorker(state, kind, sessionKey, Date.now(), current.flowId);
-    if (!reserved.changed || reserved.effect === "blocked") {
-      const nextFlow = reserved.changed
-        ? requireApplied(persistState(boundFlows, current, reserved.state))
-        : current;
+    try {
+      let current = (await boundFlows.get(flow.flowId)) ?? flow;
+      let state = stateOf(current);
+      if (!state) {
+        throw new Error("flow_state_invalid");
+      }
+      if (workerKindForPhase(state.phase) !== kind) {
+        return { reserved: false, flow: current, reason: "phase_not_dispatchable" };
+      }
+      const policy = config.repositories.get(state.repo);
+      const expectedWorkspace = flowWorkspacePath(policy, state);
+      if (
+        state.workspacePreflight?.workspace !== expectedWorkspace ||
+        state.workspacePreflight?.headSha !== state.headSha
+      ) {
+        return { reserved: false, flow: current, reason: "workspace_preflight_stale" };
+      }
+      const capacitySnapshot = await boundFlows.capacitySnapshot({
+        ownerSessionKeys: uniqueOwnerSessionKeys(config),
+      });
+      const slot = await evaluateParallelSlot(
+        config,
+        { list: async () => capacitySnapshot.flows },
+        current,
+        state,
+        kind,
+      );
+      if (!slot.ok) {
+        state = { ...state, wait: slot.wait, updatedAt: Date.now() };
+        current = requireApplied(await persistState(boundFlows, current, state));
+        return { reserved: false, flow: current, reason: "parallel_slot_held" };
+      }
+      const sessionKey = createWorkerSessionKey(policy, current, state, kind);
+      const reserved = reserveWorker(state, kind, sessionKey, Date.now(), current.flowId);
+      if (!reserved.changed || reserved.effect === "blocked") {
+        const nextFlow = reserved.changed
+          ? requireApplied(await persistState(boundFlows, current, reserved.state))
+          : current;
+        return {
+          reserved: false,
+          flow: nextFlow,
+          reason: reserved.reason,
+          effect: reserved.effect,
+        };
+      }
+      requireLifecycleHost(api);
+      const reservationMutation = await boundFlows.reserve({
+        flowId: current.flowId,
+        expectedRevision: current.revision,
+        status: "running",
+        currentStep: reserved.state.phase,
+        stateJson: { ...reserved.state, flowId: current.flowId },
+        updatedAt: reserved.state.updatedAt,
+        capacitySnapshot,
+      });
+      if (!reservationMutation.applied) {
+        return {
+          reserved: false,
+          flow: reservationMutation.current ?? current,
+          reason: reservationMutation.code,
+        };
+      }
+      const reservedFlow = reservationMutation.flow;
       return {
-        reserved: false,
-        flow: nextFlow,
-        reason: reserved.reason,
-        effect: reserved.effect,
+        reserved: true,
+        flow: reservedFlow,
+        state: reserved.state,
+        sessionKey,
       };
+    } finally {
+      lock.release();
     }
-    const reservedFlow = requireApplied(persistState(boundFlows, current, reserved.state));
-    return {
-      reserved: true,
-      flow: reservedFlow,
-      state: reserved.state,
-      sessionKey,
-    };
-  } finally {
-    lock.release();
-  }
+  });
 }
 
 function primaryFixerFailureGrant(flow, state) {
@@ -2710,662 +2873,761 @@ function buildWorkerMessage(flow, state, policy, kind, config = {}) {
   return common.join("\n");
 }
 
-function resolveWorkerTask(api, ownerSessionKey, sessionKey, runId) {
-  const worker = { sessionKey, runId, taskId: null };
-  const existing = taskForWorker(api, ownerSessionKey, worker);
-  if (existing) {
-    return { task: existing, reason: "canonical_worker_task_resolved" };
-  }
-  return {
-    task: undefined,
-    reason: "task_link_missing:canonical_worker_task_not_visible",
-  };
+async function resolveWorkerTask(api, ownerSessionKey, sessionKey, runId) {
+  return await withTaskBindings(async () => {
+    const worker = { sessionKey, runId, taskId: null };
+    const existing = await taskForWorker(api, ownerSessionKey, worker);
+    if (existing) {
+      return { task: existing, reason: "canonical_worker_task_resolved" };
+    }
+    return {
+      task: undefined,
+      reason: "task_link_missing:canonical_worker_task_not_visible",
+    };
+  });
 }
 
 async function dispatchWorker(api, config, boundFlows, flow) {
-  let state = stateOf(flow);
-  if (!state) {
-    throw new Error("flow_state_invalid");
-  }
-  let workingFlow = flow;
-  if (state.phase === PHASE.MERGE_QUEUED) {
-    return await performAutoMerge(api, config, boundFlows, workingFlow, state);
-  }
-  const policy = config.repositories.get(state.repo);
-  if (!policy || !policy.enabled) {
-    const blocked = blockState(state, "repository_policy_missing_or_disabled");
-    const blockedFlow = requireApplied(persistState(boundFlows, flow, blocked.state));
-    await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
-    return boundFlows.get(blockedFlow.flowId) ?? blockedFlow;
-  }
-  const gate = enforceModeGate(state);
-  if (gate.reason === "observe_mode") {
-    return flow;
-  }
-  if (gate.changed) {
-    const gatedFlow = requireApplied(persistState(boundFlows, flow, gate.state));
-    await applyEffect(api, config, boundFlows, gatedFlow, gate.state, gate.effect);
-    return boundFlows.get(gatedFlow.flowId) ?? gatedFlow;
-  }
-  const kind = workerKindForPhase(state.phase);
-  if (!kind) {
-    return workingFlow;
-  }
-  const now = Date.now();
-  const preflightBudgetBlocker =
-    now > state.deadlineAt
-      ? "wall_time_budget_exhausted"
-      : kind === "remediation" && state.cycle >= state.maxCycles
-        ? "review_fix_cycle_budget_exhausted"
-        : null;
-  if (preflightBudgetBlocker) {
-    const blocked = blockState(state, preflightBudgetBlocker, now);
-    const blockedFlow = requireApplied(persistState(boundFlows, workingFlow, blocked.state));
-    await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
-    return boundFlows.get(blockedFlow.flowId) ?? blockedFlow;
-  }
-  if (state.orphanedWorker) {
-    const orphan = await reconcileOrphanedWorker(api, workingFlow.ownerKey, state.orphanedWorker);
-    if (!orphan.safe) {
-      await scheduleWake(api, config, workingFlow, "recover");
+  return await withTaskBindings(async () => {
+    let state = stateOf(flow);
+    if (!state) {
+      throw new Error("flow_state_invalid");
+    }
+    let workingFlow = flow;
+    if (state.phase === PHASE.MERGE_QUEUED) {
+      return await performAutoMerge(api, config, boundFlows, workingFlow, state);
+    }
+    const policy = config.repositories.get(state.repo);
+    if (!policy || !policy.enabled) {
+      const blocked = blockState(state, "repository_policy_missing_or_disabled");
+      const blockedFlow = requireApplied(await persistState(boundFlows, flow, blocked.state));
+      await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
+      return (await boundFlows.get(blockedFlow.flowId)) ?? blockedFlow;
+    }
+    const gate = enforceModeGate(state);
+    if (gate.reason === "observe_mode") {
+      return flow;
+    }
+    if (gate.changed) {
+      const gatedFlow = requireApplied(await persistState(boundFlows, flow, gate.state));
+      await applyEffect(api, config, boundFlows, gatedFlow, gate.state, gate.effect);
+      return (await boundFlows.get(gatedFlow.flowId)) ?? gatedFlow;
+    }
+    const kind = workerKindForPhase(state.phase);
+    if (!kind) {
       return workingFlow;
     }
-    state = {
-      ...state,
-      orphanedWorker: null,
-      lastGhostCleanup: {
-        sessionKey: state.orphanedWorker.sessionKey,
-        runId: state.orphanedWorker.runId ?? null,
-        taskId: state.orphanedWorker.taskId ?? null,
-        reason: orphan.reason,
-        reconciledAt: Date.now(),
-      },
-      updatedAt: Date.now(),
-    };
-    workingFlow = requireApplied(persistState(boundFlows, workingFlow, state));
-  }
-  const slot = evaluateParallelSlot(config, allBoundFlows(api, config), workingFlow, state, kind);
-  if (!slot.ok) {
-    const queued = {
-      ...state,
-      wait: slot.wait,
-      updatedAt: Date.now(),
-    };
-    workingFlow = requireApplied(persistState(boundFlows, workingFlow, queued));
-    await scheduleWake(api, config, workingFlow, "recover");
-    return workingFlow;
-  }
-  let workerWorkspace;
-  let workspaceHead;
-  try {
-    workerWorkspace = await ensureFlowWorkspace(api, policy, state);
-    workspaceHead = await readWorkspaceHead(api, workerWorkspace, state.headSha);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "unknown";
-    const blocked = blockState(state, `workspace_head_preflight_failed:${detail.slice(0, 300)}`);
-    const blockedFlow = requireApplied(persistState(boundFlows, workingFlow, blocked.state));
-    await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
-    return boundFlows.get(blockedFlow.flowId) ?? blockedFlow;
-  }
-  if (workspaceHead !== state.headSha) {
-    const blocked = blockState(
-      state,
-      `workspace_head_mismatch:expected=${state.headSha}:actual=${workspaceHead}`,
-    );
-    const blockedFlow = requireApplied(persistState(boundFlows, workingFlow, blocked.state));
-    await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
-    return boundFlows.get(blockedFlow.flowId) ?? blockedFlow;
-  }
-  if (kind === "remediation") {
-    try {
-      const identity = await readWorkspaceIdentity(api, workerWorkspace, state.headSha, state.repo);
-      validateRemediatorAdmission(api, policy, state, workerWorkspace, identity);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "unknown";
-      const blocked = blockState(
-        state,
-        `remediator_profile_admission_failed:${detail.slice(0, 300)}`,
+    const now = Date.now();
+    const preflightBudgetBlocker =
+      now > state.deadlineAt
+        ? "wall_time_budget_exhausted"
+        : kind === "remediation" && state.cycle >= state.maxCycles
+          ? "review_fix_cycle_budget_exhausted"
+          : null;
+    if (preflightBudgetBlocker) {
+      const blocked = blockState(state, preflightBudgetBlocker, now);
+      const blockedFlow = requireApplied(
+        await persistState(boundFlows, workingFlow, blocked.state),
       );
-      const blockedFlow = requireApplied(persistState(boundFlows, workingFlow, blocked.state));
       await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
-      return boundFlows.get(blockedFlow.flowId) ?? blockedFlow;
+      return (await boundFlows.get(blockedFlow.flowId)) ?? blockedFlow;
     }
-  }
-  const checkedAt = Date.now();
-  state = {
-    ...state,
-    wait: null,
-    flowWorkspace: {
-      path: workerWorkspace,
-      headSha: workspaceHead,
-      provisionedAt: state.flowWorkspace?.provisionedAt ?? checkedAt,
-    },
-    workspacePreflight: {
-      workspace: workerWorkspace,
-      headSha: workspaceHead,
-      checkedAt,
-    },
-    updatedAt: checkedAt,
-  };
-  workingFlow = requireApplied(persistState(boundFlows, workingFlow, state));
-  const reservation = reserveWorkerWithContentionLock(api, config, boundFlows, workingFlow, kind);
-  if (!reservation.reserved) {
-    if (
-      reservation.reason === "infrastructure_backoff" ||
-      reservation.reason === "protocol_backoff" ||
-      reservation.reason === "contention_lock_held" ||
-      reservation.reason === "parallel_slot_held" ||
-      reservation.reason === "prior_review_lease_held" ||
-      reservation.reason === "workspace_preflight_stale"
-    ) {
-      await scheduleWake(api, config, reservation.flow, "recover");
-    }
-    return reservation.flow;
-  }
-  const sessionKey = reservation.sessionKey;
-  const reserved = { state: reservation.state };
-  let reservedFlow = reservation.flow;
-  let launchedWorker = null;
-  try {
-    if (kind === "remediation") {
-      const remediationJob = prepareRemediationJob(
+    if (state.orphanedWorker) {
+      const orphan = await reconcileOrphanedWorker(
         api,
-        reservedFlow,
-        reserved.state,
-        policy,
-        config,
+        workingFlow.ownerKey,
+        state.orphanedWorker,
+        { flowId: workingFlow.flowId, revision: workingFlow.revision },
       );
-      const preparedState = {
-        ...reserved.state,
-        activeWorker: {
-          ...reserved.state.activeWorker,
-          remediationJob,
+      if (!orphan.safe) {
+        await scheduleWake(api, config, workingFlow, "recover");
+        return workingFlow;
+      }
+      state = {
+        ...state,
+        orphanedWorker: null,
+        lastGhostCleanup: {
+          sessionKey: state.orphanedWorker.sessionKey,
+          runId: state.orphanedWorker.runId ?? null,
+          taskId: state.orphanedWorker.taskId ?? null,
+          reason: orphan.reason,
+          reconciledAt: Date.now(),
         },
         updatedAt: Date.now(),
       };
-      reservedFlow = requireApplied(persistState(boundFlows, reservedFlow, preparedState));
+      workingFlow = requireApplied(await persistState(boundFlows, workingFlow, state));
     }
-    const run = await api.runtime.subagent.run({
-      sessionKey,
-      message: buildWorkerMessage(reservedFlow, stateOf(reservedFlow), policy, kind, config),
-      ...(kind === "review" ? { toolsAlsoAllow: [TOOL_NAME] } : {}),
-      lane: `pr-lifecycle-taskflow:${state.repo}:${state.prNumber}`,
-      idempotencyKey:
-        `mprl:${workingFlow.flowId}:${state.headSha}:${state.cycle}:` +
-        `g${workerGenerationForState(state)}:${state.retryCount ?? 0}:` +
-        `i${state.infrastructureRetryCount ?? 0}:${kind}`,
-      lightContext: true,
-      deliver: false,
-      cwd: flowWorkspacePath(policy, stateOf(reservedFlow) ?? state),
-      runTimeoutSeconds: 3600,
-    });
-    launchedWorker = {
-      ...stateOf(reservedFlow).activeWorker,
-      sessionKey:
-        typeof run.sessionKey === "string" && run.sessionKey.trim()
-          ? run.sessionKey.trim()
-          : sessionKey,
-      runId: typeof run.runId === "string" && run.runId.trim() ? run.runId.trim() : null,
-      taskId: null,
+    const slot = await evaluateParallelSlot(
+      config,
+      await allBoundFlows(api, config),
+      workingFlow,
+      state,
+      kind,
+    );
+    if (!slot.ok) {
+      const queued = {
+        ...state,
+        wait: slot.wait,
+        updatedAt: Date.now(),
+      };
+      workingFlow = requireApplied(await persistState(boundFlows, workingFlow, queued));
+      await scheduleWake(api, config, workingFlow, "recover");
+      return workingFlow;
+    }
+    let workerWorkspace;
+    let workspaceHead;
+    try {
+      workerWorkspace = await ensureFlowWorkspace(api, policy, state);
+      workspaceHead = await readWorkspaceHead(api, workerWorkspace, state.headSha);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown";
+      const blocked = blockState(state, `workspace_head_preflight_failed:${detail.slice(0, 300)}`);
+      const blockedFlow = requireApplied(
+        await persistState(boundFlows, workingFlow, blocked.state),
+      );
+      await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
+      return (await boundFlows.get(blockedFlow.flowId)) ?? blockedFlow;
+    }
+    if (workspaceHead !== state.headSha) {
+      const blocked = blockState(
+        state,
+        `workspace_head_mismatch:expected=${state.headSha}:actual=${workspaceHead}`,
+      );
+      const blockedFlow = requireApplied(
+        await persistState(boundFlows, workingFlow, blocked.state),
+      );
+      await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
+      return (await boundFlows.get(blockedFlow.flowId)) ?? blockedFlow;
+    }
+    if (kind === "remediation") {
+      try {
+        const identity = await readWorkspaceIdentity(
+          api,
+          workerWorkspace,
+          state.headSha,
+          state.repo,
+        );
+        validateRemediatorAdmission(api, policy, state, workerWorkspace, identity);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "unknown";
+        const blocked = blockState(
+          state,
+          `remediator_profile_admission_failed:${detail.slice(0, 300)}`,
+        );
+        const blockedFlow = requireApplied(
+          await persistState(boundFlows, workingFlow, blocked.state),
+        );
+        await applyEffect(api, config, boundFlows, blockedFlow, blocked.state, blocked.effect);
+        return (await boundFlows.get(blockedFlow.flowId)) ?? blockedFlow;
+      }
+    }
+    const checkedAt = Date.now();
+    state = {
+      ...state,
+      wait: null,
+      flowWorkspace: {
+        path: workerWorkspace,
+        headSha: workspaceHead,
+        provisionedAt: state.flowWorkspace?.provisionedAt ?? checkedAt,
+      },
+      workspacePreflight: {
+        workspace: workerWorkspace,
+        headSha: workspaceHead,
+        checkedAt,
+      },
+      updatedAt: checkedAt,
     };
-    if (run.sessionKey && run.sessionKey !== sessionKey) {
-      throw new Error(`worker_session_identity_mismatch:${run.sessionKey}`);
+    workingFlow = requireApplied(await persistState(boundFlows, workingFlow, state));
+    const reservation = await reserveWorkerWithContentionLock(
+      api,
+      config,
+      boundFlows,
+      workingFlow,
+      kind,
+    );
+    if (!reservation.reserved) {
+      if (
+        reservation.reason === "infrastructure_backoff" ||
+        reservation.reason === "protocol_backoff" ||
+        reservation.reason === "contention_lock_held" ||
+        reservation.reason === "parallel_slot_held" ||
+        reservation.reason === "capacity_snapshot_conflict" ||
+        reservation.reason === "revision_conflict" ||
+        reservation.reason === "prior_review_lease_held" ||
+        reservation.reason === "workspace_preflight_stale"
+      ) {
+        await scheduleWake(api, config, reservation.flow, "recover");
+      }
+      return reservation.flow;
     }
-    let current = boundFlows.get(reservedFlow.flowId) ?? reservedFlow;
-    let currentState = stateOf(current);
-    if (currentState?.activeWorker?.sessionKey !== sessionKey) {
-      throw new Error("worker_reservation_changed_after_launch");
+    const sessionKey = reservation.sessionKey;
+    const reserved = { state: reservation.state };
+    let reservedFlow = reservation.flow;
+    let launchedWorker = null;
+    let launchInvoked = false;
+    try {
+      if (kind === "remediation") {
+        const remediationJob = prepareRemediationJob(
+          api,
+          reservedFlow,
+          reserved.state,
+          policy,
+          config,
+        );
+        const preparedState = {
+          ...reserved.state,
+          activeWorker: {
+            ...reserved.state.activeWorker,
+            remediationJob,
+          },
+          updatedAt: Date.now(),
+        };
+        reservedFlow = requireApplied(await persistState(boundFlows, reservedFlow, preparedState));
+      }
+      requireLifecycleHost(api);
+      const prelaunchState = {
+        ...stateOf(reservedFlow),
+        launchOutcome: { status: "unknown", sessionKey, observedAt: Date.now() },
+        updatedAt: Date.now(),
+      };
+      reservedFlow = requireApplied(await persistState(boundFlows, reservedFlow, prelaunchState));
+      const managedFlowLaunch = await boundFlows.captureNativeLaunch({
+        flowId: reservedFlow.flowId,
+        expectedRevision: reservedFlow.revision,
+        childSessionKey: sessionKey,
+      });
+      requireLifecycleHost(api);
+      boundFlows.assertCurrent();
+      launchInvoked = true;
+      const run = await api.runtime.subagent.run({
+        assertCurrent: () => {
+          requireLifecycleHost(api);
+          boundFlows.assertCurrent();
+        },
+        managedFlowLaunch,
+        sessionKey,
+        message: buildWorkerMessage(reservedFlow, stateOf(reservedFlow), policy, kind, config),
+        ...(kind === "review" ? { toolsAlsoAllow: [TOOL_NAME] } : {}),
+        lane: `pr-lifecycle-taskflow:${state.repo}:${state.prNumber}`,
+        idempotencyKey:
+          `mprl:${workingFlow.flowId}:${state.headSha}:${state.cycle}:` +
+          `g${workerGenerationForState(state)}:${state.retryCount ?? 0}:` +
+          `i${state.infrastructureRetryCount ?? 0}:${kind}`,
+        lightContext: true,
+        deliver: false,
+        cwd: flowWorkspacePath(policy, stateOf(reservedFlow) ?? state),
+        runTimeoutSeconds: 3600,
+      });
+      launchedWorker = {
+        ...stateOf(reservedFlow).activeWorker,
+        sessionKey:
+          typeof run.sessionKey === "string" && run.sessionKey.trim()
+            ? run.sessionKey.trim()
+            : sessionKey,
+        runId: typeof run.runId === "string" && run.runId.trim() ? run.runId.trim() : null,
+        taskId: null,
+      };
+      if (run.sessionKey && run.sessionKey !== sessionKey) {
+        throw new Error(`worker_session_identity_mismatch:${run.sessionKey}`);
+      }
+      let current = (await boundFlows.get(reservedFlow.flowId)) ?? reservedFlow;
+      let currentState = stateOf(current);
+      if (currentState?.activeWorker?.sessionKey !== sessionKey) {
+        throw new Error("worker_reservation_changed_after_launch");
+      }
+      const attachedRun = attachWorkerRun(
+        {
+          ...currentState,
+          launchOutcome: {
+            status: "accepted",
+            sessionKey,
+            runId: run.runId,
+            observedAt: Date.now(),
+          },
+        },
+        sessionKey,
+        run.runId,
+        null,
+      );
+      if (attachedRun.changed) {
+        reservedFlow = requireApplied(await persistState(boundFlows, current, attachedRun.state));
+        current = reservedFlow;
+        currentState = attachedRun.state;
+      }
+      const resolvedTask = await resolveWorkerTask(
+        api,
+        reservedFlow.ownerKey,
+        sessionKey,
+        run.runId,
+      );
+      if (!resolvedTask.task) {
+        throw new Error(resolvedTask.reason);
+      }
+      const taskId = resolvedTask.task.id ?? resolvedTask.task.taskId ?? null;
+      const attachedTask = attachWorkerRun(currentState, sessionKey, run.runId, taskId);
+      if (attachedTask.changed) {
+        reservedFlow = requireApplied(await persistState(boundFlows, current, attachedTask.state));
+      }
+      // Worker lifecycle events drive the next transition. A scheduled model turn here
+      // would repeatedly wake a controller chat while the worker is legitimately active.
+      await clearWake(api, config, reservedFlow);
+      return reservedFlow;
+    } catch (error) {
+      const current = (await boundFlows.get(reservedFlow.flowId)) ?? reservedFlow;
+      const currentState = stateOf(current);
+      if (currentState?.activeWorker?.sessionKey !== sessionKey) {
+        throw error;
+      }
+      if (launchInvoked && currentState?.launchOutcome?.status === "unknown") {
+        // Never convert an uncertain accepted native launch into a fresh worker slot.
+        await scheduleWake(api, config, current, "recover");
+        throw error;
+      }
+      const errorMessage = error instanceof Error ? error.message : "unknown";
+      const failureReason =
+        classifyWorkerFailure(errorMessage) === "infrastructure"
+          ? errorMessage
+          : `worker_start_failed:${errorMessage}`;
+      const failed = applyWorkerFailure(
+        { ...currentState, launchOutcome: null },
+        sessionKey,
+        failureReason,
+      );
+      const failedState =
+        failed.changed && launchedWorker?.sessionKey !== sessionKey
+          ? {
+              ...failed.state,
+              orphanedWorker: {
+                ...launchedWorker,
+                reason: failureReason,
+                clearedAt: Date.now(),
+              },
+            }
+          : failed.state;
+      const failedFlow = failed.changed
+        ? requireApplied(await persistState(boundFlows, current, failedState))
+        : current;
+      await applyEffect(api, config, boundFlows, failedFlow, failedState, failed.effect);
+      return failedFlow;
     }
-    const attachedRun = attachWorkerRun(currentState, sessionKey, run.runId, null);
-    if (attachedRun.changed) {
-      reservedFlow = requireApplied(persistState(boundFlows, current, attachedRun.state));
-      current = reservedFlow;
-      currentState = attachedRun.state;
-    }
-    const resolvedTask = resolveWorkerTask(api, reservedFlow.ownerKey, sessionKey, run.runId);
-    if (!resolvedTask.task) {
-      throw new Error(resolvedTask.reason);
-    }
-    const taskId = resolvedTask.task.id ?? resolvedTask.task.taskId ?? null;
-    const attachedTask = attachWorkerRun(currentState, sessionKey, run.runId, taskId);
-    if (attachedTask.changed) {
-      reservedFlow = requireApplied(persistState(boundFlows, current, attachedTask.state));
-    }
-    // Worker lifecycle events drive the next transition. A scheduled model turn here
-    // would repeatedly wake a controller chat while the worker is legitimately active.
-    await clearWake(api, config, reservedFlow);
-    return reservedFlow;
-  } catch (error) {
-    const current = boundFlows.get(reservedFlow.flowId) ?? reservedFlow;
-    const currentState = stateOf(current);
-    if (currentState?.activeWorker?.sessionKey !== sessionKey) {
-      throw error;
-    }
-    const errorMessage = error instanceof Error ? error.message : "unknown";
-    const failureReason =
-      classifyWorkerFailure(errorMessage) === "infrastructure"
-        ? errorMessage
-        : `worker_start_failed:${errorMessage}`;
-    const failed = applyWorkerFailure(currentState, sessionKey, failureReason);
-    const failedState =
-      failed.changed && launchedWorker?.sessionKey !== sessionKey
-        ? {
-            ...failed.state,
-            orphanedWorker: {
-              ...launchedWorker,
-              reason: failureReason,
-              clearedAt: Date.now(),
-            },
-          }
-        : failed.state;
-    const failedFlow = failed.changed
-      ? requireApplied(persistState(boundFlows, current, failedState))
-      : current;
-    await applyEffect(api, config, boundFlows, failedFlow, failedState, failed.effect);
-    return failedFlow;
-  }
+  });
 }
 
 async function reconcileGithubHead(api, config, boundFlows, flow, state) {
-  if (!state?.pendingGithubReconciliation) {
-    return { resolved: true, flow, state, effect: "none", reason: "no_reconciliation_pending" };
-  }
-  try {
-    const policy = config.repositories.get(state.repo);
-    if (!policy || !policy.enabled) {
-      throw new Error("repository_policy_missing_or_disabled");
+  return await withTaskBindings(async () => {
+    if (!state?.pendingGithubReconciliation) {
+      return { resolved: true, flow, state, effect: "none", reason: "no_reconciliation_pending" };
     }
-    const event = await readAuthoritativePullRequest(api, config, state);
-    const transition = applyPullRequestEvent(state, event, policy);
-    if (!transition.changed) {
-      throw new Error(`github_reconciliation_not_applied:${transition.reason}`);
+    try {
+      const policy = config.repositories.get(state.repo);
+      if (!policy || !policy.enabled) {
+        throw new Error("repository_policy_missing_or_disabled");
+      }
+      const event = await readAuthoritativePullRequest(api, config, state);
+      const transition = applyPullRequestEvent(state, event, policy);
+      if (!transition.changed) {
+        throw new Error(`github_reconciliation_not_applied:${transition.reason}`);
+      }
+      const updated = requireApplied(await persistState(boundFlows, flow, transition.state));
+      if (transition.effect !== "none") {
+        await applyEffect(api, config, boundFlows, updated, transition.state, transition.effect);
+      }
+      return {
+        resolved: true,
+        flow: updated,
+        state: transition.state,
+        effect: transition.effect,
+        reason: transition.reason,
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown";
+      await scheduleWake(api, config, flow, "recover");
+      return {
+        resolved: false,
+        flow,
+        state,
+        effect: "reconcile",
+        reason: `github_head_reconciliation_pending:${detail.slice(0, 300)}`,
+      };
     }
-    const updated = requireApplied(persistState(boundFlows, flow, transition.state));
-    if (transition.effect !== "none") {
-      await applyEffect(api, config, boundFlows, updated, transition.state, transition.effect);
-    }
-    return {
-      resolved: true,
-      flow: updated,
-      state: transition.state,
-      effect: transition.effect,
-      reason: transition.reason,
-    };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "unknown";
-    await scheduleWake(api, config, flow, "recover");
-    return {
-      resolved: false,
-      flow,
-      state,
-      effect: "reconcile",
-      reason: `github_head_reconciliation_pending:${detail.slice(0, 300)}`,
-    };
-  }
+  });
 }
 
 async function ingestPullRequest(api, config, event) {
-  const policy = config.repositories.get(event.repo);
-  if (!policy || !policy.enabled) {
-    return { accepted: false, reason: "repository_not_enabled" };
-  }
-  let existingMatch = findMatchingFlow(api, config, event.repo, event.prNumber);
-  if (!existingMatch) {
-    const admissionLock = acquirePullRequestAdmissionLock(api, event.repo, event.prNumber);
-    if (!admissionLock) {
-      const concurrentMatch = findMatchingFlow(api, config, event.repo, event.prNumber);
-      if (!concurrentMatch) {
-        return { accepted: false, created: false, reason: "flow_admission_lock_held" };
-      }
-      existingMatch = concurrentMatch;
-    } else {
-      try {
-        existingMatch = findMatchingFlow(api, config, event.repo, event.prNumber);
-        if (!existingMatch) {
-          const boundFlows = bindFlowsForSession(api, ownerSessionKeyForRepo(config, event.repo));
-          const state = createState(event, policy);
-          const flow = boundFlows.createManaged({
-            controllerId: CONTROLLER_ID,
-            goal: `Bring ${event.repo}#${event.prNumber} to exact-head Broker merge-readiness`,
-            status: "running",
-            notifyPolicy: "silent",
-            currentStep: state.phase,
-            stateJson: state,
-            createdAt: state.startedAt,
-            updatedAt: state.updatedAt,
-          });
-          if (state.mode !== "observe") {
-            await scheduleWake(api, config, flow, "continue");
-          }
-          return { accepted: true, created: true, flowId: flow.flowId, revision: flow.revision };
+  return await withTaskBindings(async () => {
+    const policy = config.repositories.get(event.repo);
+    if (!policy || !policy.enabled) {
+      return { accepted: false, reason: "repository_not_enabled" };
+    }
+    let existingMatch = await findMatchingFlow(api, config, event.repo, event.prNumber);
+    if (!existingMatch) {
+      const admissionLock = acquirePullRequestAdmissionLock(api, event.repo, event.prNumber);
+      if (!admissionLock) {
+        const concurrentMatch = await findMatchingFlow(api, config, event.repo, event.prNumber);
+        if (!concurrentMatch) {
+          return { accepted: false, created: false, reason: "flow_admission_lock_held" };
         }
-      } finally {
-        admissionLock.release();
+        existingMatch = concurrentMatch;
+      } else {
+        try {
+          existingMatch = await findMatchingFlow(api, config, event.repo, event.prNumber);
+          if (!existingMatch) {
+            const boundFlows = await bindFlowsForSession(
+              api,
+              ownerSessionKeyForRepo(config, event.repo),
+            );
+            const state = createState(event, policy);
+            requireLifecycleHost(api);
+            const flow = await boundFlows.createManaged({
+              controllerId: CONTROLLER_ID,
+              dedupe: { stateFields: ["repo", "prNumber", "headSha"] },
+              goal: `Bring ${event.repo}#${event.prNumber} to exact-head Broker merge-readiness`,
+              status: "running",
+              notifyPolicy: "silent",
+              currentStep: state.phase,
+              stateJson: state,
+              createdAt: state.startedAt,
+              updatedAt: state.updatedAt,
+            });
+            if (state.mode !== "observe") {
+              await scheduleWake(api, config, flow, "continue");
+            }
+            return { accepted: true, created: true, flowId: flow.flowId, revision: flow.revision };
+          }
+        } finally {
+          admissionLock.release();
+        }
       }
     }
-  }
-  const { boundFlows, flow: existing } = existingMatch;
-  const currentState = stateOf(existing);
-  const transition = applyPullRequestEvent(currentState, event, policy);
-  if (
-    currentState?.phase === PHASE.BLOCKED &&
-    currentState.blocker === "dogfood_review_complete_live_remediation_not_enabled" &&
-    policy.mode === "active"
-  ) {
-    const base = transition.changed ? transition.state : currentState;
-    const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
-      resetDeadline: true,
-    }).state;
-    const next = {
-      ...refreshed,
-      phase:
-        refreshed.phase === PHASE.REVIEW_QUEUED
-          ? PHASE.REVIEW_QUEUED
-          : currentState.findings.length > 0
-            ? PHASE.REMEDIATION_QUEUED
-            : PHASE.REVIEW_QUEUED,
-      workerGeneration: workerGenerationForState(currentState) + 1,
-      wait: null,
-      blocker: null,
-      updatedAt: Date.now(),
-    };
-    const flow = requireApplied(persistState(boundFlows, existing, next));
-    await applyEffect(api, config, boundFlows, flow, next, "continue");
-    return {
-      accepted: true,
-      created: false,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: "active_mode_reopen_dogfood_block",
-    };
-  }
-  if (
-    currentState?.phase === PHASE.BLOCKED &&
-    currentState.blocker === "publisher_not_attested" &&
-    policy.mode === "active" &&
-    policy.publisherBrokerId &&
-    policy.publisherAttestationRef &&
-    event.eventId.startsWith("owner-admit:")
-  ) {
-    const base = transition.changed ? transition.state : currentState;
-    const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
-      resetDeadline: true,
-    }).state;
-    const next = {
-      ...refreshed,
-      phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
-      workerGeneration: workerGenerationForState(currentState) + 1,
-      activeWorker: null,
-      wait: null,
-      blocker: null,
-      updatedAt: Date.now(),
-    };
-    const flow = requireApplied(persistState(boundFlows, existing, next));
-    await applyEffect(api, config, boundFlows, flow, next, "continue");
-    return {
-      accepted: true,
-      created: false,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: "owner_admit_reopen_attested_publisher",
-    };
-  }
-  if (
-    currentState?.phase === PHASE.BLOCKED &&
-    currentState.blocker === "review_fix_cycle_budget_exhausted" &&
-    policy.mode === "active" &&
-    policy.maxCycles > currentState.cycle &&
-    event.eventId.startsWith("owner-admit:")
-  ) {
-    const base = transition.changed ? transition.state : currentState;
-    const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
-      resetDeadline: true,
-    }).state;
-    const next = {
-      ...refreshed,
-      phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
-      // A reopened flow is a new execution generation; reusing the old key adopts stale history.
-      workerGeneration: workerGenerationForState(currentState) + 1,
-      retryCount: 0,
-      infrastructureRetryCount: 0,
-      infrastructureRetryAt: null,
-      infrastructureLastFailure: null,
-      orphanedWorker: null,
-      activeWorker: null,
-      wait: null,
-      blocker: null,
-      updatedAt: Date.now(),
-    };
-    const flow = requireApplied(persistState(boundFlows, existing, next));
-    await applyEffect(api, config, boundFlows, flow, next, "continue");
-    return {
-      accepted: true,
-      created: false,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: "owner_admit_reopen_cycle_budget",
-    };
-  }
-  if (
-    currentState?.phase === PHASE.BLOCKED &&
-    currentState.blocker === "wall_time_budget_exhausted" &&
-    policy.mode === "active" &&
-    event.eventId.startsWith("owner-admit:")
-  ) {
-    const base = transition.changed ? transition.state : currentState;
-    const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
-      resetDeadline: true,
-    }).state;
-    const next = {
-      ...refreshed,
-      phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
-      workerGeneration: workerGenerationForState(currentState) + 1,
-      activeWorker: null,
-      wait: null,
-      blocker: null,
-      updatedAt: Date.now(),
-    };
-    const flow = requireApplied(persistState(boundFlows, existing, next));
-    await applyEffect(api, config, boundFlows, flow, next, "continue");
-    return {
-      accepted: true,
-      created: false,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: "owner_admit_reopen_wall_time_budget",
-    };
-  }
-  if (
-    currentState?.phase === PHASE.BLOCKED &&
-    typeof currentState.blocker === "string" &&
-    (currentState.blocker.startsWith("worker_failure_exhausted:") ||
-      currentState.blocker === "worker_completed_without_structured_report") &&
-    event.eventId.startsWith("owner-admit:")
-  ) {
-    const base = transition.changed ? transition.state : currentState;
-    const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
-      resetDeadline: true,
-    }).state;
-    const infrastructureRecovery = recoverState(refreshed, undefined, Date.now());
-    if (infrastructureRecovery.reason === "legacy_infrastructure_block_requeued") {
-      const flow = requireApplied(persistState(boundFlows, existing, infrastructureRecovery.state));
-      await applyEffect(
-        api,
-        config,
-        boundFlows,
-        flow,
-        infrastructureRecovery.state,
-        infrastructureRecovery.effect,
-      );
+    const { boundFlows, flow: existing } = existingMatch;
+    const currentState = stateOf(existing);
+    const transition = applyPullRequestEvent(currentState, event, policy);
+    if (
+      currentState?.phase === PHASE.BLOCKED &&
+      currentState.blocker === "dogfood_review_complete_live_remediation_not_enabled" &&
+      policy.mode === "active"
+    ) {
+      const base = transition.changed ? transition.state : currentState;
+      const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
+        resetDeadline: true,
+      }).state;
+      const next = {
+        ...refreshed,
+        phase:
+          refreshed.phase === PHASE.REVIEW_QUEUED
+            ? PHASE.REVIEW_QUEUED
+            : currentState.findings.length > 0
+              ? PHASE.REMEDIATION_QUEUED
+              : PHASE.REVIEW_QUEUED,
+        workerGeneration: workerGenerationForState(currentState) + 1,
+        wait: null,
+        blocker: null,
+        updatedAt: Date.now(),
+      };
+      const flow = requireApplied(await persistState(boundFlows, existing, next));
+      await applyEffect(api, config, boundFlows, flow, next, "continue");
       return {
         accepted: true,
         created: false,
         flowId: flow.flowId,
         revision: flow.revision,
-        reason: "owner_admit_requeue_infrastructure_failure",
+        reason: "active_mode_reopen_dogfood_block",
       };
     }
-    const next = {
-      ...refreshed,
-      phase:
-        policy.mode === "active" && currentState.findings.length > 0
-          ? PHASE.REMEDIATION_QUEUED
-          : PHASE.REVIEW_QUEUED,
-      retryCount: 0,
-      infrastructureRetryCount: 0,
-      workerGeneration: workerGenerationForState(currentState) + 1,
-      infrastructureRetryAt: null,
-      infrastructureLastFailure: null,
-      orphanedWorker: null,
-      activeWorker: null,
-      wait: null,
-      blocker: null,
-      updatedAt: Date.now(),
-    };
-    const flow = requireApplied(persistState(boundFlows, existing, next));
-    await applyEffect(api, config, boundFlows, flow, next, "continue");
+    if (
+      currentState?.phase === PHASE.BLOCKED &&
+      currentState.blocker === "publisher_not_attested" &&
+      policy.mode === "active" &&
+      policy.publisherBrokerId &&
+      policy.publisherAttestationRef &&
+      event.eventId.startsWith("owner-admit:")
+    ) {
+      const base = transition.changed ? transition.state : currentState;
+      const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
+        resetDeadline: true,
+      }).state;
+      const next = {
+        ...refreshed,
+        phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
+        workerGeneration: workerGenerationForState(currentState) + 1,
+        activeWorker: null,
+        wait: null,
+        blocker: null,
+        updatedAt: Date.now(),
+      };
+      const flow = requireApplied(await persistState(boundFlows, existing, next));
+      await applyEffect(api, config, boundFlows, flow, next, "continue");
+      return {
+        accepted: true,
+        created: false,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: "owner_admit_reopen_attested_publisher",
+      };
+    }
+    if (
+      currentState?.phase === PHASE.BLOCKED &&
+      currentState.blocker === "review_fix_cycle_budget_exhausted" &&
+      policy.mode === "active" &&
+      policy.maxCycles > currentState.cycle &&
+      event.eventId.startsWith("owner-admit:")
+    ) {
+      const base = transition.changed ? transition.state : currentState;
+      const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
+        resetDeadline: true,
+      }).state;
+      const next = {
+        ...refreshed,
+        phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
+        // A reopened flow is a new execution generation; reusing the old key adopts stale history.
+        workerGeneration: workerGenerationForState(currentState) + 1,
+        retryCount: 0,
+        infrastructureRetryCount: 0,
+        infrastructureRetryAt: null,
+        infrastructureLastFailure: null,
+        orphanedWorker: null,
+        activeWorker: null,
+        wait: null,
+        blocker: null,
+        updatedAt: Date.now(),
+      };
+      const flow = requireApplied(await persistState(boundFlows, existing, next));
+      await applyEffect(api, config, boundFlows, flow, next, "continue");
+      return {
+        accepted: true,
+        created: false,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: "owner_admit_reopen_cycle_budget",
+      };
+    }
+    if (
+      currentState?.phase === PHASE.BLOCKED &&
+      currentState.blocker === "wall_time_budget_exhausted" &&
+      policy.mode === "active" &&
+      event.eventId.startsWith("owner-admit:")
+    ) {
+      const base = transition.changed ? transition.state : currentState;
+      const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
+        resetDeadline: true,
+      }).state;
+      const next = {
+        ...refreshed,
+        phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
+        workerGeneration: workerGenerationForState(currentState) + 1,
+        activeWorker: null,
+        wait: null,
+        blocker: null,
+        updatedAt: Date.now(),
+      };
+      const flow = requireApplied(await persistState(boundFlows, existing, next));
+      await applyEffect(api, config, boundFlows, flow, next, "continue");
+      return {
+        accepted: true,
+        created: false,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: "owner_admit_reopen_wall_time_budget",
+      };
+    }
+    if (
+      currentState?.phase === PHASE.BLOCKED &&
+      typeof currentState.blocker === "string" &&
+      (currentState.blocker.startsWith("worker_failure_exhausted:") ||
+        currentState.blocker === "worker_completed_without_structured_report") &&
+      event.eventId.startsWith("owner-admit:")
+    ) {
+      const base = transition.changed ? transition.state : currentState;
+      const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
+        resetDeadline: true,
+      }).state;
+      const infrastructureRecovery = recoverState(refreshed, undefined, Date.now());
+      if (infrastructureRecovery.reason === "legacy_infrastructure_block_requeued") {
+        const flow = requireApplied(
+          await persistState(boundFlows, existing, infrastructureRecovery.state),
+        );
+        await applyEffect(
+          api,
+          config,
+          boundFlows,
+          flow,
+          infrastructureRecovery.state,
+          infrastructureRecovery.effect,
+        );
+        return {
+          accepted: true,
+          created: false,
+          flowId: flow.flowId,
+          revision: flow.revision,
+          reason: "owner_admit_requeue_infrastructure_failure",
+        };
+      }
+      const next = {
+        ...refreshed,
+        phase:
+          policy.mode === "active" && currentState.findings.length > 0
+            ? PHASE.REMEDIATION_QUEUED
+            : PHASE.REVIEW_QUEUED,
+        retryCount: 0,
+        infrastructureRetryCount: 0,
+        workerGeneration: workerGenerationForState(currentState) + 1,
+        infrastructureRetryAt: null,
+        infrastructureLastFailure: null,
+        orphanedWorker: null,
+        activeWorker: null,
+        wait: null,
+        blocker: null,
+        updatedAt: Date.now(),
+      };
+      const flow = requireApplied(await persistState(boundFlows, existing, next));
+      await applyEffect(api, config, boundFlows, flow, next, "continue");
+      return {
+        accepted: true,
+        created: false,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: "owner_admit_reopen_worker_failure",
+      };
+    }
+    if (
+      currentState?.phase === PHASE.BLOCKED &&
+      typeof currentState.blocker === "string" &&
+      (currentState.blocker === "findings_unusable" ||
+        currentState.blocker === "changes_requested_without_actionable_paths") &&
+      event.eventId.startsWith("owner-admit:")
+    ) {
+      const base = transition.changed ? transition.state : currentState;
+      const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
+        resetDeadline: true,
+      }).state;
+      const next = {
+        ...refreshed,
+        phase: PHASE.REVIEW_QUEUED,
+        review: null,
+        findings: [],
+        retryCount: 0,
+        infrastructureRetryCount: 0,
+        workerGeneration: workerGenerationForState(currentState) + 1,
+        infrastructureRetryAt: null,
+        infrastructureLastFailure: null,
+        orphanedWorker: null,
+        activeWorker: null,
+        wait: null,
+        blocker: null,
+        updatedAt: Date.now(),
+      };
+      const flow = requireApplied(await persistState(boundFlows, existing, next));
+      await applyEffect(api, config, boundFlows, flow, next, "continue");
+      return {
+        accepted: true,
+        created: false,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: "owner_admit_reopen_unusable_findings",
+      };
+    }
+    if (event.eventId.startsWith("owner-admit:")) {
+      const base = transition.changed ? transition.state : currentState;
+      const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
+        resetDeadline: true,
+      }).state;
+      const flow = requireApplied(await persistState(boundFlows, existing, refreshed));
+      const effect =
+        workerKindForPhase(refreshed.phase) && !refreshed.activeWorker ? "continue" : "none";
+      await applyEffect(api, config, boundFlows, flow, refreshed, effect);
+      return {
+        accepted: true,
+        created: false,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: "owner_admit_policy_refreshed",
+      };
+    }
+    if (!transition.changed) {
+      return {
+        accepted: true,
+        created: false,
+        flowId: existing.flowId,
+        revision: existing.revision,
+        reason: transition.reason,
+      };
+    }
+    const flow = requireApplied(await persistState(boundFlows, existing, transition.state));
+    await applyEffect(api, config, boundFlows, flow, transition.state, transition.effect);
     return {
       accepted: true,
       created: false,
       flowId: flow.flowId,
       revision: flow.revision,
-      reason: "owner_admit_reopen_worker_failure",
-    };
-  }
-  if (
-    currentState?.phase === PHASE.BLOCKED &&
-    typeof currentState.blocker === "string" &&
-    (currentState.blocker === "findings_unusable" ||
-      currentState.blocker === "changes_requested_without_actionable_paths") &&
-    event.eventId.startsWith("owner-admit:")
-  ) {
-    const base = transition.changed ? transition.state : currentState;
-    const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
-      resetDeadline: true,
-    }).state;
-    const next = {
-      ...refreshed,
-      phase: PHASE.REVIEW_QUEUED,
-      review: null,
-      findings: [],
-      retryCount: 0,
-      infrastructureRetryCount: 0,
-      workerGeneration: workerGenerationForState(currentState) + 1,
-      infrastructureRetryAt: null,
-      infrastructureLastFailure: null,
-      orphanedWorker: null,
-      activeWorker: null,
-      wait: null,
-      blocker: null,
-      updatedAt: Date.now(),
-    };
-    const flow = requireApplied(persistState(boundFlows, existing, next));
-    await applyEffect(api, config, boundFlows, flow, next, "continue");
-    return {
-      accepted: true,
-      created: false,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: "owner_admit_reopen_unusable_findings",
-    };
-  }
-  if (event.eventId.startsWith("owner-admit:")) {
-    const base = transition.changed ? transition.state : currentState;
-    const refreshed = refreshPolicySnapshot(base, policy, Date.now(), {
-      resetDeadline: true,
-    }).state;
-    const flow = requireApplied(persistState(boundFlows, existing, refreshed));
-    const effect =
-      workerKindForPhase(refreshed.phase) && !refreshed.activeWorker ? "continue" : "none";
-    await applyEffect(api, config, boundFlows, flow, refreshed, effect);
-    return {
-      accepted: true,
-      created: false,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: "owner_admit_policy_refreshed",
-    };
-  }
-  if (!transition.changed) {
-    return {
-      accepted: true,
-      created: false,
-      flowId: existing.flowId,
-      revision: existing.revision,
       reason: transition.reason,
     };
-  }
-  const flow = requireApplied(persistState(boundFlows, existing, transition.state));
-  await applyEffect(api, config, boundFlows, flow, transition.state, transition.effect);
-  return {
-    accepted: true,
-    created: false,
-    flowId: flow.flowId,
-    revision: flow.revision,
-    reason: transition.reason,
-  };
+  });
 }
 
 async function ingestReviewResult(api, config, event) {
-  const match = findMatchingFlow(api, config, event.repo, event.prNumber);
-  if (!match) {
-    return { accepted: false, reason: "matching_active_flow_not_found" };
-  }
-  const { boundFlows, flow } = match;
-  const transition = applyReviewResult(stateOf(flow), event);
-  if (!transition.changed) {
-    return {
-      accepted: true,
-      flowId: flow.flowId,
-      revision: flow.revision,
-      reason: transition.reason,
-    };
-  }
-  let nextState = transition.state;
-  let nextEffect = transition.effect;
-  const gate = enforceModeGate(nextState);
-  if (gate.changed) {
-    nextState = gate.state;
-    nextEffect = gate.effect;
-  }
-  const updated = requireApplied(persistState(boundFlows, flow, nextState));
-  await applyEffect(api, config, boundFlows, updated, nextState, nextEffect, {
-    dispatchImmediately: true,
+  return await withTaskBindings(async () => {
+    const match = await findMatchingFlow(api, config, event.repo, event.prNumber);
+    if (!match) {
+      return { accepted: false, reason: "matching_active_flow_not_found" };
+    }
+    const { boundFlows, flow } = match;
+    const transition = applyReviewResult(stateOf(flow), event);
+    if (!transition.changed) {
+      return {
+        accepted: true,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: transition.reason,
+      };
+    }
+    let nextState = transition.state;
+    let nextEffect = transition.effect;
+    const gate = enforceModeGate(nextState);
+    if (gate.changed) {
+      nextState = gate.state;
+      nextEffect = gate.effect;
+    }
+    const updated = requireApplied(await persistState(boundFlows, flow, nextState));
+    await applyEffect(api, config, boundFlows, updated, nextState, nextEffect, {
+      dispatchImmediately: true,
+    });
+    const current = (await boundFlows.get(updated.flowId)) ?? updated;
+    return { accepted: true, flowId: current.flowId, revision: current.revision };
   });
-  const current = boundFlows.get(updated.flowId) ?? updated;
-  return { accepted: true, flowId: current.flowId, revision: current.revision };
 }
 
 async function ingestCheckSuite(api, config, eventInput) {
-  const event = normalizeCheckSuiteEvent(eventInput);
-  const match = findMatchingFlow(api, config, event.repo, event.prNumber, {
-    headSha: event.headSha,
-    nonTerminalOnly: true,
-  });
-  if (!match) {
-    return { accepted: false, reason: "matching_active_flow_not_found" };
-  }
-  const { boundFlows, flow } = match;
-  const transition = applyCheckSuiteEvent(stateOf(flow), event);
-  if (!transition.changed) {
+  return await withTaskBindings(async () => {
+    const event = normalizeCheckSuiteEvent(eventInput);
+    const match = await findMatchingFlow(api, config, event.repo, event.prNumber, {
+      headSha: event.headSha,
+      nonTerminalOnly: true,
+    });
+    if (!match) {
+      return { accepted: false, reason: "matching_active_flow_not_found" };
+    }
+    const { boundFlows, flow } = match;
+    const transition = applyCheckSuiteEvent(stateOf(flow), event);
+    if (!transition.changed) {
+      return {
+        accepted: true,
+        flowId: flow.flowId,
+        revision: flow.revision,
+        reason: transition.reason,
+      };
+    }
+    let updated = requireApplied(await persistState(boundFlows, flow, transition.state));
+    if (transition.effect === "continue") {
+      updated = await dispatchWorker(api, config, boundFlows, updated);
+    }
+    const current = (await boundFlows.get(updated.flowId)) ?? updated;
     return {
       accepted: true,
-      flowId: flow.flowId,
-      revision: flow.revision,
+      flowId: current.flowId,
+      revision: current.revision,
       reason: transition.reason,
     };
-  }
-  let updated = requireApplied(persistState(boundFlows, flow, transition.state));
-  if (transition.effect === "continue") {
-    updated = await dispatchWorker(api, config, boundFlows, updated);
-  }
-  const current = boundFlows.get(updated.flowId) ?? updated;
-  return {
-    accepted: true,
-    flowId: current.flowId,
-    revision: current.revision,
-    reason: transition.reason,
-  };
+  });
 }
 
 function createRouteHandler(options) {
@@ -3553,12 +3815,14 @@ function canInspectStatus(config, ctx, ownerSessionKey, state) {
   return Boolean(agentId && config.statusAgentIds.includes(agentId));
 }
 
-function resolveAccessibleFlow(boundFlows, flowId) {
-  const flow = boundFlows.get(flowId);
-  if (!flow || flow.controllerId !== CONTROLLER_ID || !stateOf(flow)) {
-    throw new Error("flow_not_found");
-  }
-  return flow;
+async function resolveAccessibleFlow(boundFlows, flowId) {
+  return await withTaskBindings(async () => {
+    const flow = await boundFlows.get(flowId);
+    if (!flow || flow.controllerId !== CONTROLLER_ID || !stateOf(flow)) {
+      throw new Error("flow_not_found");
+    }
+    return flow;
+  });
 }
 
 function workerTaskMatches(worker, task) {
@@ -3584,65 +3848,73 @@ function workerAgentMainSessionKey(workerSessionKey) {
   return agentId ? `agent:${agentId}:main` : null;
 }
 
-function workerTaskLedgers(api, ownerSessionKey, worker) {
-  const workerAgentId = agentIdFromSessionKey(worker.sessionKey) ?? undefined;
-  const ownerAgentId = agentIdFromSessionKey(ownerSessionKey) ?? undefined;
-  const workerMainSessionKey = workerAgentMainSessionKey(worker.sessionKey);
-  const bindings = [
-    {
-      sessionKey: worker.sessionKey,
-      agentId: workerAgentId,
-    },
-    ...(workerMainSessionKey ? [{ sessionKey: workerMainSessionKey, agentId: workerAgentId }] : []),
-    ...(ownerSessionKey ? [{ sessionKey: ownerSessionKey, agentId: ownerAgentId }] : []),
-  ];
-  const seen = new Set();
-  const ledgers = [];
-  for (const binding of bindings) {
-    const key = `${binding.sessionKey}\u0000${binding.agentId ?? ""}`;
-    if (!binding.sessionKey || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    try {
-      ledgers.push(api.runtime.tasks.runs.bindSession(binding));
-    } catch {
-      // One inaccessible ledger must not hide an exact task from another owner/worker ledger.
-    }
-  }
-  return ledgers;
-}
-
-function taskForWorker(api, ownerSessionKey, worker) {
-  if (!worker?.sessionKey) {
-    return undefined;
-  }
-  const ledgers = workerTaskLedgers(api, ownerSessionKey, worker);
-  if (worker.taskId) {
-    for (const runs of ledgers) {
-      const exact = runs.get(worker.taskId);
-      if (workerTaskMatches(worker, exact)) {
-        return exact;
-      }
-    }
-  }
-  const seenTaskIds = new Set();
-  for (const runs of ledgers) {
-    for (const task of runs.list()) {
-      if (!task?.id || seenTaskIds.has(task.id)) {
+async function workerTaskLedgers(api, ownerSessionKey, worker) {
+  return await withTaskBindings(async () => {
+    const workerAgentId = agentIdFromSessionKey(worker.sessionKey) ?? undefined;
+    const ownerAgentId = agentIdFromSessionKey(ownerSessionKey) ?? undefined;
+    const workerMainSessionKey = workerAgentMainSessionKey(worker.sessionKey);
+    const bindings = [
+      {
+        sessionKey: worker.sessionKey,
+        agentId: workerAgentId,
+      },
+      ...(workerMainSessionKey
+        ? [{ sessionKey: workerMainSessionKey, agentId: workerAgentId }]
+        : []),
+      ...(ownerSessionKey ? [{ sessionKey: ownerSessionKey, agentId: ownerAgentId }] : []),
+    ];
+    const seen = new Set();
+    const ledgers = [];
+    for (const binding of bindings) {
+      const key = `${binding.sessionKey}\u0000${binding.agentId ?? ""}`;
+      if (!binding.sessionKey || seen.has(key)) {
         continue;
       }
-      seenTaskIds.add(task.id);
-      if (workerTaskMatches(worker, task)) {
-        return task;
+      seen.add(key);
+      try {
+        ledgers.push(await trackTaskBinding(api.runtime.tasks.runs.bindSession(binding)));
+      } catch {
+        // One inaccessible ledger must not hide an exact task from another owner/worker ledger.
       }
     }
-  }
-  return undefined;
+    return ledgers;
+  });
 }
 
-function currentWorkerTask(api, ownerSessionKey, state) {
-  return taskForWorker(api, ownerSessionKey, state.activeWorker);
+async function taskForWorker(api, ownerSessionKey, worker) {
+  return await withTaskBindings(async () => {
+    if (!worker?.sessionKey) {
+      return undefined;
+    }
+    const ledgers = await workerTaskLedgers(api, ownerSessionKey, worker);
+    if (worker.taskId) {
+      for (const runs of ledgers) {
+        const exact = await runs.get(worker.taskId);
+        if (workerTaskMatches(worker, exact)) {
+          return exact;
+        }
+      }
+    }
+    const seenTaskIds = new Set();
+    for (const runs of ledgers) {
+      for (const task of await runs.list()) {
+        if (!task?.id || seenTaskIds.has(task.id)) {
+          continue;
+        }
+        seenTaskIds.add(task.id);
+        if (workerTaskMatches(worker, task)) {
+          return task;
+        }
+      }
+    }
+    return undefined;
+  });
+}
+
+async function currentWorkerTask(api, ownerSessionKey, state) {
+  return await withTaskBindings(async () => {
+    return await taskForWorker(api, ownerSessionKey, state.activeWorker);
+  });
 }
 
 function workerMatchesTerminalLifecycleEvent(worker, event) {
@@ -3660,142 +3932,154 @@ function workerMatchesTerminalLifecycleEvent(worker, event) {
 }
 
 async function reconcileTerminalWorkerEvent(api, config, event) {
-  if (event?.stream !== "lifecycle" || !new Set(["end", "error"]).has(event?.data?.phase)) {
-    return { handled: false, reason: "not_terminal_worker_event" };
-  }
-  for (const candidate of collectLifecycleFlows(api, config)) {
-    const candidateState = stateOf(candidate);
-    if (!workerMatchesTerminalLifecycleEvent(candidateState?.activeWorker, event)) {
-      continue;
+  return await withTaskBindings(async () => {
+    if (event?.stream !== "lifecycle" || !new Set(["end", "error"]).has(event?.data?.phase)) {
+      return { handled: false, reason: "not_terminal_worker_event" };
     }
-    const resolved = resolveFlowBinding(api, config, candidate.flowId, candidate.ownerKey);
-    const boundFlows = resolved.boundFlows;
-    let flow = resolved.flow;
-    let state = stateOf(flow);
-    if (!workerMatchesTerminalLifecycleEvent(state?.activeWorker, event)) {
-      return { handled: false, reason: "worker_event_superseded" };
-    }
-
-    if (state.activeWorker.kind === "remediation") {
-      const evidence = await reconcileRemediationEvidence(api, config, boundFlows, flow);
-      if (evidence.changed) {
-        flow = boundFlows.get(flow.flowId) ?? evidence.flow;
-        return {
-          handled: true,
-          reason: evidence.reason,
-          flow: statusView(flow),
-        };
+    for (const candidate of await collectLifecycleFlows(api, config)) {
+      const candidateState = stateOf(candidate);
+      if (!workerMatchesTerminalLifecycleEvent(candidateState?.activeWorker, event)) {
+        continue;
       }
-      if (event.data.phase === "end") {
-        // The host command writes immutable evidence before returning. If filesystem
-        // visibility trails the terminal event, use one bounded controller wake.
-        await scheduleWake(api, config, flow, "recover");
-        return {
-          handled: true,
-          reason: "remediation_evidence_pending",
-          flow: statusView(flow),
-        };
+      const resolved = await resolveFlowBinding(api, config, candidate.flowId, candidate.ownerKey);
+      const boundFlows = resolved.boundFlows;
+      let flow = resolved.flow;
+      let state = stateOf(flow);
+      if (!workerMatchesTerminalLifecycleEvent(state?.activeWorker, event)) {
+        return { handled: false, reason: "worker_event_superseded" };
       }
-    }
 
-    const terminalTask = {
-      status: event.data.phase === "end" ? "succeeded" : "failed",
-      error:
-        typeof event.data.error === "string"
-          ? event.data.error
-          : typeof event.data.reason === "string"
-            ? event.data.reason
-            : event.data.phase,
-    };
-    const transition = recoverState(state, terminalTask, Date.now(), 0, {
-      processStartedAt: processStartedAtMs(),
-      sessionAlive: false,
-    });
-    if (transition.changed) {
-      flow = requireApplied(persistState(boundFlows, flow, transition.state));
-      state = transition.state;
+      if (state.activeWorker.kind === "remediation") {
+        const evidence = await reconcileRemediationEvidence(api, config, boundFlows, flow);
+        if (evidence.changed) {
+          flow = (await boundFlows.get(flow.flowId)) ?? evidence.flow;
+          return {
+            handled: true,
+            reason: evidence.reason,
+            flow: statusView(flow),
+          };
+        }
+        if (event.data.phase === "end") {
+          // The host command writes immutable evidence before returning. If filesystem
+          // visibility trails the terminal event, use one bounded controller wake.
+          await scheduleWake(api, config, flow, "recover");
+          return {
+            handled: true,
+            reason: "remediation_evidence_pending",
+            flow: statusView(flow),
+          };
+        }
+      }
+
+      const terminalTask = {
+        status: event.data.phase === "end" ? "succeeded" : "failed",
+        error:
+          typeof event.data.error === "string"
+            ? event.data.error
+            : typeof event.data.reason === "string"
+              ? event.data.reason
+              : event.data.phase,
+      };
+      const transition = recoverState(state, terminalTask, Date.now(), 0, {
+        processStartedAt: processStartedAtMs(),
+        sessionAlive: false,
+      });
+      if (transition.changed) {
+        flow = requireApplied(await persistState(boundFlows, flow, transition.state));
+        state = transition.state;
+      }
+      await applyEffect(api, config, boundFlows, flow, state, transition.effect, {
+        dispatchImmediately: true,
+      });
+      flow = (await boundFlows.get(flow.flowId)) ?? flow;
+      return { handled: true, reason: transition.reason, flow: statusView(flow) };
     }
-    await applyEffect(api, config, boundFlows, flow, state, transition.effect, {
-      dispatchImmediately: true,
-    });
-    flow = boundFlows.get(flow.flowId) ?? flow;
-    return { handled: true, reason: transition.reason, flow: statusView(flow) };
-  }
-  return { handled: false, reason: "active_worker_not_found" };
+    return { handled: false, reason: "active_worker_not_found" };
+  });
 }
 
 const ACTIVE_TASK_STATUSES = new Set(["queued", "running"]);
 const TERMINAL_TASK_STATUSES = new Set(["succeeded", "failed", "timed_out", "cancelled", "lost"]);
 
-async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
-  if (!orphanedWorker?.sessionKey) {
-    return { safe: true, reason: "no_orphan" };
-  }
-  const task = taskForWorker(api, ownerSessionKey, orphanedWorker);
-  if (task && TERMINAL_TASK_STATUSES.has(task.status)) {
-    return { safe: true, reason: "orphan_task_terminal", task };
-  }
-  const alive = sessionAlive(api, orphanedWorker.sessionKey);
-  if (task && ACTIVE_TASK_STATUSES.has(task.status)) {
-    for (const runs of workerTaskLedgers(api, ownerSessionKey, orphanedWorker)) {
-      const exact = runs.get(task.id);
-      if (!workerTaskMatches(orphanedWorker, exact) || typeof runs.cancel !== "function") {
-        continue;
-      }
-      try {
-        const cancelled = await runs.cancel({ taskId: task.id, cfg: api.config });
-        if (cancelled?.cancelled || TERMINAL_TASK_STATUSES.has(cancelled?.task?.status)) {
-          return { safe: true, reason: "orphan_task_cancelled", task: cancelled.task ?? task };
+async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker, expectedFlow) {
+  return await withTaskBindings(async () => {
+    if (!orphanedWorker?.sessionKey) {
+      return { safe: true, reason: "no_orphan" };
+    }
+    const task = await taskForWorker(api, ownerSessionKey, orphanedWorker);
+    if (task && TERMINAL_TASK_STATUSES.has(task.status)) {
+      return { safe: true, reason: "orphan_task_terminal", task };
+    }
+    const alive = sessionAlive(api, orphanedWorker.sessionKey);
+    if (task && ACTIVE_TASK_STATUSES.has(task.status)) {
+      for (const runs of await workerTaskLedgers(api, ownerSessionKey, orphanedWorker)) {
+        const exact = await runs.get(task.id);
+        if (!workerTaskMatches(orphanedWorker, exact) || typeof runs.cancel !== "function") {
+          continue;
         }
-      } catch {
-        // Liveness below remains the authoritative fallback for stale task projections.
+        try {
+          const cancelled = await runs.cancel({ taskId: task.id, expectedFlow, cfg: api.config });
+          if (cancelled?.cancelled || TERMINAL_TASK_STATUSES.has(cancelled?.task?.status)) {
+            return { safe: true, reason: "orphan_task_cancelled", task: cancelled.task ?? task };
+          }
+        } catch {
+          // Liveness below remains the authoritative fallback for stale task projections.
+        }
       }
     }
-  }
-  if (alive === false) {
-    return { safe: true, reason: task ? "orphan_session_dead_task_stale" : "orphan_session_dead" };
-  }
-  return {
-    safe: false,
-    reason: alive === true ? "orphan_session_still_alive" : "orphan_session_liveness_unknown",
-  };
+    if (alive === false) {
+      return {
+        safe: true,
+        reason: task ? "orphan_session_dead_task_stale" : "orphan_session_dead",
+      };
+    }
+    return {
+      safe: false,
+      reason: alive === true ? "orphan_session_still_alive" : "orphan_session_liveness_unknown",
+    };
+  });
 }
 
 async function reconcileOrphanBeforeEffect(api, config, boundFlows, flow, state) {
-  if (
-    !state?.orphanedWorker ||
-    !new Set(["review_completion_received", "worker_report_received"]).has(
-      state.orphanedWorker.reason,
-    )
-  ) {
-    return { safe: true, flow, state, reconciled: false };
-  }
-  const orphan = await reconcileOrphanedWorker(api, flow.ownerKey, state.orphanedWorker);
-  if (!orphan.safe) {
-    await scheduleWake(api, config, flow, "recover");
-    return { safe: false, flow, state, reconciled: false, reason: orphan.reason };
-  }
-  const orphanedWorker = state.orphanedWorker;
-  const reconciledAt = Date.now();
-  const nextState = {
-    ...state,
-    orphanedWorker: null,
-    lastGhostCleanup: {
-      sessionKey: orphanedWorker.sessionKey,
-      runId: orphanedWorker.runId ?? null,
-      taskId: orphanedWorker.taskId ?? null,
+  return await withTaskBindings(async () => {
+    if (
+      !state?.orphanedWorker ||
+      !new Set(["review_completion_received", "worker_report_received"]).has(
+        state.orphanedWorker.reason,
+      )
+    ) {
+      return { safe: true, flow, state, reconciled: false };
+    }
+    const orphan = await reconcileOrphanedWorker(api, flow.ownerKey, state.orphanedWorker, {
+      flowId: flow.flowId,
+      revision: flow.revision,
+    });
+    if (!orphan.safe) {
+      await scheduleWake(api, config, flow, "recover");
+      return { safe: false, flow, state, reconciled: false, reason: orphan.reason };
+    }
+    const orphanedWorker = state.orphanedWorker;
+    const reconciledAt = Date.now();
+    const nextState = {
+      ...state,
+      orphanedWorker: null,
+      lastGhostCleanup: {
+        sessionKey: orphanedWorker.sessionKey,
+        runId: orphanedWorker.runId ?? null,
+        taskId: orphanedWorker.taskId ?? null,
+        reason: orphan.reason,
+        reconciledAt,
+      },
+      updatedAt: reconciledAt,
+    };
+    return {
+      safe: true,
+      flow: requireApplied(await persistState(boundFlows, flow, nextState)),
+      state: nextState,
+      reconciled: true,
       reason: orphan.reason,
-      reconciledAt,
-    },
-    updatedAt: reconciledAt,
-  };
-  return {
-    safe: true,
-    flow: requireApplied(persistState(boundFlows, flow, nextState)),
-    state: nextState,
-    reconciled: true,
-    reason: orphan.reason,
-  };
+    };
+  });
 }
 
 const DEAD_SESSION_STATUSES = new Set([
@@ -3927,395 +4211,403 @@ function createControllerTool(api, config, ctx) {
       "Inspect, continue, recover, authorize, or report one exact-head Broker PR lifecycle TaskFlow.",
     parameters: toolSchema(),
     execute: async (_toolCallId, input) => {
-      if (!config.enabled || !config.ownerSessionKey) {
-        throw new Error("pr_lifecycle_taskflow_is_not_enabled");
-      }
-      if (input.action === "admit") {
-        const event = normalizePullRequestEvent({
-          eventId: `owner-admit:${Date.now()}:${input.headSha ?? "missing"}`,
-          action: "synchronize",
-          repo: input.repo,
-          prNumber: input.prNumber,
-          headSha: input.headSha,
-          baseSha: input.baseSha,
-          baseRef: input.baseRef,
-          headRepo: input.repo,
-        });
-        const exactResolved = input.flowId
-          ? resolveFlowBinding(api, config, input.flowId, ctx.sessionKey)
-          : null;
-        const exactState = exactResolved ? stateOf(exactResolved.flow) : null;
-        if (
-          exactState &&
-          (exactState.repo !== event.repo || exactState.prNumber !== event.prNumber)
-        ) {
-          throw new Error("flow_scope_mismatch");
+      return await withTaskBindings(async () => {
+        if (!config.enabled || !config.ownerSessionKey) {
+          throw new Error("pr_lifecycle_taskflow_is_not_enabled");
         }
-        requireOwnerContext(ctx, ownerSessionKeyForRepo(config, exactState?.repo ?? event.repo));
-        const matching = exactResolved ?? findMatchingFlow(api, config, event.repo, event.prNumber);
-        if (matching && isWorkspaceHeadMismatchBlock(stateOf(matching.flow))) {
-          if (!input.flowId) {
-            throw new Error("workspace_revalidation_requires_flow_id");
+        if (input.action === "admit") {
+          const event = normalizePullRequestEvent({
+            eventId: `owner-admit:${Date.now()}:${input.headSha ?? "missing"}`,
+            action: "synchronize",
+            repo: input.repo,
+            prNumber: input.prNumber,
+            headSha: input.headSha,
+            baseSha: input.baseSha,
+            baseRef: input.baseRef,
+            headRepo: input.repo,
+          });
+          const exactResolved = input.flowId
+            ? await resolveFlowBinding(api, config, input.flowId, ctx.sessionKey)
+            : null;
+          const exactState = exactResolved ? stateOf(exactResolved.flow) : null;
+          if (
+            exactState &&
+            (exactState.repo !== event.repo || exactState.prNumber !== event.prNumber)
+          ) {
+            throw new Error("flow_scope_mismatch");
           }
-          const revalidated = await revalidateWorkspaceHeadBlock(
-            api,
-            config,
-            matching,
-            input,
-            event,
-          );
-          return result(revalidated);
-        }
-        const ingested = await ingestPullRequest(api, config, event);
-        const match = findMatchingFlow(api, config, event.repo, event.prNumber);
-        return result({
-          ok: true,
-          admit: ingested,
-          flow: match?.flow ? statusView(match.flow) : null,
-        });
-      }
-      if (!input.flowId) {
-        throw new Error("flowId is required");
-      }
-      const resolved = resolveFlowBinding(api, config, input.flowId, ctx.sessionKey);
-      const boundFlows = resolved.boundFlows;
-      let flow = resolved.flow;
-      let state = stateOf(flow);
-      const ownerKey = ownerSessionKeyForRepo(config, state.repo);
-      if (input.action === "status") {
-        const state = stateOf(flow);
-        if (!canInspectStatus(config, ctx, ownerKey, state)) {
-          throw new Error("flow_status_not_visible_to_this_session");
-        }
-        return result(statusView(flow));
-      }
-      if (input.action === "notify") {
-        if (
-          !new Set(["merged", "blocked", "approval_gate", "check_wait"]).has(input.notificationKind)
-        ) {
-          throw new Error("notification_kind_invalid");
-        }
-        if (!config.notificationSessionKey || ctx.sessionKey !== config.notificationSessionKey) {
-          throw new Error("notification_action_requires_notification_sink");
-        }
-        const exactCandidate =
-          input.expectedRevision === flow.revision &&
-          input.headSha === state.headSha &&
-          input.phase === state.phase &&
-          input.notificationEventId === notificationEventId(flow, state, input.notificationKind);
-        if (!notificationKindMatchesPhase(state, input.notificationKind)) {
-          if (exactCandidate) {
-            throw new Error("notification_kind_phase_mismatch");
+          requireOwnerContext(ctx, ownerSessionKeyForRepo(config, exactState?.repo ?? event.repo));
+          const matching =
+            exactResolved ?? (await findMatchingFlow(api, config, event.repo, event.prNumber));
+          if (matching && isWorkspaceHeadMismatchBlock(stateOf(matching.flow))) {
+            if (!input.flowId) {
+              throw new Error("workspace_revalidation_requires_flow_id");
+            }
+            const revalidated = await revalidateWorkspaceHeadBlock(
+              api,
+              config,
+              matching,
+              input,
+              event,
+            );
+            return result(revalidated);
           }
+          const ingested = await ingestPullRequest(api, config, event);
+          const match = await findMatchingFlow(api, config, event.repo, event.prNumber);
           return result({
             ok: true,
-            deliver: false,
-            superseded: true,
-            sourceRevision: input.expectedRevision ?? null,
-            currentRevision: flow.revision,
-            currentHeadSha: state.headSha,
-            currentPhase: state.phase,
+            admit: ingested,
+            flow: match?.flow ? statusView(match.flow) : null,
           });
         }
-        const deliveries = Array.isArray(state.notificationDeliveries)
-          ? state.notificationDeliveries
-          : [];
-        const existingAttempt = deliveries.find(
-          (delivery) => delivery.eventId === input.notificationEventId,
-        );
-        const sameAttemptTarget =
-          existingAttempt?.sourceRevision === input.expectedRevision &&
-          existingAttempt?.headSha === state.headSha &&
-          existingAttempt?.phase === state.phase &&
-          existingAttempt?.kind === input.notificationKind &&
-          input.headSha === state.headSha &&
-          input.phase === state.phase;
-        if (sameAttemptTarget && notificationDeliveryConfirmed(existingAttempt)) {
-          return result({ ok: true, deliver: false, duplicate: true, confirmed: true });
+        if (!input.flowId) {
+          throw new Error("flowId is required");
         }
-        if (input.acknowledge === true) {
-          if (sameAttemptTarget && notificationDeliveryRetryable(existingAttempt)) {
-            const confirmedAt = Date.now();
-            const next = {
-              ...state,
-              notificationDeliveries: deliveries.map((delivery) =>
-                delivery.eventId === input.notificationEventId &&
-                delivery.sourceRevision === input.expectedRevision
-                  ? {
-                      ...delivery,
-                      deliveryState: "confirmed",
-                      confirmedAt,
-                    }
-                  : delivery,
-              ),
-              updatedAt: confirmedAt,
-            };
-            flow = requireApplied(persistState(boundFlows, flow, next));
+        const resolved = await resolveFlowBinding(api, config, input.flowId, ctx.sessionKey);
+        const boundFlows = resolved.boundFlows;
+        let flow = resolved.flow;
+        let state = stateOf(flow);
+        const ownerKey = ownerSessionKeyForRepo(config, state.repo);
+        if (input.action === "status") {
+          const state = stateOf(flow);
+          if (!canInspectStatus(config, ctx, ownerKey, state)) {
+            throw new Error("flow_status_not_visible_to_this_session");
+          }
+          return result(statusView(flow));
+        }
+        if (input.action === "notify") {
+          if (
+            !new Set(["merged", "blocked", "approval_gate", "check_wait"]).has(
+              input.notificationKind,
+            )
+          ) {
+            throw new Error("notification_kind_invalid");
+          }
+          if (!config.notificationSessionKey || ctx.sessionKey !== config.notificationSessionKey) {
+            throw new Error("notification_action_requires_notification_sink");
+          }
+          const exactCandidate =
+            input.expectedRevision === flow.revision &&
+            input.headSha === state.headSha &&
+            input.phase === state.phase &&
+            input.notificationEventId === notificationEventId(flow, state, input.notificationKind);
+          if (!notificationKindMatchesPhase(state, input.notificationKind)) {
+            if (exactCandidate) {
+              throw new Error("notification_kind_phase_mismatch");
+            }
             return result({
               ok: true,
               deliver: false,
-              confirmed: true,
+              superseded: true,
+              sourceRevision: input.expectedRevision ?? null,
+              currentRevision: flow.revision,
+              currentHeadSha: state.headSha,
+              currentPhase: state.phase,
+            });
+          }
+          const deliveries = Array.isArray(state.notificationDeliveries)
+            ? state.notificationDeliveries
+            : [];
+          const existingAttempt = deliveries.find(
+            (delivery) => delivery.eventId === input.notificationEventId,
+          );
+          const sameAttemptTarget =
+            existingAttempt?.sourceRevision === input.expectedRevision &&
+            existingAttempt?.headSha === state.headSha &&
+            existingAttempt?.phase === state.phase &&
+            existingAttempt?.kind === input.notificationKind &&
+            input.headSha === state.headSha &&
+            input.phase === state.phase;
+          if (sameAttemptTarget && notificationDeliveryConfirmed(existingAttempt)) {
+            return result({ ok: true, deliver: false, duplicate: true, confirmed: true });
+          }
+          if (input.acknowledge === true) {
+            if (sameAttemptTarget && notificationDeliveryRetryable(existingAttempt)) {
+              const confirmedAt = Date.now();
+              const next = {
+                ...state,
+                notificationDeliveries: deliveries.map((delivery) =>
+                  delivery.eventId === input.notificationEventId &&
+                  delivery.sourceRevision === input.expectedRevision
+                    ? {
+                        ...delivery,
+                        deliveryState: "confirmed",
+                        confirmedAt,
+                      }
+                    : delivery,
+                ),
+                updatedAt: confirmedAt,
+              };
+              flow = requireApplied(await persistState(boundFlows, flow, next));
+              return result({
+                ok: true,
+                deliver: false,
+                confirmed: true,
+                eventId: input.notificationEventId,
+                sourceRevision: input.expectedRevision,
+                message: existingAttempt.message,
+              });
+            }
+            if (exactCandidate) {
+              throw new Error("notification_acknowledgement_missing_delivery");
+            }
+            return result({
+              ok: true,
+              deliver: false,
+              superseded: true,
+              confirmed: false,
+              sourceRevision: input.expectedRevision ?? null,
+              currentRevision: flow.revision,
+              currentHeadSha: state.headSha,
+              currentPhase: state.phase,
+            });
+          }
+          if (sameAttemptTarget && notificationDeliveryRetryable(existingAttempt)) {
+            return result({
+              ok: true,
+              deliver: true,
+              retry: true,
               eventId: input.notificationEventId,
               sourceRevision: input.expectedRevision,
               message: existingAttempt.message,
             });
           }
-          if (exactCandidate) {
-            throw new Error("notification_acknowledgement_missing_delivery");
+          if (!exactCandidate) {
+            return result({
+              ok: true,
+              deliver: false,
+              superseded: true,
+              sourceRevision: input.expectedRevision ?? null,
+              currentRevision: flow.revision,
+              currentHeadSha: state.headSha,
+              currentPhase: state.phase,
+            });
           }
-          return result({
-            ok: true,
-            deliver: false,
-            superseded: true,
-            confirmed: false,
-            sourceRevision: input.expectedRevision ?? null,
-            currentRevision: flow.revision,
-            currentHeadSha: state.headSha,
-            currentPhase: state.phase,
-          });
-        }
-        if (sameAttemptTarget && notificationDeliveryRetryable(existingAttempt)) {
+          const existingSameOutcome = matchingNotificationOutcome(
+            deliveries,
+            input.notificationKind,
+            state,
+          );
+          if (notificationDeliveryConfirmed(existingSameOutcome)) {
+            return result({ ok: true, deliver: false, duplicate: true, confirmed: true });
+          }
+          if (notificationDeliveryRetryable(existingSameOutcome)) {
+            return result({
+              ok: true,
+              deliver: true,
+              retry: true,
+              eventId: existingSameOutcome.eventId,
+              sourceRevision: existingSameOutcome.sourceRevision,
+              message: existingSameOutcome.message,
+            });
+          }
+          const message = renderNotification(state, input.notificationKind);
+          const next = {
+            ...state,
+            notificationDeliveries: [
+              ...deliveries,
+              {
+                eventId: input.notificationEventId,
+                sourceRevision: flow.revision,
+                headSha: state.headSha,
+                phase: state.phase,
+                kind: input.notificationKind,
+                deliveryState: "pending",
+                message,
+                renderedAt: Date.now(),
+              },
+            ].slice(-32),
+            updatedAt: Date.now(),
+          };
+          flow = requireApplied(await persistState(boundFlows, flow, next));
           return result({
             ok: true,
             deliver: true,
-            retry: true,
+            retry: false,
             eventId: input.notificationEventId,
             sourceRevision: input.expectedRevision,
-            message: existingAttempt.message,
+            message,
           });
         }
-        if (!exactCandidate) {
+        if (input.action === "report") {
+          const state = stateOf(flow);
+          const transition = applyWorkerReport(state, input, ctx.sessionKey);
+          flow = requireApplied(await persistState(boundFlows, flow, transition.state));
+          let nextState = transition.state;
+          let nextEffect = transition.effect;
+          const gate = enforceModeGate(nextState);
+          if (gate.changed) {
+            nextState = gate.state;
+            nextEffect = gate.effect;
+            flow = requireApplied(await persistState(boundFlows, flow, nextState));
+          }
+          await applyEffect(api, config, boundFlows, flow, nextState, nextEffect);
+          return result({ ok: true, transition: transition.reason, flow: statusView(flow) });
+        }
+        requireOwnerContext(ctx, ownerKey);
+        if (input.action === "authorize" && !Number.isInteger(input.expectedRevision)) {
+          throw new Error("merge_authorization_requires_expected_revision");
+        }
+        if (input.expectedRevision !== undefined && input.expectedRevision !== flow.revision) {
           return result({
             ok: true,
-            deliver: false,
-            superseded: true,
-            sourceRevision: input.expectedRevision ?? null,
-            currentRevision: flow.revision,
-            currentHeadSha: state.headSha,
-            currentPhase: state.phase,
+            staleWake: true,
+            expectedRevision: input.expectedRevision,
+            flow: statusView(flow),
           });
         }
-        const existingSameOutcome = matchingNotificationOutcome(
-          deliveries,
-          input.notificationKind,
-          state,
-        );
-        if (notificationDeliveryConfirmed(existingSameOutcome)) {
-          return result({ ok: true, deliver: false, duplicate: true, confirmed: true });
-        }
-        if (notificationDeliveryRetryable(existingSameOutcome)) {
-          return result({
-            ok: true,
-            deliver: true,
-            retry: true,
-            eventId: existingSameOutcome.eventId,
-            sourceRevision: existingSameOutcome.sourceRevision,
-            message: existingSameOutcome.message,
-          });
-        }
-        const message = renderNotification(state, input.notificationKind);
-        const next = {
-          ...state,
-          notificationDeliveries: [
-            ...deliveries,
-            {
-              eventId: input.notificationEventId,
-              sourceRevision: flow.revision,
-              headSha: state.headSha,
-              phase: state.phase,
-              kind: input.notificationKind,
-              deliveryState: "pending",
-              message,
-              renderedAt: Date.now(),
-            },
-          ].slice(-32),
-          updatedAt: Date.now(),
-        };
-        flow = requireApplied(persistState(boundFlows, flow, next));
-        return result({
-          ok: true,
-          deliver: true,
-          retry: false,
-          eventId: input.notificationEventId,
-          sourceRevision: input.expectedRevision,
-          message,
-        });
-      }
-      if (input.action === "report") {
-        const state = stateOf(flow);
-        const transition = applyWorkerReport(state, input, ctx.sessionKey);
-        flow = requireApplied(persistState(boundFlows, flow, transition.state));
-        let nextState = transition.state;
-        let nextEffect = transition.effect;
-        const gate = enforceModeGate(nextState);
-        if (gate.changed) {
-          nextState = gate.state;
-          nextEffect = gate.effect;
-          flow = requireApplied(persistState(boundFlows, flow, nextState));
-        }
-        await applyEffect(api, config, boundFlows, flow, nextState, nextEffect);
-        return result({ ok: true, transition: transition.reason, flow: statusView(flow) });
-      }
-      requireOwnerContext(ctx, ownerKey);
-      if (input.action === "authorize" && !Number.isInteger(input.expectedRevision)) {
-        throw new Error("merge_authorization_requires_expected_revision");
-      }
-      if (input.expectedRevision !== undefined && input.expectedRevision !== flow.revision) {
-        return result({
-          ok: true,
-          staleWake: true,
-          expectedRevision: input.expectedRevision,
-          flow: statusView(flow),
-        });
-      }
-      if (input.action === "authorize") {
-        const policy = config.repositories.get(state.repo);
-        if (!policy || !policy.enabled) {
-          throw new Error("repository_policy_missing_or_disabled");
-        }
-        const transition = authorizeMergeReady(state, policy);
-        if (!transition.changed) {
+        if (input.action === "authorize") {
+          const policy = config.repositories.get(state.repo);
+          if (!policy || !policy.enabled) {
+            throw new Error("repository_policy_missing_or_disabled");
+          }
+          const transition = authorizeMergeReady(state, policy);
+          if (!transition.changed) {
+            return result({
+              ok: true,
+              authorization: transition.reason,
+              queued: false,
+              flow: statusView(flow),
+            });
+          }
+          flow = requireApplied(await persistState(boundFlows, flow, transition.state));
+          await applyEffect(api, config, boundFlows, flow, transition.state, transition.effect);
+          flow = (await boundFlows.get(flow.flowId)) ?? flow;
           return result({
             ok: true,
             authorization: transition.reason,
-            queued: false,
+            queued: true,
             flow: statusView(flow),
           });
         }
-        flow = requireApplied(persistState(boundFlows, flow, transition.state));
-        await applyEffect(api, config, boundFlows, flow, transition.state, transition.effect);
-        flow = boundFlows.get(flow.flowId) ?? flow;
-        return result({
-          ok: true,
-          authorization: transition.reason,
-          queued: true,
-          flow: statusView(flow),
-        });
-      }
-      if (input.action === "recover") {
-        requireOwnerContext(ctx, ownerKey);
-        if (state.pendingGithubReconciliation) {
-          const reconciled = await reconcileGithubHead(api, config, boundFlows, flow, state);
-          if (!reconciled.resolved) {
-            return result({
-              ok: true,
-              recovery: reconciled.reason,
-              flow: statusView(flow),
-            });
+        if (input.action === "recover") {
+          requireOwnerContext(ctx, ownerKey);
+          if (state.pendingGithubReconciliation) {
+            const reconciled = await reconcileGithubHead(api, config, boundFlows, flow, state);
+            if (!reconciled.resolved) {
+              return result({
+                ok: true,
+                recovery: reconciled.reason,
+                flow: statusView(flow),
+              });
+            }
+            flow = reconciled.flow;
+            state = reconciled.state;
+            if (reconciled.effect !== "none") {
+              return result({
+                ok: true,
+                recovery: reconciled.reason,
+                flow: statusView(flow),
+              });
+            }
           }
-          flow = reconciled.flow;
-          state = reconciled.state;
-          if (reconciled.effect !== "none") {
-            return result({
-              ok: true,
-              recovery: reconciled.reason,
-              flow: statusView(flow),
-            });
+          const policy = config.repositories.get(state.repo);
+          if (!policy || !policy.enabled) {
+            throw new Error("repository_policy_missing_or_disabled");
           }
-        }
-        const policy = config.repositories.get(state.repo);
-        if (!policy || !policy.enabled) {
-          throw new Error("repository_policy_missing_or_disabled");
-        }
-        let orphanRecoveryReason = null;
-        if (state.orphanedWorker) {
-          const reconciled = await reconcileOrphanBeforeEffect(
-            api,
-            config,
-            boundFlows,
-            flow,
-            state,
-          );
-          if (!reconciled.safe) {
-            return result({
-              ok: true,
-              recovery: `orphan_reconciliation_pending:${reconciled.reason}`,
-              flow: statusView(flow),
-            });
-          }
-          flow = reconciled.flow;
-          state = reconciled.state;
-          orphanRecoveryReason = `orphan_reconciled:${reconciled.reason}`;
-          if (state.phase === PHASE.BLOCKED) {
-            flow = await persistTerminalCleanup(api, config, boundFlows, flow, state, "blocked");
-            return result({
-              ok: true,
-              recovery: `orphan_reconciled:${reconciled.reason}`,
-              flow: statusView(flow),
-            });
-          }
-          if (isTerminalState(state)) {
-            await clearWake(api, config, flow);
-            return result({
-              ok: true,
-              recovery: `orphan_reconciled:${reconciled.reason}`,
-              flow: statusView(flow),
-            });
-          }
-        }
-        if (state.phase === PHASE.MERGE_READY) {
-          if (flow.status === "succeeded") {
-            flow = requireApplied(
-              persistState(boundFlows, flow, { ...state, updatedAt: Date.now() }),
+          let orphanRecoveryReason = null;
+          if (state.orphanedWorker) {
+            const reconciled = await reconcileOrphanBeforeEffect(
+              api,
+              config,
+              boundFlows,
+              flow,
+              state,
             );
-            state = stateOf(flow);
+            if (!reconciled.safe) {
+              return result({
+                ok: true,
+                recovery: `orphan_reconciliation_pending:${reconciled.reason}`,
+                flow: statusView(flow),
+              });
+            }
+            flow = reconciled.flow;
+            state = reconciled.state;
+            orphanRecoveryReason = `orphan_reconciled:${reconciled.reason}`;
+            if (state.phase === PHASE.BLOCKED) {
+              flow = await persistTerminalCleanup(api, config, boundFlows, flow, state, "blocked");
+              return result({
+                ok: true,
+                recovery: `orphan_reconciled:${reconciled.reason}`,
+                flow: statusView(flow),
+              });
+            }
+            if (isTerminalState(state)) {
+              await clearWake(api, config, flow);
+              return result({
+                ok: true,
+                recovery: `orphan_reconciled:${reconciled.reason}`,
+                flow: statusView(flow),
+              });
+            }
           }
-          await clearWake(api, config, flow);
-          if (!notificationAlreadyRendered(state, "approval_gate")) {
-            await notifyMergeReady(api, config, flow, state);
+          if (state.phase === PHASE.MERGE_READY) {
+            if (flow.status === "succeeded") {
+              flow = requireApplied(
+                await persistState(boundFlows, flow, { ...state, updatedAt: Date.now() }),
+              );
+              state = stateOf(flow);
+            }
+            await clearWake(api, config, flow);
+            if (!notificationAlreadyRendered(state, "approval_gate")) {
+              await notifyMergeReady(api, config, flow, state);
+            }
+            return result({
+              ok: true,
+              recovery: orphanRecoveryReason ?? "approval_gate",
+              flow: statusView(flow),
+            });
           }
-          return result({
-            ok: true,
-            recovery: orphanRecoveryReason ?? "approval_gate",
-            flow: statusView(flow),
-          });
-        }
-        const refreshed = refreshPolicySnapshot(state, policy);
-        if (refreshed.changed) {
-          flow = requireApplied(persistState(boundFlows, flow, refreshed.state));
-          state = refreshed.state;
-        }
-        state = stateOf(flow);
-        const evidence = await reconcileRemediationEvidence(api, config, boundFlows, flow);
-        if (evidence.changed) {
-          const evidenceFlow = boundFlows.get(flow.flowId) ?? evidence.flow;
-          return result({
-            ok: true,
-            recovery: evidence.reason,
-            flow: statusView(evidenceFlow),
-          });
-        }
-        const transition = recoverState(
-          state,
-          currentWorkerTask(api, resolved.sessionKey, state),
-          Date.now(),
-          120_000,
-          recoverExtras(api, state),
-        );
-        if (transition.changed) {
-          flow = requireApplied(persistState(boundFlows, flow, transition.state));
-        }
-        if (transition.effect === "continue") {
-          flow = await dispatchWorker(api, config, boundFlows, flow);
-        } else if (transition.effect === "reconcile") {
-          const reconciled = await reconcileGithubHead(
-            api,
-            config,
-            boundFlows,
-            flow,
-            transition.state,
+          const refreshed = refreshPolicySnapshot(state, policy);
+          if (refreshed.changed) {
+            flow = requireApplied(await persistState(boundFlows, flow, refreshed.state));
+            state = refreshed.state;
+          }
+          state = stateOf(flow);
+          const evidence = await reconcileRemediationEvidence(api, config, boundFlows, flow);
+          if (evidence.changed) {
+            const evidenceFlow = (await boundFlows.get(flow.flowId)) ?? evidence.flow;
+            return result({
+              ok: true,
+              recovery: evidence.reason,
+              flow: statusView(evidenceFlow),
+            });
+          }
+          const transition = recoverState(
+            state,
+            await currentWorkerTask(api, resolved.sessionKey, state),
+            Date.now(),
+            120_000,
+            recoverExtras(api, state),
           );
-          flow = reconciled.flow;
-        } else if (!isTerminalState(transition.state) && transition.state.phase !== PHASE.BLOCKED) {
-          await scheduleWake(api, config, flow, "recover");
+          if (transition.changed) {
+            flow = requireApplied(await persistState(boundFlows, flow, transition.state));
+          }
+          if (transition.effect === "continue") {
+            flow = await dispatchWorker(api, config, boundFlows, flow);
+          } else if (transition.effect === "reconcile") {
+            const reconciled = await reconcileGithubHead(
+              api,
+              config,
+              boundFlows,
+              flow,
+              transition.state,
+            );
+            flow = reconciled.flow;
+          } else if (
+            !isTerminalState(transition.state) &&
+            transition.state.phase !== PHASE.BLOCKED
+          ) {
+            await scheduleWake(api, config, flow, "recover");
+          }
+          return result({ ok: true, recovery: transition.reason, flow: statusView(flow) });
         }
-        return result({ ok: true, recovery: transition.reason, flow: statusView(flow) });
-      }
-      if (input.action === "continue") {
-        flow = await dispatchWorker(api, config, boundFlows, flow);
-        return result({ ok: true, flow: statusView(flow) });
-      }
-      throw new Error("unsupported_action");
+        if (input.action === "continue") {
+          flow = await dispatchWorker(api, config, boundFlows, flow);
+          return result({ ok: true, flow: statusView(flow) });
+        }
+        throw new Error("unsupported_action");
+      });
     },
   };
 }
@@ -4325,113 +4617,123 @@ function processStartedAtMs() {
 }
 
 async function reconcileAtStartup(api, config) {
-  if (!config.enabled || !config.ownerSessionKey) {
-    return;
-  }
-  for (const sessionKey of uniqueOwnerSessionKeys(config)) {
-    const boundFlows = bindFlowsForSession(api, sessionKey);
-    for (let flow of boundFlows.list().filter((item) => item.controllerId === CONTROLLER_ID)) {
-      let state = stateOf(flow);
-      if (!state) {
-        continue;
-      }
-      if (state.orphanedWorker) {
-        const reconciled = await reconcileOrphanBeforeEffect(api, config, boundFlows, flow, state);
-        if (!reconciled.safe) {
+  return await withTaskBindings(async () => {
+    if (!config.enabled || !config.ownerSessionKey) {
+      return;
+    }
+    for (const sessionKey of uniqueOwnerSessionKeys(config)) {
+      const boundFlows = await bindFlowsForSession(api, sessionKey);
+      for (let flow of (await boundFlows.list()).filter(
+        (item) => item.controllerId === CONTROLLER_ID,
+      )) {
+        let state = stateOf(flow);
+        if (!state) {
           continue;
         }
-        flow = reconciled.flow;
-        state = reconciled.state;
-        if (isTerminalState(state)) {
+        if (state.orphanedWorker) {
+          const reconciled = await reconcileOrphanBeforeEffect(
+            api,
+            config,
+            boundFlows,
+            flow,
+            state,
+          );
+          if (!reconciled.safe) {
+            continue;
+          }
+          flow = reconciled.flow;
+          state = reconciled.state;
+          if (isTerminalState(state)) {
+            await clearWake(api, config, flow);
+            continue;
+          }
+        }
+        if (
+          state.phase === PHASE.MERGE_READY &&
+          (!TERMINAL_FLOW_STATUSES.has(flow.status) || flow.status === "succeeded")
+        ) {
+          if (flow.status === "succeeded") {
+            flow = requireApplied(
+              await persistState(boundFlows, flow, { ...state, updatedAt: Date.now() }),
+            );
+            state = stateOf(flow);
+          }
+          await clearWake(api, config, flow);
+          if (!notificationAlreadyRendered(state, "approval_gate")) {
+            await notifyMergeReady(api, config, flow, state);
+          }
+          continue;
+        }
+        if (TERMINAL_FLOW_STATUSES.has(flow.status) || isTerminalState(state)) {
+          if (TERMINAL_FLOW_STATUSES.has(flow.status) && !isTerminalState(state)) {
+            const blocked = blockState(state, `flow_status_terminal:${flow.status}`);
+            flow = requireApplied(await persistState(boundFlows, flow, blocked.state));
+            state = stateOf(flow);
+          }
+          const kind = state.phase === PHASE.MERGED ? "merged" : "blocked";
+          if (!state.terminalCleanup) {
+            flow = await persistTerminalCleanup(api, config, boundFlows, flow, state, kind);
+            state = stateOf(flow);
+          } else {
+            await clearTerminalArtifacts(api, config, flow);
+            if (!notificationAlreadyRendered(state, kind)) {
+              await notifyLifecycleOutcome(api, config, flow, state, kind);
+            }
+          }
+          continue;
+        }
+        const policy = config.repositories.get(state.repo);
+        if (!policy || !policy.enabled) {
           await clearWake(api, config, flow);
           continue;
         }
-      }
-      if (
-        state.phase === PHASE.MERGE_READY &&
-        (!TERMINAL_FLOW_STATUSES.has(flow.status) || flow.status === "succeeded")
-      ) {
-        if (flow.status === "succeeded") {
-          flow = requireApplied(
-            persistState(boundFlows, flow, { ...state, updatedAt: Date.now() }),
-          );
-          state = stateOf(flow);
-        }
-        await clearWake(api, config, flow);
-        if (!notificationAlreadyRendered(state, "approval_gate")) {
-          await notifyMergeReady(api, config, flow, state);
-        }
-        continue;
-      }
-      if (TERMINAL_FLOW_STATUSES.has(flow.status) || isTerminalState(state)) {
-        if (TERMINAL_FLOW_STATUSES.has(flow.status) && !isTerminalState(state)) {
-          const blocked = blockState(state, `flow_status_terminal:${flow.status}`);
-          flow = requireApplied(persistState(boundFlows, flow, blocked.state));
-          state = stateOf(flow);
-        }
-        const kind = state.phase === PHASE.MERGED ? "merged" : "blocked";
-        if (!state.terminalCleanup) {
-          flow = await persistTerminalCleanup(api, config, boundFlows, flow, state, kind);
-          state = stateOf(flow);
-        } else {
-          await clearTerminalArtifacts(api, config, flow);
-          if (!notificationAlreadyRendered(state, kind)) {
-            await notifyLifecycleOutcome(api, config, flow, state, kind);
+        if (state.pendingGithubReconciliation) {
+          const reconciled = await reconcileGithubHead(api, config, boundFlows, flow, state);
+          if (!reconciled.resolved) {
+            continue;
           }
+          flow = reconciled.flow;
+          state = reconciled.state;
         }
-        continue;
-      }
-      const policy = config.repositories.get(state.repo);
-      if (!policy || !policy.enabled) {
-        await clearWake(api, config, flow);
-        continue;
-      }
-      if (state.pendingGithubReconciliation) {
-        const reconciled = await reconcileGithubHead(api, config, boundFlows, flow, state);
-        if (!reconciled.resolved) {
+        const refreshed = refreshPolicySnapshot(state, policy);
+        if (refreshed.changed) {
+          flow = requireApplied(await persistState(boundFlows, flow, refreshed.state));
+          state = refreshed.state;
+        }
+        if (state.mode === "observe") {
+          await clearWake(api, config, flow);
           continue;
         }
-        flow = reconciled.flow;
-        state = reconciled.state;
-      }
-      const refreshed = refreshPolicySnapshot(state, policy);
-      if (refreshed.changed) {
-        flow = requireApplied(persistState(boundFlows, flow, refreshed.state));
-        state = refreshed.state;
-      }
-      if (state.mode === "observe") {
-        await clearWake(api, config, flow);
-        continue;
-      }
-      const transition = recoverState(
-        state,
-        currentWorkerTask(api, sessionKey, state),
-        Date.now(),
-        120_000,
-        recoverExtras(api, state),
-      );
-      if (transition.changed) {
-        flow = requireApplied(persistState(boundFlows, flow, transition.state));
-        state = transition.state;
-      }
-      if (transition.effect === "continue") {
-        await scheduleWake(api, config, flow, "continue");
-      } else if (!isTerminalState(state) && state.phase !== PHASE.BLOCKED) {
-        await scheduleWake(api, config, flow, "recover");
-      } else if (state.phase === PHASE.BLOCKED) {
-        if (!state.terminalCleanup) {
-          await persistTerminalCleanup(api, config, boundFlows, flow, state, "blocked");
-        } else {
-          await clearTerminalArtifacts(api, config, flow);
-          if (!notificationAlreadyRendered(state, "blocked")) {
-            await notifyLifecycleOutcome(api, config, flow, state, "blocked");
-          }
+        const transition = recoverState(
+          state,
+          await currentWorkerTask(api, sessionKey, state),
+          Date.now(),
+          120_000,
+          recoverExtras(api, state),
+        );
+        if (transition.changed) {
+          flow = requireApplied(await persistState(boundFlows, flow, transition.state));
+          state = transition.state;
         }
-      } else {
-        await clearWake(api, config, flow);
+        if (transition.effect === "continue") {
+          await scheduleWake(api, config, flow, "continue");
+        } else if (!isTerminalState(state) && state.phase !== PHASE.BLOCKED) {
+          await scheduleWake(api, config, flow, "recover");
+        } else if (state.phase === PHASE.BLOCKED) {
+          if (!state.terminalCleanup) {
+            await persistTerminalCleanup(api, config, boundFlows, flow, state, "blocked");
+          } else {
+            await clearTerminalArtifacts(api, config, flow);
+            if (!notificationAlreadyRendered(state, "blocked")) {
+              await notifyLifecycleOutcome(api, config, flow, state, "blocked");
+            }
+          }
+        } else {
+          await clearWake(api, config, flow);
+        }
       }
     }
-  }
+  });
 }
 
 export function registerPrLifecycleTaskflow(api) {
@@ -4441,8 +4743,13 @@ export function registerPrLifecycleTaskflow(api) {
     requestedConfig.expectedRuntimeSha256,
     { allowDisposable: api.__testAllowDisposableRuntime === true },
   );
+  let hostReady = false;
+  try {
+    requireLifecycleHost(api);
+    hostReady = true;
+  } catch {}
   const config =
-    requestedConfig.enabled && !sourceIntegrity.verified
+    requestedConfig.enabled && (!sourceIntegrity.verified || !hostReady)
       ? { ...requestedConfig, enabled: false }
       : requestedConfig;
   api.registerTool((ctx) => createControllerTool(api, config, ctx), {
@@ -4457,6 +4764,10 @@ export function registerPrLifecycleTaskflow(api) {
         `modules=${JSON.stringify(sourceIntegrity.modules ?? {})}; ` +
         `durable=${sourceIntegrity.durable}.`,
     );
+    return;
+  }
+  if (requestedConfig.enabled && !hostReady) {
+    api.logger.error("PR lifecycle host capability unavailable; controller remains inert.");
     return;
   }
   if (!config.enabled) {
@@ -4480,10 +4791,10 @@ export function registerPrLifecycleTaskflow(api) {
       handler: createRouteHandler({
         kind: "github",
         secret: config.githubWebhookSecret,
-        ingest: (event) =>
+        ingest: async (event) =>
           event.type === "check_suite"
-            ? ingestCheckSuite(api, config, event)
-            : ingestPullRequest(api, config, event),
+            ? await ingestCheckSuite(api, config, event)
+            : await ingestPullRequest(api, config, event),
       }),
     });
   } else {
@@ -4498,7 +4809,7 @@ export function registerPrLifecycleTaskflow(api) {
       handler: createRouteHandler({
         kind: "broker",
         secret: config.brokerEventSecret,
-        ingest: (event) => ingestReviewResult(api, config, event),
+        ingest: async (event) => await ingestReviewResult(api, config, event),
       }),
     });
   } else {

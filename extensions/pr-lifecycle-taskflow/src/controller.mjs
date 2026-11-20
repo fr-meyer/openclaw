@@ -2246,6 +2246,37 @@ export function recoverState(
   if (isTerminalState(state)) {
     return { changed: false, state, effect: "none", reason: "not_recoverable" };
   }
+  if (state.launchOutcome?.status === "unknown") {
+    const sessionKey = state.activeWorker?.sessionKey;
+    if (
+      sessionKey &&
+      state.launchOutcome.sessionKey === sessionKey &&
+      workerTask?.observationSource === "native-subagent" &&
+      workerTask.childSessionKey === sessionKey &&
+      typeof workerTask.runId === "string" &&
+      workerTask.runId &&
+      typeof workerTask.id === "string" &&
+      workerTask.id
+    ) {
+      return {
+        changed: true,
+        state: {
+          ...state,
+          activeWorker: { ...state.activeWorker, runId: workerTask.runId, taskId: workerTask.id },
+          launchOutcome: {
+            status: "accepted",
+            sessionKey,
+            runId: workerTask.runId,
+            observedAt: now,
+          },
+          updatedAt: now,
+        },
+        effect: "wait",
+        reason: "native_launch_reconciled",
+      };
+    }
+    return { changed: false, state, effect: "wait", reason: "native_launch_outcome_unknown" };
+  }
   if (state.pendingGithubReconciliation) {
     if (now > state.deadlineAt) {
       return blockState(state, "github_head_reconciliation_deadline_exhausted", now);
