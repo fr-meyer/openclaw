@@ -14,7 +14,15 @@ export type RetiredIntegrationStatus = {
 };
 
 const INTEGRATION_ID_RE = /^[a-z0-9][a-z0-9._-]{0,79}$/;
-const CONTROL_CHARACTER_RE = /[\u0000-\u001f\u007f]/u;
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export function resolveRetiredIntegrationStatus(
   options: RetiredIntegrationSentinelOptions,
@@ -23,7 +31,7 @@ export function resolveRetiredIntegrationStatus(
     throw new Error("integration id must be a lowercase stable identifier");
   }
   const reason = options.reason.trim();
-  if (!reason || reason.length > 500 || CONTROL_CHARACTER_RE.test(reason)) {
+  if (!reason || reason.length > 500 || hasControlCharacter(reason)) {
     throw new Error("retirement reason must contain between 1 and 500 safe characters");
   }
   const exitCode = options.exitCode ?? 64;
@@ -33,7 +41,7 @@ export function resolveRetiredIntegrationStatus(
   const replacement = options.replacement?.trim();
   if (
     replacement !== undefined &&
-    (!replacement || replacement.length > 300 || CONTROL_CHARACTER_RE.test(replacement))
+    (!replacement || replacement.length > 300 || hasControlCharacter(replacement))
   ) {
     throw new Error("replacement must contain between 1 and 300 safe characters");
   }
