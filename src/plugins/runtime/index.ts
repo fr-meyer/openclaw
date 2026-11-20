@@ -155,6 +155,7 @@ function createUnavailableTaskFlowRuntime(): NonNullable<PluginRuntime["tasks"]>
       managedFlows: false,
       taskRuns: false,
       controllerParity: false,
+      managedFlowNativeLaunch: false,
       canonicalTaskCreate: false,
       workerLaunch: false,
     },
