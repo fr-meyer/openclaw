@@ -38,6 +38,10 @@ overrides:
   "@microsoft/teams.apps@2.1.0>@azure/msal-node": 7.1.0
   # GHSA-xjj6-f33q-929c: repair remaining vulnerable v8 transitive resolutions.
   "undici@>=8.0.0 <8.12.2": 8.12.2
+  # GHSA-4528-x5fx-h6hg: mailauth pins vulnerable joi; retain its v18 API.
+  "mailauth@7.1.0>joi": 18.3.1
+  # GHSA-gg6h-894w-4m9c: Crabline pins vulnerable re2js; retain its v2 API.
+  "@openclaw/crabline@0.1.29>re2js": 2.8.7
   # Fix compressed-body trailing-byte DoS; qs meets this parser's declared range.
   "express@5.2.1>body-parser": 2.4.0
   "body-parser@2.4.0>qs": 6.16.1
@@ -70,7 +74,8 @@ overrides:
   "@hono/node-server": 2.1.3
   axios: 1.20.0
   fast-uri: 4.2.1
-  follow-redirects: 1.16.1
+  # GHSA-mrwp-f3q8-3g9p: compatible patched redirect handling for axios.
+  follow-redirects: 1.16.3
   defu: 6.1.7
   fast-xml-parser: 5.11.2
   request: "npm:@cypress/request@4.0.1"
