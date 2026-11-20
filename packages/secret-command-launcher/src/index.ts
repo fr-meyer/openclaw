@@ -91,7 +91,7 @@ export function buildSecretCommandLaunchPlan(
     args,
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     env,
-    secretEnvironmentNames: [...seen].sort(),
+    secretEnvironmentNames: [...seen].toSorted(),
   };
 }
 
@@ -106,7 +106,7 @@ export function summarizeSecretCommandLaunchPlan(plan: SecretCommandLaunchPlan):
     command: plan.command,
     args: [...plan.args],
     ...(plan.cwd === undefined ? {} : { cwd: plan.cwd }),
-    environmentNames: Object.keys(plan.env).sort(),
+    environmentNames: Object.keys(plan.env).toSorted(),
     secretEnvironmentNames: [...plan.secretEnvironmentNames],
   };
 }
@@ -115,7 +115,7 @@ export function redactResolvedSecrets(
   text: string,
   secrets: readonly SecretEnvironmentBinding[],
 ): string {
-  const values = [...new Set(secrets.map((secret) => secret.value).filter(Boolean))].sort(
+  const values = [...new Set(secrets.map((secret) => secret.value).filter(Boolean))].toSorted(
     (left, right) => right.length - left.length,
   );
   let redacted = text;
