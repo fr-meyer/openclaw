@@ -1,4 +1,3 @@
-// Memory Core plugin module owns keyword retrieval and ranking.
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import {
   createSubsystemLogger,
@@ -30,6 +29,8 @@ import {
   prepareActiveProjectKeys,
   projectScoreMultiplier,
 } from "./project-ranking.js";
+// Memory Core plugin module owns keyword retrieval and ranking.
+import { timeSearchPhase } from "./search-timings.js";
 import { applyTemporalDecayToHybridResults } from "./temporal-decay.js";
 
 const SNIPPET_MAX_CHARS = 700;
@@ -54,6 +55,7 @@ type KeywordSearchOptions = {
   signal?: AbortSignal;
   exactPathQuery?: string;
   rankingQuery?: string;
+  timingFallbackTerm?: boolean;
 };
 
 function compareKeywordSearchHits(
@@ -246,13 +248,15 @@ export abstract class MemoryKeywordRetrieval extends MemoryProviderLifecycle {
     const sessionOnly = sourceFilterList?.length === 1 && sourceFilterList[0] === "sessions";
     const { rows: metadataById, sourceMtimes } = sessionOnly
       ? readMemoryRecallData(this.db, query)
-      : await runMemoryRecallMetadata(
-          {
-            agentId: this.agentId,
-            databasePath: resolveUserPath(this.settings.store.databasePath),
-          },
-          query,
-          signal,
+      : await timeSearchPhase("keyword-metadata", () =>
+          runMemoryRecallMetadata(
+            {
+              agentId: this.agentId,
+              databasePath: resolveUserPath(this.settings.store.databasePath),
+            },
+            query,
+            signal,
+          ),
         );
     // The left-joined metadata reader omits only missing chunks. A forget may
     // delete one while the worker is reading its earlier snapshot.
@@ -310,11 +314,13 @@ export abstract class MemoryKeywordRetrieval extends MemoryProviderLifecycle {
     options: KeywordSearchOptions,
     sourceFilterList: MemorySource[],
   ) {
-    const result = await runMemoryKeywordSearch(
-      { agentId: this.agentId, databasePath: resolveUserPath(this.settings.store.databasePath) },
-      this.buildKeywordSearchQuery(query, limit, options, sourceFilterList),
-      options.signal,
-      true,
+    const result = await timeSearchPhase("keyword-full", () =>
+      runMemoryKeywordSearch(
+        { agentId: this.agentId, databasePath: resolveUserPath(this.settings.store.databasePath) },
+        this.buildKeywordSearchQuery(query, limit, options, sourceFilterList),
+        options.signal,
+        true,
+      ),
     );
     if (!result.indexState) {
       throw new Error("Memory keyword preparation returned no index state");
@@ -331,11 +337,15 @@ export abstract class MemoryKeywordRetrieval extends MemoryProviderLifecycle {
     if (!this.fts.enabled || !this.fts.available) {
       return [];
     }
-    const result = await runMemoryKeywordSearch(
-      { agentId: this.agentId, databasePath: resolveUserPath(this.settings.store.databasePath) },
-      this.buildKeywordSearchQuery(query, limit, options, sourceFilterList),
-      options?.signal,
-    );
+    const run = () =>
+      runMemoryKeywordSearch(
+        { agentId: this.agentId, databasePath: resolveUserPath(this.settings.store.databasePath) },
+        this.buildKeywordSearchQuery(query, limit, options, sourceFilterList),
+        options?.signal,
+      );
+    const result = options?.timingFallbackTerm
+      ? await run()
+      : await timeSearchPhase("keyword-full", run);
     return this.resolveKeywordSearchResult(result, options?.exactPathQuery ?? query, limit);
   }
 
@@ -389,15 +399,20 @@ export abstract class MemoryKeywordRetrieval extends MemoryProviderLifecycle {
       return this.attachRecallMetadata(fullQueryResults, options?.signal, sourceFilterList);
     }
 
-    const settled = await Promise.allSettled(
-      fallbackTerms.map((term) =>
-        this.searchKeyword(
-          term,
-          limit,
-          { ...options, exactPathQuery: query, rankingQuery: query },
-          sourceFilterList,
+    const settled = await timeSearchPhase(
+      "keyword-fallback",
+      () =>
+        Promise.allSettled(
+          fallbackTerms.map((term) =>
+            this.searchKeyword(
+              term,
+              limit,
+              { ...options, exactPathQuery: query, rankingQuery: query, timingFallbackTerm: true },
+              sourceFilterList,
+            ),
+          ),
         ),
-      ),
+      fallbackTerms.length,
     );
     options?.signal?.throwIfAborted();
     // Keep the generation leased until every admitted probe has closed its reader,
