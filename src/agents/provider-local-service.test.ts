@@ -426,6 +426,8 @@ describe("provider local service", () => {
     const sockets = new Set<net.Socket>();
     const server = net.createServer((socket) => {
       sockets.add(socket);
+      // Drain the real request so peer cancellation can reach the close event.
+      socket.resume();
       socket.on("error", () => undefined);
       socket.on("close", () => {
         sockets.delete(socket);
