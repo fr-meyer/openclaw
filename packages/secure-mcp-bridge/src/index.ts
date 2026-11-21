@@ -128,7 +128,15 @@ export function validateSecureMcpBridgeConfig(config: SecureMcpBridgeConfig): vo
   }
   const uniqueScopes = new Set<string>();
   for (const scope of config.allowedScopes) {
-    if (!scope || scope.length > 200 || /[\s\u0000-\u001f\u007f]/u.test(scope)) {
+    if (
+      !scope ||
+      scope.length > 200 ||
+      /\s/u.test(scope) ||
+      Array.from(scope).some((character) => {
+        const code = character.charCodeAt(0);
+        return code <= 0x1f || code === 0x7f;
+      })
+    ) {
       throw new Error("allowedScopes must contain bounded non-whitespace scope values");
     }
     if (uniqueScopes.has(scope)) {
@@ -269,7 +277,7 @@ export function validateCallbackUrl(
 
 export function redactOAuthUrl(raw: string): string {
   const url = parseUrl("OAuth URL", raw);
-  for (const key of [...url.searchParams.keys()]) {
+  for (const key of url.searchParams.keys()) {
     url.searchParams.set(key, "[redacted]");
   }
   return url.toString();
