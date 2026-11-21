@@ -1,5 +1,74 @@
 # Temporary dependency patches
 
+## Zod consumer migration
+
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+is repaired without an audit exception. Native Zod consumers use `4.6.6`.
+The exact-version Zod patch also applies the upstream early collection-bound
+behavior to the retained `zod/v3` compatibility parser in its ESM, CommonJS,
+and TypeScript sources. Oversized bounded arrays and sets reject before
+visiting children; valid, minimum-only and unbounded inputs retain their
+existing behavior. The v3 compatibility API remains available for MCP schemas.
+This does not impose a global size limit on unbounded schemas.
+
+`@a2ui/lit@0.12.0` and `@a2ui/web_core@0.12.0` are migrated together to
+native Zod v4, with generated declarations and source maps updated from their
+published TypeScript sources. The version-qualified dependency overrides are
+required in addition to the package patches: changing an installed manifest
+does not select a different dependency graph. Only A2UI's superseded
+`zod-to-json-schema` dependency is removed; MCP and Mistral still use that
+converter, with its declared mixed peer range preserved. Canvas disables Zod's
+JIT capability probe to respect its strict CSP. Public catalog generation and
+binder/reference traversal require their own compatibility regressions; a
+plain Zod-version override is insufficient.
+Function parameter schemas resolve their own local definitions, with the
+existing catalog-document fallback retained. The inherited recursive-component
+and theme reconstruction limits in `Catalog.fromSchema` remain unchanged;
+this patch does not add a general JSON Schema reconstruction engine.
+Recursive function regressions cover legacy capabilities, standalone argument
+schemas, and catalog-level references. Native union diagnostics retain the
+full parent path without mutating the original issues.
+
+`@discord/embedded-app-sdk@2.5.0` replaces both embedded legacy parsers with
+the official native-v4 dependency. Its affected declarations are regenerated
+from upstream tag `v2.5.0`, commit
+`14264eccbf9e68d5d58c1aadbc7579e003e0dce6`. RPC command results,
+unsupported-scope fallback, omitted envelope data and `SDKError` identity remain
+covered by the regression. Raw validation errors use native-v4 `issues` and
+paths; the old Zod `errors` alias is intentionally absent. OpenClaw's Activity
+consumer uses the SDK's constructor, readiness and authorization methods, not
+that alias.
+
+After regeneration, use stock pnpm with the frozen lock and verify the actual
+installed target hashes. pnpm hashes normalized LF patch bytes; package
+integrities and patch hashes are both retained in the lock. Do not edit
+installed dependencies, mask their versions, remove the strict audit, or apply
+a blanket converter override. Docker already copies these patches before its
+frozen dependency installation.
+
+Focused checks after a frozen or isolated installation:
+
+```sh
+node --test test/zod-container-bounds.test.mjs
+node --test test/discord-native-zod-regression.test.mjs
+node --test test/a2ui-native-zod-regression.test.mjs
+node --test test/mcp-nowistay-sdk-regression.test.mjs
+node scripts/run-vitest.mjs run test/scripts/zod-legacy-closure.test.ts test/scripts/check-package-patches.test.ts --maxWorkers=1
+node scripts/pre-commit/pnpm-audit-prod.mjs --audit-level=high
+```
+
+For an isolated installed fixture, `ZOD_TEST_PROJECT`,
+`DISCORD_SDK_TEST_PROJECT`, `A2UI_TEST_PROJECT` and `NOWISTAY_COMPAT_SDK_ROOT` explicitly select
+that installation. They must identify the tested pinned packages, never a
+substitute schema implementation. The A2UI 0.12 regression also requires
+`A2UI_TEST_VALIDATOR_PROJECT` pointing to an installed Ajv 8.20.0 test fixture
+for actual JSON Schema validation; it is not a runtime dependency. These native
+Node tests are explicit prerequisites, outside the TS-only Vitest discovery.
+Remove each temporary patch, its exact
+registration and guard allowance only when a supported upstream consumer
+release passes the corresponding runtime/type, catalog, browser and audit
+checks without it. A passing audit alone does not prove those contracts.
+
 Keep existing insertion anchors when extending these patches: pnpm 12 can apply a zero-context, zero-length insertion one line early. After regeneration and installation, verify installed files against the patch's target blob hashes before testing.
 
 `@awesome.me/webawesome@3.13.0` retains its approved dropdown, submenu, select, tooltip, and animation lifecycle repairs. The dropdown initializes focus after its popup becomes usable, before joining animation cleanup or completion, and preserves a newer composed focus target during popup rendering. Freshly mounted open menus also join the popup's initial anchor resolution before focusing; already anchored menus retain their existing visibility and native occlusion across reopen. Initial-focus handlers can close or disconnect the menu; the existing transition owner fences those reentrant paths before starting an animation. Opening completion never resets a newer item, submenu, or outside focus. Both published distributions carry the same owner. The tooltip trigger handler uses upstream's `containsComposedNode` helper to retain the 3.13 fix for hover across Shadow DOM slots; the port also preserves upstream overflow-tag size and pill styling.

@@ -154,7 +154,12 @@ async function awaitWithSearchSignal<T>(promise: Promise<T>, signal?: AbortSigna
   signal.throwIfAborted();
   let removeAbort = () => {};
   const aborted = new Promise<never>((_resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
+    const onAbort = () =>
+      reject(
+        signal.reason instanceof Error
+          ? signal.reason
+          : new Error("Memory search aborted", { cause: signal.reason }),
+      );
     signal.addEventListener("abort", onAbort, { once: true });
     removeAbort = () => signal.removeEventListener("abort", onAbort);
     if (signal.aborted) {

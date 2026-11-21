@@ -9861,7 +9861,6 @@
 ["src/tui/tui.resolve-codex-bin.test.ts","../process/exec.js","d2c2f214d7a3c19c27a74ae65ea7bbd2cc77ffd33b58835cc8b80ad8c955ddd5",1]
 ["src/utils/fetch-timeout.test.ts","../logging/subsystem.js","f7867f0224bab5cdf19b6030917192a8582a6099d112fb53714816dd4b8f216d",1]
 ["src/utils/provider-utils.test.ts","../plugins/provider-runtime.js","281bf4466dd15fe3e09f49df3a85d1af081dcb4ce79c4e39923f1688b2896a84",1]
-["src/version.test.ts","./infra/git-commit.js","c1efef5966e5f1d1b80ef8d9ad2bdbf30bc6b40aa45f2f3b076298aa2c89c0b9",1]
 ["src/web-fetch/content-extractors.runtime.test.ts","../plugins/web-content-extractors.runtime.js","1daaaf95ef2040a5b156f0578081b868334767bb42a83796a79a649eb9759576",1]
 ["src/web-fetch/runtime.test.ts","../plugins/web-fetch-providers.runtime.js","cdfb10a8a266d6a264d9f0697c5898bf2d473949d289862e418120f42931055e",1]
 ["src/web-search/runtime-autodetect-order.test.ts","../plugins/plugin-registry-contributions.js","a23ad18fa4476482eb5c419b378cb171a2ce071054cd3a69c4a448c648fcb696",1]

@@ -27,8 +27,20 @@ type PluginManagedTaskFlowRuntime = {
     managedFlows: boolean;
     taskRuns: boolean;
     controllerParity: boolean;
+    /** Intrinsic native claim support, not permission to launch. */
+    managedFlowNativeLaunch?: boolean;
     canonicalTaskCreate: false;
     workerLaunch: false;
+  }>;
+  /** Core-issued exact bundled lifecycle identity, never configuration authority. */
+  readonly lifecycleController?: Readonly<{
+    authorityVersion: 1;
+    pluginId: "pr-lifecycle-taskflow";
+    source: string;
+    rootDir: string;
+    managedFlows: true;
+    taskRuns: true;
+    nativeLaunch: true;
   }>;
   managedFlows: { bindSession(input: { sessionKey: string }): BoundManagedTaskFlows };
   runs: { bindSession(input: { sessionKey: string; agentId?: string }): BoundManagedTaskRuns };

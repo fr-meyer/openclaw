@@ -130,16 +130,44 @@ export function createWorkboardDispatchHandler(params: {
 }) {
   return async (
     { params: requestParams, client, context }: GatewayMethodContext,
-    options: { supportsMaxStarts: boolean; directCard?: boolean },
+    options: { supportsMaxStarts: boolean; supportsCardId?: boolean; directCard?: boolean },
   ) => {
-    const cardId = options.directCard ? readId(requestParams) : undefined;
-    const { boardId, maxStarts: rawMaxStarts } = asRecord(requestParams);
+    const {
+      boardId,
+      cardId: rawCardId,
+      intentRunId: rawIntentRunId,
+      maxStarts: rawMaxStarts,
+    } = asRecord(requestParams);
+    if (!options.directCard && !options.supportsCardId && rawCardId !== undefined) {
+      throw new Error("cardId requires workboard.cards.dispatchWithOptions.");
+    }
+    let cardId = options.directCard ? readId(requestParams) : undefined;
+    if (!options.directCard && rawCardId !== undefined) {
+      if (typeof rawCardId !== "string" || !rawCardId.trim()) {
+        throw new Error("cardId must be a non-empty string.");
+      }
+      cardId = rawCardId.trim();
+    }
     if (!options.supportsMaxStarts && rawMaxStarts !== undefined) {
       throw new Error("maxStarts requires workboard.cards.dispatchWithOptions.");
     }
     const maxStarts = options.supportsMaxStarts
       ? readOptionalPositiveInteger(rawMaxStarts, "maxStarts")
       : undefined;
+    if (cardId && maxStarts !== undefined && maxStarts !== 1) {
+      throw new Error("maxStarts must be 1 when cardId is provided.");
+    }
+    if (rawIntentRunId !== undefined && (!options.supportsCardId || !cardId)) {
+      throw new Error("intentRunId requires one exact card through dispatchWithOptions.");
+    }
+    if (
+      rawIntentRunId !== undefined &&
+      (typeof rawIntentRunId !== "string" ||
+        rawIntentRunId.length !== 43 ||
+        !/^wb-[0-9a-f]{40}$/.test(rawIntentRunId))
+    ) {
+      throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+    }
     const provider = options.directCard
       ? normalizeOptionalString(requestParams.provider)
       : undefined;
@@ -152,6 +180,8 @@ export function createWorkboardDispatchHandler(params: {
         ...(cardId ? { cardId, maxStarts: 1 } : {}),
         boardId: typeof boardId === "string" ? boardId : undefined,
         ...(maxStarts !== undefined ? { maxStarts } : {}),
+        ...(cardId && !options.directCard ? { targetMode: "dispatch" } : {}),
+        ...(typeof rawIntentRunId === "string" ? { intentRunId: rawIntentRunId } : {}),
         ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
         materializeWorktree: true,
@@ -178,13 +208,18 @@ export function createWorkboardDispatchHandler(params: {
         workspaceAccess: resolveGatewayWorkboardWorkspaceAccess({ context, client }),
       },
     });
-    if (cardId) {
+    if (options.directCard) {
       const started = result.started[0];
       if (!started?.card) {
         throw new Error(result.startFailures[0]?.error ?? "Workboard card did not start.");
       }
       return { ...started, card: redactClaimToken(started.card) };
     }
-    return redactDispatchResult(result);
+    return {
+      ...redactDispatchResult(result),
+      started: result.started.map((started) =>
+        started.card ? { ...started, card: redactClaimToken(started.card) } : started,
+      ),
+    };
   };
 }

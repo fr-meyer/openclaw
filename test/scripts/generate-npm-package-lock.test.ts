@@ -429,6 +429,51 @@ describe("generate-npm-package-lock", () => {
     expect(parsePnpmPackageKey("invalid")).toBeNull();
   });
 
+  it.each(["valid", "wrong-child", "wrong-global"])(
+    "validates the body-parser qs exception without weakening the global pin (%s)",
+    (scenario) => {
+      const lockfile = {
+        packages: {
+          "": { dependencies: { "body-parser": "2.4.0", holder: "1.0.0", qs: "6.16.0" } },
+          "node_modules/body-parser": {
+            version: "2.4.0",
+            hasShrinkwrap: true,
+            dependencies: { qs: "^6.14.0" },
+          },
+          "node_modules/body-parser/node_modules/qs": { version: "6.16.1" },
+          "node_modules/holder": {
+            version: "1.0.0",
+            hasShrinkwrap: true,
+            dependencies: { qs: "^6" },
+          },
+          "node_modules/qs": { version: "6.16.0" },
+        },
+      };
+      if (scenario === "wrong-child") {
+        lockfile.packages["node_modules/body-parser/node_modules/qs"].version = "6.16.0";
+      }
+      if (scenario === "wrong-global") {
+        lockfile.packages["node_modules/qs"].version = "6.16.1";
+      }
+      const overrides = normalizeOverrides({ qs: "6.16.0", "body-parser@2.4.0>qs": "6.16.1" });
+      expect(
+        disableDependencyShrinkwrapOverrideConflictSources(
+          lockfile,
+          validationOverrideRulesFromOverrides(overrides),
+          overrides,
+        ),
+      ).toEqual(
+        scenario === "valid"
+          ? []
+          : [scenario === "wrong-child" ? "node_modules/body-parser" : "node_modules/holder"],
+      );
+      if (scenario === "valid") {
+        expect(lockfile.packages["node_modules/body-parser"].hasShrinkwrap).toBe(true);
+        expect(lockfile.packages["node_modules/holder"].hasShrinkwrap).toBe(true);
+      }
+    },
+  );
+
   it("disables a shrinkwrap that violates a scoped rule with the global version", () => {
     const lockfile = {
       packages: {
