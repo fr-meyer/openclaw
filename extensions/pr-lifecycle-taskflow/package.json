@@ -1,0 +1,26 @@
+{
+  "name": "@openclaw/pr-lifecycle-taskflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Durable exact-head review, bounded remediation, and explicitly authorized merge orchestration for OpenClaw TaskFlow.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test ./test/*.test.mjs",
+    "check": "node --check ./index.mjs && node --check ./src/controller.mjs && node --check ./src/http.mjs && node --check ./src/runtime.mjs"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.8.1-beta.2"
+  },
+  "devDependencies": {
+    "@openclaw/plugin-sdk": "workspace:*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.8.1-beta.2",
+      "minGatewayVersion": "2026.8.1-beta.2"
+    }
+  }
+}
