@@ -1,3 +1,4 @@
+import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { describe, expect, it, vi } from "vitest";
 import plugin from "./index.js";
 import { evaluateSessionsSpawnOverride } from "./policy.js";
@@ -82,13 +83,15 @@ describe("subagent model override policy", () => {
   it("registers and enforces the declared trusted policy", async () => {
     const registered: TrustedPolicy[] = [];
     const warn = vi.fn();
-    plugin.register({
-      pluginConfig: baseConfig,
-      logger: { warn },
-      registerTrustedToolPolicy(policy) {
-        registered.push(policy);
-      },
-    } as PluginApi);
+    plugin.register(
+      createTestPluginApi({
+        pluginConfig: baseConfig,
+        logger: { ...createTestPluginApi().logger, warn },
+        registerTrustedToolPolicy(policy) {
+          registered.push(policy);
+        },
+      }),
+    );
 
     expect(registered).toHaveLength(1);
     expect(registered[0]?.id).toBe("deny-sessions-spawn-model-override");
