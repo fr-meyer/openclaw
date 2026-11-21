@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { expectDefined } from "@openclaw/normalization-core/expect";
 import { expect, it } from "vitest";
 import {
   CONTROLLER_ID,
@@ -257,7 +258,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
       try {
         const statusClient = clientFor("status", statusKey, new AbortController().signal);
         await runInScope(statusClient, async () => {
-          const result = await registered.tools[0]
+          const result = await expectDefined(registered.tools[0], "registered controller tool")
             .factory({
               sessionKey: statusKey,
               agentId: "status",
@@ -275,7 +276,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
           nativeRun.runId,
         );
         await runInScope(workerClient, async () => {
-          const report = await registered.tools[0]
+          const report = await expectDefined(registered.tools[0], "registered controller tool")
             .factory({
               sessionKey: workerKey,
               agentId: "reviewer",
@@ -536,7 +537,10 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
           },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      const tool = expectDefined(registered.tools[0], "registered controller tool").factory({
+        sessionKey: ownerKey,
+        agentId: "franck",
+      });
       let abortCalls = 0;
       const handle = createEmbeddedRunHandle({
         runId: rootRunId,
@@ -616,7 +620,10 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
             },
           },
         };
-        const racedTool = registeredApi(config, raceTasks).tools[0].factory({
+        const racedTool = expectDefined(
+          registeredApi(config, raceTasks).tools[0],
+          "registered recovery tool",
+        ).factory({
           sessionKey: ownerKey,
           agentId: "franck",
         });

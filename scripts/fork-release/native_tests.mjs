@@ -125,6 +125,9 @@ export function nativeChildEnv(sourceRoot, testFiles, parentEnv = process.env) {
   return env;
 }
 
+/**
+ * @param {{ sourceRoot: string, testFiles: string[], completedVitestFiles?: string[], parentEnv?: Record<string, string | undefined> }} options
+ */
 export function runNativeTests({
   sourceRoot,
   testFiles,

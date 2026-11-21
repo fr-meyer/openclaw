@@ -2,6 +2,7 @@ import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { expectDefined } from "@openclaw/normalization-core/expect";
 import { expect, it } from "vitest";
 import {
   CONTROLLER_ID,
@@ -249,10 +250,12 @@ it("activates the packaged controller only for the real Gateway owner and exact 
       expect(inert.subscriptions).toHaveLength(0);
       expect(inert.services).toHaveLength(0);
       await expect(
-        inert.tools[0].factory({ sessionKey: ownerKey }).execute("call", {
-          action: "status",
-          flowId: "absent",
-        }),
+        expectDefined(inert.tools[0], "registered inert tool")
+          .factory({ sessionKey: ownerKey })
+          .execute("call", {
+            action: "status",
+            flowId: "absent",
+          }),
       ).rejects.toThrow(/not_enabled/u);
 
       const active = registeredApi(pluginConfig(), tasks);
@@ -384,7 +387,7 @@ it("binds packaged status and reviewer reports to the exact native SQLite flow a
           { context, resolveGatewayContext, client: null, isWebchatConnect: () => false },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory;
+      const tool = expectDefined(registered.tools[0], "registered controller tool").factory;
       try {
         const statusClient = clientFor("status", statusKey, new AbortController().signal);
         await callAs(statusClient, async () => {
@@ -843,7 +846,10 @@ it("admits one packaged native root and never relaunches after a lost acknowledg
           { context, resolveGatewayContext, client: null, isWebchatConnect: () => false },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      const tool = expectDefined(registered.tools[0], "registered controller tool").factory({
+        sessionKey: ownerKey,
+        agentId: "franck",
+      });
       try {
         const first = callBackground(() =>
           tool.execute("first", { action: "continue", flowId: flow.flowId }),

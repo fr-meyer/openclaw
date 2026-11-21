@@ -95,7 +95,7 @@ it("accepts only the claimed native root cancellation without traversing descend
           sessionKey,
           runId,
           taskId: entry.taskRunId ?? runId,
-          nativeGeneration: entry.generation,
+          nativeGeneration: expectDefined(entry.generation, "native worker generation"),
         },
       },
     },
