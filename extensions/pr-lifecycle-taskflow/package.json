@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test ./test/*.test.mjs",
-    "check": "node --check ./index.mjs && node --check ./src/controller.mjs && node --check ./src/http.mjs && node --check ./src/runtime.mjs"
+    "check": "node --check ./index.mjs && node --check ./src/controller.mjs && node --check ./src/http.mjs && node --check ./src/runtime.mjs && node --check ./src/controller-constants.mjs && node --check ./src/controller-policy.mjs && node --check ./src/controller-validation.mjs && node --check ./src/controller-events.mjs && node --check ./src/controller-workers.mjs && node --check ./src/controller-recovery.mjs && node --check ./src/runtime-foundation.mjs && node --check ./src/runtime-remediation.mjs && node --check ./src/runtime-integrity.mjs && node --check ./src/runtime-merge-gates.mjs && node --check ./src/runtime-merge.mjs && node --check ./src/runtime-config.mjs && node --check ./src/runtime-state-effects.mjs && node --check ./src/runtime-contention.mjs && node --check ./src/runtime-workspace.mjs && node --check ./src/runtime-dispatch.mjs && node --check ./src/runtime-ingest.mjs && node --check ./src/runtime-status.mjs && node --check ./src/runtime-tools.mjs && node --check ./src/runtime-registration.mjs && node --check ./src/runtime-testing.mjs"
   },
   "peerDependencies": {
     "openclaw": ">=2026.8.1-beta.2"

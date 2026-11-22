@@ -245,3 +245,13 @@ the native operation.
 Use the plugin approval timeout independently of the agent-run timeout. Authenticated
 Control UI reviewers can inspect `detail`, while channel messages retain
 the bounded description. Oversized detail is rejected by the existing request schema.
+
+## Framework-neutral test temporary directories
+
+Use `openclaw/plugin-sdk/test-temp-dir` for `useAutoCleanupTempDirTracker`.
+Pass your test framework cleanup-registration callback, such as `afterEach`
+from `node:test`, then create owned random directories with the returned
+tracker. The leaf reuses the canonical temporary-directory implementation
+and imports only Node filesystem, OS, and path modules; it does not load
+Vitest hooks or the broader `test-env` barrel. Source checkouts must build
+the SDK with the ordinary package build before using the published JS subpath.
