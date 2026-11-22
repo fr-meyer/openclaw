@@ -237,6 +237,7 @@ export function applyPullRequestEvent(state, eventInput, policyInput, now = Date
   if (
     (event.headSha !== state.headSha || baseChanged) &&
     event.eventId.startsWith("github:") &&
+    // oxlint-disable-next-line typescript/no-unnecessary-boolean-literal-compare -- Only literal true grants authority; preserve rejection of truthy non-booleans at runtime.
     event.authoritative !== true
   ) {
     if (

@@ -30,15 +30,14 @@ import {
 } from "./runtime-config.mjs";
 import { acquirePullRequestAdmissionLock } from "./runtime-contention.mjs";
 import { requireLifecycleHost, withTaskBindings } from "./runtime-foundation.mjs";
-import { workerGenerationForState } from "./runtime-state-primitives.mjs";
 import {
+  workerGenerationForState,
   enforceModeGate,
   persistState,
   requireApplied,
   scheduleWake,
 } from "./runtime-state-primitives.mjs";
-import { dispatchWorker } from "./runtime-worker-orchestration.mjs";
-import { applyEffect } from "./runtime-worker-orchestration.mjs";
+import { dispatchWorker, applyEffect } from "./runtime-worker-orchestration.mjs";
 
 export async function ingestPullRequest(api, config, event) {
   return await withTaskBindings(async () => {

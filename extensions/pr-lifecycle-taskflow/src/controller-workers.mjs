@@ -13,8 +13,7 @@ import {
   infrastructureBackoffMs,
   retryPhase,
 } from "./controller-policy.mjs";
-import { budgetBlock, isLifecycleState } from "./controller-state.mjs";
-import { blockState } from "./controller-state.mjs";
+import { budgetBlock, isLifecycleState, blockState } from "./controller-state.mjs";
 import {
   cleanText,
   isSha,
@@ -63,7 +62,7 @@ export function reserveWorker(state, kind, sessionKey, now = Date.now(), flowId 
   if (Number.isFinite(infrastructureRetryAt) && infrastructureRetryAt > now) {
     return { changed: false, state, effect: "wait", reason: "infrastructure_backoff" };
   }
-  let baseState =
+  const baseState =
     Number.isFinite(infrastructureRetryAt) || Number.isFinite(protocolRetryAt)
       ? {
           ...state,

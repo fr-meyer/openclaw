@@ -138,7 +138,7 @@ export function readySince(state) {
 
 export async function olderReadyWaiter(boundFlows, flow, state, policies) {
   return await withTaskBindings(async () => {
-    return (await lifecycleFlows(boundFlows))
+    const [olderWaiter] = (await lifecycleFlows(boundFlows))
       .filter((other) => other.flowId !== flow.flowId)
       .filter((other) => {
         const otherState = stateOf(other);
@@ -160,7 +160,8 @@ export async function olderReadyWaiter(boundFlows, flow, state, policies) {
         const otherReady = readySince(otherState);
         const selfReady = readySince(state);
         return otherReady < selfReady || (otherReady === selfReady && other.flowId < flow.flowId);
-      })[0];
+      });
+    return olderWaiter;
   });
 }
 
@@ -263,9 +264,7 @@ export async function activeWorkerLeaseHolder(boundFlows, excludedFlowId, candid
       })
       .find((flow) => {
         const other = stateOf(flow);
-        return Boolean(
-          holdsWorkerLease(other) && sharesReviewContentionDomain(other, candidate, policies),
-        );
+        return holdsWorkerLease(other) && sharesReviewContentionDomain(other, candidate, policies);
       });
   });
 }

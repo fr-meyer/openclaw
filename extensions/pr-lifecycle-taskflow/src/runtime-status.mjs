@@ -8,11 +8,7 @@ import {
   requireApplied,
   scheduleWake,
 } from "./runtime-state-primitives.mjs";
-import {
-  sessionAlive,
-  statusView,
-  workerMatchesTerminalLifecycleEvent,
-} from "./runtime-status-primitives.mjs";
+import { statusView, workerMatchesTerminalLifecycleEvent } from "./runtime-status-primitives.mjs";
 import { applyEffect } from "./runtime-worker-orchestration.mjs";
 export {
   statusView,

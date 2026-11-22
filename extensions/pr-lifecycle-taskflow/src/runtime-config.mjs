@@ -299,7 +299,7 @@ export function latestMatchingFlow(flows, repo, prNumber, options = {}) {
     .filter((flow) => flow.controllerId === CONTROLLER_ID)
     .filter((flow) => flowMatches(stateOf(flow), repo, prNumber))
     .filter((flow) => (options.headSha ? stateOf(flow)?.headSha === options.headSha : true))
-    .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
+    .toSorted((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
   if (options.nonTerminalOnly) {
     return matching.find((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status));
   }

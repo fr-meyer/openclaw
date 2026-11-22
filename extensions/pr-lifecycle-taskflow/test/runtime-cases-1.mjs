@@ -201,19 +201,23 @@ void test("automatic merge rechecks exact-head review and checks before an autho
   );
 });
 
-test("merge lock renewal prevents parallel holders and fences an expired owner", () => {
+void test("merge lock renewal prevents parallel holders and fences an expired owner", () => {
   const { api } = makeApi();
   let now = 0;
   const entries = new Map();
   const pruneExpired = () => {
     for (const [key, entry] of entries) {
-      if (entry.expiresAt <= now) entries.delete(key);
+      if (entry.expiresAt <= now) {
+        entries.delete(key);
+      }
     }
   };
   api.runtime.state.openSyncKeyedStore = () => ({
     registerIfAbsent(key, value, opts = {}) {
       pruneExpired();
-      if (entries.has(key)) return false;
+      if (entries.has(key)) {
+        return false;
+      }
       entries.set(key, { value: structuredClone(value), expiresAt: now + opts.ttlMs });
       return true;
     },
@@ -221,14 +225,18 @@ test("merge lock renewal prevents parallel holders and fences an expired owner",
       pruneExpired();
       const entry = entries.get(key);
       const next = updateValue(entry ? structuredClone(entry.value) : undefined);
-      if (next === undefined) return false;
+      if (next === undefined) {
+        return false;
+      }
       entries.set(key, { value: structuredClone(next), expiresAt: now + opts.ttlMs });
       return true;
     },
     deleteIf(key, predicate) {
       pruneExpired();
       const entry = entries.get(key);
-      if (!entry || !predicate(structuredClone(entry.value))) return false;
+      if (!entry || !predicate(structuredClone(entry.value))) {
+        return false;
+      }
       entries.delete(key);
       return true;
     },
@@ -252,7 +260,7 @@ test("merge lock renewal prevents parallel holders and fences an expired owner",
   assert.equal(second.release(), true);
 });
 
-test("automatic merge checks its lock before the external commit point and preserves the receipt after expiry", async () => {
+void test("automatic merge checks its lock before the external commit point and preserves the receipt after expiry", async () => {
   const repositoryPolicy = authorizedAutoMergePolicy();
   const queued = createState(prEvent(), repositoryPolicy);
   const reserved = reserveWorker(
@@ -327,14 +335,16 @@ test("automatic merge checks its lock before the external commit point and prese
 
   const receipt = await __testing.autoMergeReceipt(api, state, normalizedPolicy, null, () => {
     lockChecks += 1;
-    if (!lockHeld) throw new Error("merge_lock_lost");
+    if (!lockHeld) {
+      throw new Error("merge_lock_lost");
+    }
   });
   assert.equal(receipt.sha, SHA_C);
   assert.equal(mergeCalls, 1);
   assert.equal(lockChecks, 3);
 });
 
-test("automatic merge durably reconciles an exact already-merged PR after the commit point", async () => {
+void test("automatic merge durably reconciles an exact already-merged PR after the commit point", async () => {
   const repositoryPolicy = authorizedAutoMergePolicy();
   const { api, bound, calls } = makeApi(
     pluginConfig({ repositories: { "example-org/example-repo": repositoryPolicy } }),
@@ -373,7 +383,7 @@ test("automatic merge durably reconciles an exact already-merged PR after the co
   assert.equal(brokerCalls.length, 1);
 });
 
-test("automatic merge aborts when a check-suite rerun parks the revision after gate read", async () => {
+void test("automatic merge aborts when a check-suite rerun parks the revision after gate read", async () => {
   const repositoryPolicy = authorizedAutoMergePolicy();
   const { api, bound, calls } = makeApi(
     pluginConfig({ repositories: { "example-org/example-repo": repositoryPolicy } }),
@@ -460,7 +470,7 @@ test("automatic merge aborts when a check-suite rerun parks the revision after g
   assert.equal(current.stateJson.merged, undefined);
 });
 
-test("automatic merge persists its receipt across a same-head revision race", async () => {
+void test("automatic merge persists its receipt across a same-head revision race", async () => {
   const repositoryPolicy = authorizedAutoMergePolicy();
   const { api, bound, calls } = makeApi(
     pluginConfig({ repositories: { "example-org/example-repo": repositoryPolicy } }),

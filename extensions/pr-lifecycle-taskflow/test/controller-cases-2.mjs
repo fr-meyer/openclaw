@@ -24,7 +24,7 @@ import {
   reserve,
 } from "./controller-helpers-1.mjs";
 
-test("retries only publication-confirmed retryable reviews within budget", () => {
+void test("retries only publication-confirmed retryable reviews within budget", () => {
   const state = createState(prEvent(), policy({ maxRetries: 1 }), NOW);
   const notAllowed = applyCurrentReview(
     state,
@@ -49,7 +49,7 @@ test("retries only publication-confirmed retryable reviews within budget", () =>
   assert.equal(exhausted.state.phase, PHASE.BLOCKED);
 });
 
-test("reserves exactly one worker for the phase", () => {
+void test("reserves exactly one worker for the phase", () => {
   const state = createState(prEvent(), policy(), NOW);
   const first = reserveWorker(state, "review", "agent:owner-agent:subagent:one", NOW + 1);
   assert.equal(first.state.phase, PHASE.REVIEW_RUNNING);
@@ -66,7 +66,7 @@ test("reserves exactly one worker for the phase", () => {
   assert.equal(wrongKind.reason, "phase_not_dispatchable");
 });
 
-test("fences worker reports by session, kind, head, and cycle", () => {
+void test("fences worker reports by session, kind, head, and cycle", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const baseReport = {
     kind: "review",
@@ -100,7 +100,7 @@ test("fences worker reports by session, kind, head, and cycle", () => {
   );
 });
 
-test("rejects an orphaned worker report before terminal-envelope or orphan mutation", () => {
+void test("rejects an orphaned worker report before terminal-envelope or orphan mutation", () => {
   const reserved = reserve(createState(prEvent(), policy(), NOW));
   const orphanedWorker = {
     ...reserved.activeWorker,
@@ -155,7 +155,7 @@ test("rejects an orphaned worker report before terminal-envelope or orphan mutat
   ]);
 });
 
-test("review worker can enter an external wait without polling", () => {
+void test("review worker can enter an external wait without polling", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const transition = applyWorkerReport(
     state,
@@ -180,7 +180,7 @@ test("review worker can enter an external wait without polling", () => {
   assert.equal(holdsWorkerLease(transition.state), true);
 });
 
-test("worker reports retain the exact worker identity as an orphan", () => {
+void test("worker reports retain the exact worker identity as an orphan", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = applyCurrentReview(
     state,
@@ -217,7 +217,7 @@ test("worker reports retain the exact worker identity as an orphan", () => {
   assert.equal(holdsWorkerLease(transition.state), true);
 });
 
-test("remediation accepts only tested, publication-confirmed new heads", () => {
+void test("remediation accepts only tested, publication-confirmed new heads", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = applyCurrentReview(
     state,
@@ -300,7 +300,7 @@ test("remediation accepts only tested, publication-confirmed new heads", () => {
   assert.equal(confirmed.state.fixerAttestation.model, "primary-fixer");
 });
 
-test("fallback fixer requires exact single-use controller-owned primary failure evidence", () => {
+void test("fallback fixer requires exact single-use controller-owned primary failure evidence", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = applyCurrentReview(
     state,
@@ -508,7 +508,7 @@ test("fallback fixer requires exact single-use controller-owned primary failure 
   assert.equal(reused.state.phase, PHASE.BLOCKED);
 });
 
-test("primary fixer attestation rejects fallback-only evidence fields", () => {
+void test("primary fixer attestation rejects fallback-only evidence fields", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = applyCurrentReview(
     state,
@@ -536,7 +536,7 @@ test("primary fixer attestation rejects fallback-only evidence fields", () => {
   assert.equal(transition.state.phase, PHASE.BLOCKED);
 });
 
-test("two fix cycles end at a final review and never launch a third fixer", () => {
+void test("two fix cycles end at a final review and never launch a third fixer", () => {
   const reserved = reserve(createState(prEvent(), policy({ maxCycles: 2 }), NOW));
   const state = {
     ...reserved,
@@ -555,7 +555,7 @@ test("two fix cycles end at a final review and never launch a third fixer", () =
   assert.equal(transition.state.blocker, "review_fix_cycle_budget_exhausted");
 });
 
-test("ambiguous publication is a durable manual block", () => {
+void test("ambiguous publication is a durable manual block", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = applyCurrentReview(
     state,
@@ -579,7 +579,7 @@ test("ambiguous publication is a durable manual block", () => {
   assert.match(transition.state.blocker, /requires_reconciliation/);
 });
 
-test("bounded same-head re-review requires independent verification", () => {
+void test("bounded same-head re-review requires independent verification", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = applyCurrentReview(
     state,
@@ -621,7 +621,7 @@ test("bounded same-head re-review requires independent verification", () => {
   assert.equal(accepted.state.cycle, 1);
 });
 
-test("worker failure retries within budget and ignores stale failure reports", () => {
+void test("worker failure retries within budget and ignores stale failure reports", () => {
   const state = reserve(createState(prEvent(), policy({ maxRetries: 1 }), NOW));
   const stale = applyWorkerFailure(state, "agent:owner-agent:subagent:other", "failed", NOW + 20);
   assert.equal(stale.changed, false);
@@ -638,7 +638,7 @@ test("worker failure retries within budget and ignores stale failure reports", (
   assert.equal(exhausted.state.phase, PHASE.BLOCKED);
 });
 
-test("restart recovery waits for active work and blocks success without a report", () => {
+void test("restart recovery waits for active work and blocks success without a report", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const active = recoverState(state, { status: "running" }, NOW + 200_000, 120_000, {
     sessionAlive: true,

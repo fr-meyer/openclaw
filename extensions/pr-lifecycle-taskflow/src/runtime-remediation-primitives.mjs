@@ -48,7 +48,7 @@ export function executableAvailable(api, argv0, workspace) {
   }
   const candidates = argv0.includes("/")
     ? [argv0.startsWith("/") ? argv0 : join(workspace, argv0)]
-    : String(process.env.PATH ?? "")
+    : (process.env.PATH ?? "")
         .split(":")
         .filter(Boolean)
         .map((entry) => join(entry, argv0));
@@ -79,8 +79,8 @@ export async function readWorkspaceIdentity(api, workspace, expectedHeadSha, exp
   const testReadHead =
     typeof api.testReadWorkspaceHead === "function"
       ? api.testReadWorkspaceHead
-      : typeof api.__testReadWorkspaceHead === "function"
-        ? api.__testReadWorkspaceHead
+      : typeof api["__testReadWorkspaceHead"] === "function"
+        ? api["__testReadWorkspaceHead"]
         : null;
   if (testReadHead) {
     return {

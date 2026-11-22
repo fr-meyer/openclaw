@@ -4,8 +4,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
-import { afterEach } from "node:test";
+import test, { afterEach } from "node:test";
 import { useAutoCleanupTempDirTracker } from "openclaw/plugin-sdk/test-temp-dir";
 import { PHASE } from "../src/controller.mjs";
 import { __testing, registerPrLifecycleTaskflow } from "../src/runtime.mjs";
@@ -28,7 +27,7 @@ import {
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
-test("rejects repository-scoped profile and authorization drift during config admission", () => {
+void test("rejects repository-scoped profile and authorization drift during config admission", () => {
   assert.throws(
     () =>
       __testing.normalizeRuntimeConfig(
@@ -80,7 +79,7 @@ test("rejects repository-scoped profile and authorization drift during config ad
   );
 });
 
-test("registers inert by default without routes or services", () => {
+void test("registers inert by default without routes or services", () => {
   const { api, calls } = makeApi({ repositories: {}, ownerSessionKey: OWNER });
   registerPrLifecycleTaskflow(api);
   assert.equal(calls.tools.length, 1);
@@ -299,7 +298,7 @@ void test("registers authenticated ingress and recovery only when explicitly ena
   );
 });
 
-test("fails closed when the configured runtime path or hash does not match", async () => {
+void test("fails closed when the configured runtime path or hash does not match", async () => {
   const { api, calls } = makeApi(pluginConfig({ expectedRuntimeSha256: "0".repeat(64) }));
   registerPrLifecycleTaskflow(api);
   assert.equal(calls.routes.length, 0);
@@ -311,7 +310,7 @@ test("fails closed when the configured runtime path or hash does not match", asy
   );
 });
 
-test("fails closed when an executable source module drifts", async () => {
+void test("fails closed when an executable source module drifts", async () => {
   const runtimeOnly = createHash("sha256").update(readFileSync(RUNTIME_PATH)).digest("hex");
   assert.notEqual(runtimeOnly, RUNTIME_SHA256);
   const tampered = __testing.runtimeSourceIntegrity(RUNTIME_PATH, RUNTIME_SHA256, {
@@ -332,7 +331,7 @@ test("fails closed when an executable source module drifts", async () => {
   assert.match(calls.logs[0][1], /source integrity failed/);
 });
 
-test("fails closed when the executable index source drifts", () => {
+void test("fails closed when the executable index source drifts", () => {
   const tampered = __testing.runtimeSourceIntegrity(RUNTIME_PATH, RUNTIME_SHA256, {
     allowDisposable: true,
     readFileSync(path) {
@@ -346,7 +345,7 @@ test("fails closed when the executable index source drifts", () => {
   assert.notEqual(tampered.sha256, RUNTIME_SHA256);
 });
 
-test("classifies temporary and ad-hoc worktree load roots as disposable", () => {
+void test("classifies temporary and ad-hoc worktree load roots as disposable", () => {
   assert.equal(
     __testing.isDisposableRuntimePath(
       "/home/example/.openclaw/tmp/worktrees/pr-lifecycle/plugins/pr-lifecycle-taskflow/src/runtime.mjs",
@@ -367,7 +366,7 @@ test("classifies temporary and ad-hoc worktree load roots as disposable", () => 
   );
 });
 
-test("admission lock prevents a concurrent first delivery from duplicating a flow", async () => {
+void test("admission lock prevents a concurrent first delivery from duplicating a flow", async () => {
   const { api, bound } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -396,7 +395,7 @@ test("admission lock prevents a concurrent first delivery from duplicating a flo
   assert.equal(bound.get(created.flowId).stateJson.headSha, SHA_C);
 });
 
-test("returns a retryable failure when admission is contended", async () => {
+void test("returns a retryable failure when admission is contended", async () => {
   const secret = "github-secret";
   const { api, bound, calls } = makeApi(pluginConfig({ githubWebhookSecret: secret }));
   registerPrLifecycleTaskflow(api);
@@ -455,7 +454,7 @@ test("returns a retryable failure when admission is contended", async () => {
   assert.equal(admissionLock.release(), true);
 });
 
-test("check-suite route ingests every bounded associated pull request", async () => {
+void test("check-suite route ingests every bounded associated pull request", async () => {
   const secret = "github-secret";
   const payload = {
     action: "completed",
@@ -522,7 +521,7 @@ test("check-suite route ingests every bounded associated pull request", async ()
   });
 });
 
-test("body rejection maps errors without destroying the request stream", async () => {
+void test("body rejection maps errors without destroying the request stream", async () => {
   const handler = __testing.createRouteHandler({
     kind: "github",
     secret: "github-secret",
@@ -578,7 +577,7 @@ test("body rejection maps errors without destroying the request stream", async (
   assert.equal(timedOut.req.destroyedByHandler, false);
 });
 
-test("ingress creates one durable flow and deduplicates retries", async () => {
+void test("ingress creates one durable flow and deduplicates retries", async () => {
   const { api, bound, calls } = makeApi();
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   const first = await __testing.ingestPullRequest(api, config, prEvent());
@@ -594,9 +593,9 @@ test("ingress creates one durable flow and deduplicates retries", async () => {
   assert.equal(bound.list().length, 1);
 });
 
-test("equal-second GitHub heads trigger authoritative PR reconciliation", async () => {
+void test("equal-second GitHub heads trigger authoritative PR reconciliation", async () => {
   const { api, bound, calls } = makeApi();
-  api.__testReadPullRequestState = async (state) => ({
+  api["__testReadPullRequestState"] = async (state) => ({
     repo: state.repo,
     number: state.prNumber,
     head: { sha: SHA_C, repo: state.repo },
@@ -622,7 +621,7 @@ test("equal-second GitHub heads trigger authoritative PR reconciliation", async 
   assert.ok(calls.schedules.length >= 2);
 });
 
-test("legacy merge-ready same-head deliveries migrate the existing flow to waiting", async () => {
+void test("legacy merge-ready same-head deliveries migrate the existing flow to waiting", async () => {
   const { api, bound } = makeApi();
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   const created = await __testing.ingestPullRequest(api, config, prEvent());

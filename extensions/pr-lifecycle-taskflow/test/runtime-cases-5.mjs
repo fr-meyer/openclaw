@@ -15,7 +15,7 @@ import {
 } from "./runtime-helpers-1.mjs";
 import { details, launchWaitingReview } from "./runtime-helpers-2.mjs";
 
-test("repositories that share a workspace still serialize review launches", async () => {
+void test("repositories that share a workspace still serialize review launches", async () => {
   const { api, bound, calls } = makeApi(
     pluginConfig({
       repositories: {
@@ -67,7 +67,7 @@ test("repositories that share a workspace still serialize review launches", asyn
     }),
   );
   const ownerTool = toolFor(calls, OWNER);
-  let firstFlow = bound.get(first.flowId);
+  const firstFlow = bound.get(first.flowId);
   await ownerTool.execute("start-example-repo", {
     action: "continue",
     flowId: first.flowId,
@@ -88,7 +88,7 @@ test("repositories that share a workspace still serialize review launches", asyn
   assert.equal(output.flow.activeWorker, null);
 });
 
-test("worker report is session-fenced and enters push-driven review wait", async () => {
+void test("worker report is session-fenced and enters push-driven review wait", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -122,7 +122,7 @@ test("worker report is session-fenced and enters push-driven review wait", async
   assert.equal(calls.schedules.at(-1).deliveryMode, "none");
 });
 
-test("remediation prompt keeps untrusted findings outside the immutable instruction binding", () => {
+void test("remediation prompt keeps untrusted findings outside the immutable instruction binding", () => {
   const { api } = makeApi();
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   const repositoryPolicy = config.repositories.get("example-org/example-repo");
@@ -151,7 +151,7 @@ test("remediation prompt keeps untrusted findings outside the immutable instruct
   assert.doesNotMatch(message, /action=report/);
 });
 
-test("remediation prompt exposes only a controller-owned exact fallback grant", () => {
+void test("remediation prompt exposes only a controller-owned exact fallback grant", () => {
   const { api } = makeApi();
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   const repositoryPolicy = config.repositories.get("example-org/example-repo");
@@ -203,7 +203,7 @@ test("remediation prompt exposes only a controller-owned exact fallback grant", 
   assert.match(staleMessage, /fallback requires a new controller generation/);
 });
 
-test("primary fixer failure creates one flow-bound fallback worker grant", async () => {
+void test("primary fixer failure creates one flow-bound fallback worker grant", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -275,7 +275,7 @@ test("primary fixer failure creates one flow-bound fallback worker grant", async
   assert.equal(flow.stateJson.primaryFixerFailure.consumedBy.runId, fallbackWorker.runId);
 });
 
-test("review completion drives remediation, new-head re-review, then merge-ready", async () => {
+void test("review completion drives remediation, new-head re-review, then merge-ready", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -395,7 +395,7 @@ test("review completion drives remediation, new-head re-review, then merge-ready
   assert.equal(calls.subagents.length, 3);
 });
 
-test("review completion waits for canonical worker termination before notifying merge-ready", async () => {
+void test("review completion waits for canonical worker termination before notifying merge-ready", async () => {
   const { api, bound, calls, storeFor, sessionEntries } = makeApi(
     pluginConfig({ notificationSessionKey: OWNER }),
   );
@@ -453,7 +453,7 @@ test("review completion waits for canonical worker termination before notifying 
   );
 });
 
-test("worker reports fence follow-up dispatch until the reporting task is terminal", async () => {
+void test("worker reports fence follow-up dispatch until the reporting task is terminal", async () => {
   const { api, bound, calls, storeFor, sessionEntries } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -551,7 +551,7 @@ test("worker reports fence follow-up dispatch until the reporting task is termin
   assert.equal(calls.subagents.length, 3);
 });
 
-test("direct terminal worker reports wait for the reporting review task before notification", async () => {
+void test("direct terminal worker reports wait for the reporting review task before notification", async () => {
   const { api, bound, calls, storeFor, sessionEntries } = makeApi(
     pluginConfig({ notificationSessionKey: OWNER }),
   );
@@ -614,7 +614,7 @@ test("direct terminal worker reports wait for the reporting review task before n
   );
 });
 
-test("blocked terminal report persists cleanup after its orphan worker stops", async () => {
+void test("blocked terminal report persists cleanup after its orphan worker stops", async () => {
   const { api, bound, calls, storeFor, sessionEntries } = makeApi(
     pluginConfig({ notificationSessionKey: OWNER }),
   );

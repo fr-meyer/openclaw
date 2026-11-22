@@ -97,7 +97,6 @@ export async function reconcileAtStartup(api, config) {
           const kind = state.phase === PHASE.MERGED ? "merged" : "blocked";
           if (!state.terminalCleanup) {
             flow = await persistTerminalCleanup(api, config, boundFlows, flow, state, kind);
-            state = stateOf(flow);
           } else {
             await clearTerminalArtifacts(api, config, flow);
             if (!notificationAlreadyRendered(state, kind)) {
@@ -165,7 +164,7 @@ export function registerPrLifecycleTaskflow(api) {
   const sourceIntegrity = runtimeSourceIntegrity(
     requestedConfig.expectedRuntimePath,
     requestedConfig.expectedRuntimeSha256,
-    { allowDisposable: api.__testAllowDisposableRuntime === true },
+    { allowDisposable: api["__testAllowDisposableRuntime"] === true },
   );
   let hostReady = false;
   try {

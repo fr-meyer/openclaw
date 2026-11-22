@@ -507,8 +507,18 @@ export async function reconcileGithubHead(api, config, boundFlows, flow, state) 
     }
   });
 }
-export async function applyEffect(api, config, boundFlows, flow, state, effect, options = {}) {
+export async function applyEffect(
+  api,
+  config,
+  boundFlows,
+  initialFlow,
+  initialState,
+  effect,
+  options = {},
+) {
   return await withTaskBindings(async () => {
+    let flow = initialFlow;
+    let state = initialState;
     const reconciled = await reconcileOrphanBeforeEffect(api, config, boundFlows, flow, state);
     if (!reconciled.safe) {
       return;

@@ -49,6 +49,7 @@ export const INFRASTRUCTURE_FAILURE_PATTERNS = [
 export const TERMINAL_PHASES = new Set([PHASE.MERGED, PHASE.FAILED, PHASE.CANCELLED]);
 export const SHA_PATTERN = /^[0-9a-f]{40}$/;
 export const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+// oxlint-disable-next-line eslint/no-control-regex -- Security boundary excludes exactly C0 except HT/LF/CR and DEL; preserve this exported literal and matched characters.
 export const SAFE_TEXT_PATTERN = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]*$/;
 export const MAX_SEEN_EVENTS = 64;
 export const MAX_FINDINGS = 20;

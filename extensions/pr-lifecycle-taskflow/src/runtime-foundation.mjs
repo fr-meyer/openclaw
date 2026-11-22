@@ -28,16 +28,44 @@ export const taskBindingScopes = new AsyncLocalStorage();
 export const bindingCleanupFailures = new WeakMap();
 export async function trackTaskBinding(pending) {
   const scope = taskBindingScopes.getStore();
-  if (!scope || scope.closed) throw new Error("pr_lifecycle_binding_scope_unavailable");
+  if (!scope || scope.closed) {
+    throw new Error("pr_lifecycle_binding_scope_unavailable");
+  }
   const binding = await pending;
-  if (typeof binding?.close !== "function")
+  if (typeof binding?.close !== "function") {
     throw new Error("pr_lifecycle_binding_close_unavailable");
+  }
   scope.bindings.add(binding);
   return binding;
 }
+async function closeTaskBindingScope(scope, failed, primary) {
+  scope.closed = true;
+  const failures = [];
+  for (const binding of scope.bindings) {
+    try {
+      await binding.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (
+    failures.length &&
+    failed &&
+    primary &&
+    (typeof primary === "object" || typeof primary === "function")
+  ) {
+    bindingCleanupFailures.set(primary, Object.freeze(failures));
+  }
+  if (failures.length && !failed) {
+    throw new AggregateError(failures, "PR lifecycle binding cleanup failed");
+  }
+}
+
 export async function withTaskBindings(operation) {
   const existing = taskBindingScopes.getStore();
-  if (existing && !existing.closed) return await operation();
+  if (existing && !existing.closed) {
+    return await operation();
+  }
   const scope = { bindings: new Set(), closed: false };
   return await taskBindingScopes.run(scope, async () => {
     let primary;
@@ -49,26 +77,7 @@ export async function withTaskBindings(operation) {
       primary = error;
       throw error;
     } finally {
-      scope.closed = true;
-      const failures = [];
-      for (const binding of scope.bindings) {
-        try {
-          await binding.close();
-        } catch (error) {
-          failures.push(error);
-        }
-      }
-      if (
-        failures.length &&
-        failed &&
-        primary &&
-        (typeof primary === "object" || typeof primary === "function")
-      ) {
-        bindingCleanupFailures.set(primary, Object.freeze(failures));
-      }
-      if (failures.length && !failed) {
-        throw new AggregateError(failures, "PR lifecycle binding cleanup failed");
-      }
+      await closeTaskBindingScope(scope, failed, primary);
     }
   });
 }

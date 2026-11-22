@@ -111,7 +111,7 @@ export function assertScheduledNotificationAcknowledgesBeforeReply(message, cand
 }
 
 export async function createWorkspaceHeadMismatchBlock(api, bound, calls) {
-  api.__testReadWorkspaceHead = async () => SHA_C;
+  api["__testReadWorkspaceHead"] = async () => SHA_C;
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   const created = await __testing.ingestPullRequest(api, config, prEvent());

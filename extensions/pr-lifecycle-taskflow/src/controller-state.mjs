@@ -28,7 +28,8 @@ export function budgetBlock(state, now, eventId) {
   return null;
 }
 
-export function blockState(state, reason, now = Date.now(), eventId) {
+export function blockState(state, reason, ...timing) {
+  const [now = Date.now(), eventId] = timing;
   const blocker = cleanText(reason, 1000, "blocker");
   const next = appendSeenEvent(
     {

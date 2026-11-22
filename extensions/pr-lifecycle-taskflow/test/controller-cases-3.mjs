@@ -85,7 +85,7 @@ void test("restart recovery gives new reservations a grace period", () => {
   assert.equal(retry.state.infrastructureRetryAt, NOW + 500_000);
 });
 
-test("review wait recovery keeps the pending review lease until completion", () => {
+void test("review wait recovery keeps the pending review lease until completion", () => {
   let state = reserve(createState(prEvent(), policy({ maxRetries: 1 }), NOW));
   const workerClaimRef = state.activeWorker.claimRef;
   state = applyWorkerReport(
@@ -114,7 +114,7 @@ test("review wait recovery keeps the pending review lease until completion", () 
   assert.equal(exhausted.state.reviewLease, null);
 });
 
-test("head changes keep a waiting review lease until the old head completes", () => {
+void test("head changes keep a waiting review lease until the old head completes", () => {
   let state = reserve(createState(prEvent(), policy(), NOW));
   const waitingWorker = state.activeWorker;
   state = applyWorkerReport(
@@ -193,7 +193,7 @@ test("head changes keep a waiting review lease until the old head completes", ()
   assert.equal(next.state.phase, PHASE.REVIEW_RUNNING);
 });
 
-test("process-restart zombie running task retries", () => {
+void test("process-restart zombie running task retries", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const restarted = recoverState(state, { status: "running" }, NOW + 200_000, 120_000, {
     processStartedAt: NOW + 60_000,
@@ -206,7 +206,7 @@ test("process-restart zombie running task retries", () => {
   assert.equal(restarted.state.infrastructureRetryCount, 1);
 });
 
-test("missing worker session after grace retries", () => {
+void test("missing worker session after grace retries", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const missing = recoverState(state, { status: "running" }, NOW + 200_000, 120_000, {
     sessionAlive: false,
@@ -219,7 +219,7 @@ test("missing worker session after grace retries", () => {
   assert.equal(missing.state.infrastructureRetryCount, 1);
 });
 
-test("live worker session stays worker_active", () => {
+void test("live worker session stays worker_active", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const live = recoverState(state, { status: "running" }, NOW + 200_000, 120_000, {
     sessionAlive: true,
@@ -230,7 +230,7 @@ test("live worker session stays worker_active", () => {
   assert.equal(live.state.activeWorker.sessionKey, state.activeWorker.sessionKey);
 });
 
-test("unknown worker-session liveness is retryable infrastructure after grace", () => {
+void test("unknown worker-session liveness is retryable infrastructure after grace", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const unknown = recoverState(state, { status: "running" }, NOW + 200_000, 120_000, {
     sessionAlive: undefined,
@@ -242,7 +242,7 @@ test("unknown worker-session liveness is retryable infrastructure after grace", 
   assert.equal(unknown.state.infrastructureLastFailure, "worker_session_liveness_unknown");
 });
 
-test("infrastructure retries use capped backoff without consuming content budget", () => {
+void test("infrastructure retries use capped backoff without consuming content budget", () => {
   let state = reserve(
     createState(prEvent(), policy({ maxRetries: 1, wallTimeMinutes: 10_080 }), NOW),
   );
@@ -272,7 +272,7 @@ test("infrastructure retries use capped backoff without consuming content budget
   );
 });
 
-test("infrastructure backoffs cannot renew the absolute lifecycle deadline", () => {
+void test("infrastructure backoffs cannot renew the absolute lifecycle deadline", () => {
   let state = reserve(createState(prEvent(), policy({ maxRetries: 1, wallTimeMinutes: 5 }), NOW));
   const deadlineAt = state.deadlineAt;
   const firstFailure = applyWorkerFailure(
@@ -300,7 +300,7 @@ test("infrastructure backoffs cannot renew the absolute lifecycle deadline", () 
   assert.equal(secondFailure.state.deadlineAt, deadlineAt);
 });
 
-test("remediation cycles cannot renew the absolute lifecycle deadline", () => {
+void test("remediation cycles cannot renew the absolute lifecycle deadline", () => {
   let state = createState(prEvent(), policy(), NOW);
   const deadlineAt = state.deadlineAt;
   state = applyCurrentReview(
@@ -350,7 +350,7 @@ test("remediation cycles cannot renew the absolute lifecycle deadline", () => {
   assert.equal(sameHead.state.deadlineAt, deadlineAt);
 });
 
-test("legacy infrastructure exhaustion requeues while content exhaustion stays blocked", () => {
+void test("legacy infrastructure exhaustion requeues while content exhaustion stays blocked", () => {
   const base = createState(prEvent(), policy(), NOW);
   const infraBlocked = {
     ...base,
@@ -378,7 +378,7 @@ test("legacy infrastructure exhaustion requeues while content exhaustion stays b
   assert.equal(classifyWorkerFailure("worker_execution_failed:validation_failed"), "content");
 });
 
-test("routine policy refresh preserves the absolute deadline", () => {
+void test("routine policy refresh preserves the absolute deadline", () => {
   const state = createState(prEvent(), policy({ maxCycles: 2, maxRetries: 1 }), NOW);
   const refreshed = refreshPolicySnapshot(
     state,
@@ -412,7 +412,7 @@ test("routine policy refresh preserves the absolute deadline", () => {
   assert.equal(shortened.state.deadlineAt, NOW + 20 + 60 * 60_000);
 });
 
-test("head confirmation waiting expires without adopting a worker-reported head", () => {
+void test("head confirmation waiting expires without adopting a worker-reported head", () => {
   let state = createState(prEvent(), policy({ wallTimeMinutes: 5 }), NOW);
   state = applyCurrentReview(
     state,
@@ -442,7 +442,7 @@ test("head confirmation waiting expires without adopting a worker-reported head"
   assert.equal(expired.state.headSha, SHA_A);
 });
 
-test("sanitizes and bounds findings before durable storage", () => {
+void test("sanitizes and bounds findings before durable storage", () => {
   assert.deepEqual(sanitizeFindings([finding()])[0], finding());
   assert.throws(() => sanitizeFindings([{ ...finding(), secret: "no" }]), /not allowed/);
   assert.throws(() => sanitizeFindings([finding({ summary: "x\u0000y" })]), /invalid/);
@@ -472,7 +472,7 @@ test("sanitizes and bounds findings before durable storage", () => {
   );
 });
 
-test("verifies HMAC signatures over exact raw bytes", () => {
+void test("verifies HMAC signatures over exact raw bytes", () => {
   const body = Buffer.from('{"hello":"world"}');
   const signature = `sha256=${createHmac("sha256", "secret").update(body).digest("hex")}`;
   assert.equal(verifySha256Signature(body, "secret", signature), true);
@@ -480,7 +480,7 @@ test("verifies HMAC signatures over exact raw bytes", () => {
   assert.equal(verifySha256Signature(body, "secret", "sha256=short"), false);
 });
 
-test("parses bounded GitHub PR and Broker review envelopes", () => {
+void test("parses bounded GitHub PR and Broker review envelopes", () => {
   const githubReq = {
     headers: {
       "x-github-event": "pull_request",
@@ -565,12 +565,12 @@ test("parses bounded GitHub PR and Broker review envelopes", () => {
   );
 });
 
-test("rejects oversized JSON before parsing", async () => {
+void test("rejects oversized JSON before parsing", async () => {
   const req = Readable.from([Buffer.alloc(20, 65)]);
   await assert.rejects(() => readJsonBody(req, { maxBytes: 10, timeoutMs: 1_000 }), /too_large/);
 });
 
-test("stops buffering oversized request bodies after rejection", async () => {
+void test("stops buffering oversized request bodies after rejection", async () => {
   const req = new Readable({ read() {} });
   const pending = readJsonBody(req, { maxBytes: 8, timeoutMs: 1_000 });
   req.push(Buffer.alloc(6, 65));
@@ -580,7 +580,7 @@ test("stops buffering oversized request bodies after rejection", async () => {
   req.push(Buffer.alloc(4096, 68));
 });
 
-test("bounds rate and in-flight limiter state", () => {
+void test("bounds rate and in-flight limiter state", () => {
   const rate = createFixedWindowLimiter({ maxRequests: 2, maxKeys: 2, windowMs: 100 });
   assert.equal(rate.allow("a", 0), true);
   assert.equal(rate.allow("a", 1), true);

@@ -37,14 +37,14 @@ import {
   verifyRemediationEvidence,
 } from "./runtime-remediation-primitives.mjs";
 import { reconcileRemediationEvidence } from "./runtime-remediation.mjs";
-import { processStartedAtMs } from "./runtime-state-primitives.mjs";
 import {
+  processStartedAtMs,
   enforceModeGate,
   notificationTag,
   persistState,
   recoveryTag,
+  flowWorkspacePath,
 } from "./runtime-state-primitives.mjs";
-import { flowWorkspacePath } from "./runtime-state-primitives.mjs";
 import {
   currentWorkerTask,
   recoverExtras,
@@ -56,6 +56,7 @@ import { reconcileTerminalWorkerEvent } from "./runtime-status.mjs";
 import { buildWorkerMessage, dispatchWorker } from "./runtime-worker-orchestration.mjs";
 import { ensureFlowWorkspace } from "./runtime-workspace-primitives.mjs";
 
+// oxlint-disable-next-line no-underscore-dangle -- Preserve existing named public __testing export contract.
 export const __testing = {
   normalizeRuntimeConfig,
   acquirePullRequestAdmissionLock,

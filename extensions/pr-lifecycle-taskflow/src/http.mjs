@@ -291,12 +291,24 @@ export function writeJson(res, statusCode, body) {
 
 export function mapHttpError(error) {
   const code = error instanceof Error ? error.message : "request_rejected";
-  if (code === "method_not_allowed") return { status: 405, code };
-  if (code === "unsupported_media_type") return { status: 415, code };
-  if (code === "request_body_too_large") return { status: 413, code };
-  if (code === "request_body_timeout") return { status: 408, code };
-  if (code === "invalid_signature") return { status: 401, code };
-  if (code === "rate_limited" || code === "too_many_in_flight") return { status: 429, code };
+  if (code === "method_not_allowed") {
+    return { status: 405, code };
+  }
+  if (code === "unsupported_media_type") {
+    return { status: 415, code };
+  }
+  if (code === "request_body_too_large") {
+    return { status: 413, code };
+  }
+  if (code === "request_body_timeout") {
+    return { status: 408, code };
+  }
+  if (code === "invalid_signature") {
+    return { status: 401, code };
+  }
+  if (code === "rate_limited" || code === "too_many_in_flight") {
+    return { status: 429, code };
+  }
   if (code === "unsupported_github_event" || code === "unsupported_broker_event") {
     return { status: 202, code };
   }

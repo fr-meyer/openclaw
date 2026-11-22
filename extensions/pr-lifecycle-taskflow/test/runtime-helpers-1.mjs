@@ -200,7 +200,7 @@ export class FakeBoundFlows {
   }
 
   findLatest() {
-    return this.list().sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    return this.list().toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
   }
 
   resolve(token) {
@@ -209,7 +209,9 @@ export class FakeBoundFlows {
 
   mutate(params, status) {
     const current = this.flows.get(params.flowId);
-    if (!current) return { applied: false, code: "not_found" };
+    if (!current) {
+      return { applied: false, code: "not_found" };
+    }
     if (current.revision !== params.expectedRevision) {
       return { applied: false, code: "revision_conflict", current: structuredClone(current) };
     }
@@ -250,7 +252,9 @@ export class FakeBoundFlows {
 
   async cancel({ flowId }) {
     const flow = this.flows.get(flowId);
-    if (!flow) return { found: false, cancelled: false };
+    if (!flow) {
+      return { found: false, cancelled: false };
+    }
     flow.status = "cancelled";
     flow.revision += 1;
     return { found: true, cancelled: true, flow: structuredClone(flow) };
@@ -258,7 +262,9 @@ export class FakeBoundFlows {
 
   runTask(params) {
     const flow = this.flows.get(params.flowId);
-    if (!flow) return { created: false, found: false, reason: "Flow not found." };
+    if (!flow) {
+      return { created: false, found: false, reason: "Flow not found." };
+    }
     this.lastRunTask = params;
     const task = {
       taskId: `task-${FakeBoundFlows.nextTask++}`,
@@ -316,7 +322,9 @@ export class FakeBoundFlows {
 
   async cancelTask(taskId) {
     const task = this.tasks.get(taskId);
-    if (!task) return { found: false, cancelled: false };
+    if (!task) {
+      return { found: false, cancelled: false };
+    }
     if (["succeeded", "failed", "timed_out", "cancelled", "lost"].includes(task.status)) {
       return { found: true, cancelled: false, task: this.taskView(task) };
     }
@@ -408,8 +416,12 @@ export function makeApi(configInput = pluginConfig()) {
         },
         registerIfAbsent(key, value, opts = {}) {
           pruneExpired();
-          if (entries.has(key)) return false;
-          if (entries.size >= maxEntries) throw new Error("store capacity exceeded");
+          if (entries.has(key)) {
+            return false;
+          }
+          if (entries.size >= maxEntries) {
+            throw new Error("store capacity exceeded");
+          }
           this.register(key, value, opts);
           return true;
         },
@@ -417,15 +429,21 @@ export function makeApi(configInput = pluginConfig()) {
           pruneExpired();
           const entry = entries.get(key);
           const next = updateValue(entry ? structuredClone(entry.value) : undefined);
-          if (next === undefined) return false;
-          if (!entry && entries.size >= maxEntries) throw new Error("store capacity exceeded");
+          if (next === undefined) {
+            return false;
+          }
+          if (!entry && entries.size >= maxEntries) {
+            throw new Error("store capacity exceeded");
+          }
           this.register(key, next, opts);
           return true;
         },
         deleteIf(key, predicate) {
           pruneExpired();
           const entry = entries.get(key);
-          if (!entry || !predicate(structuredClone(entry.value))) return false;
+          if (!entry || !predicate(structuredClone(entry.value))) {
+            return false;
+          }
           entries.delete(key);
           return true;
         },
@@ -436,7 +454,9 @@ export function makeApi(configInput = pluginConfig()) {
         },
         consume(key) {
           const value = this.lookup(key);
-          if (value !== undefined) entries.delete(key);
+          if (value !== undefined) {
+            entries.delete(key);
+          }
           return value;
         },
         delete(key) {
@@ -444,12 +464,13 @@ export function makeApi(configInput = pluginConfig()) {
         },
         entries() {
           pruneExpired();
-          return [...entries.entries()].map(([key, entry]) => ({
-            key,
-            value: structuredClone(entry.value),
-            createdAt: entry.createdAt,
-            ...(entry.expiresAt ? { expiresAt: entry.expiresAt } : {}),
-          }));
+          return [...entries.entries()].map(([key, entry]) => {
+            const record = { key, value: structuredClone(entry.value), createdAt: entry.createdAt };
+            if (entry.expiresAt) {
+              record.expiresAt = entry.expiresAt;
+            }
+            return record;
+          });
         },
         clear() {
           entries.clear();

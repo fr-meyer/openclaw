@@ -40,8 +40,9 @@ export function processStartedAtMs() {
   return Date.now() - Math.floor(process.uptime() * 1000);
 }
 
-export async function persistState(boundFlows, flow, state) {
+export async function persistState(boundFlows, flow, initialState) {
   return await withTaskBindings(async () => {
+    let state = initialState;
     const nextRevision = flow.revision + 1;
     state = {
       ...state,

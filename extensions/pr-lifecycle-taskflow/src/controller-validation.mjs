@@ -15,7 +15,7 @@ export function canonicalJson(value) {
   }
   if (value && typeof value === "object") {
     return `{${Object.keys(value)
-      .sort()
+      .toSorted()
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
       .join(",")}}`;
   }

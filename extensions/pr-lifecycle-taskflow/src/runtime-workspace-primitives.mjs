@@ -67,7 +67,7 @@ export async function ensureFlowWorkspace(api, policy, state) {
   }
   if (
     typeof api.testReadWorkspaceHead === "function" ||
-    typeof api.__testReadWorkspaceHead === "function"
+    typeof api["__testReadWorkspaceHead"] === "function"
   ) {
     return dest;
   }

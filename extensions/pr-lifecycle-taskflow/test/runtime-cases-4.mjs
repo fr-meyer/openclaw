@@ -15,7 +15,7 @@ import {
 } from "./runtime-helpers-1.mjs";
 import { details } from "./runtime-helpers-2.mjs";
 
-test("one controller-owned review lease fences concurrent PR review launches", async () => {
+void test("one controller-owned review lease fences concurrent PR review launches", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -50,7 +50,7 @@ test("one controller-owned review lease fences concurrent PR review launches", a
   assert.equal(calls.schedules.at(-1).delayMs, 5 * 60_000);
 });
 
-test("pending external review keeps the durable lease after the worker waits", async () => {
+void test("pending external review keeps the durable lease after the worker waits", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -108,7 +108,7 @@ test("pending external review keeps the durable lease after the worker waits", a
   assert.equal(calls.subagents.length, 1);
 });
 
-test("one atomic workspace lock fences simultaneous review and remediation across owner sessions", async () => {
+void test("one atomic workspace lock fences simultaneous review and remediation across owner sessions", async () => {
   const secondOwner = "agent:owner-agent:dashboard:legacy-owner";
   const { api, calls, storeFor } = makeApi(
     pluginConfig({
@@ -148,7 +148,7 @@ test("one atomic workspace lock fences simultaneous review and remediation acros
   const bothAtPreflight = new Promise((resolve) => {
     releasePreflight = resolve;
   });
-  api.__testReadWorkspaceHead = async (_workspace, expectedHeadSha) => {
+  api["__testReadWorkspaceHead"] = async (_workspace, expectedHeadSha) => {
     arrivals += 1;
     if (arrivals === 2) {
       releasePreflight();
@@ -174,7 +174,7 @@ test("one atomic workspace lock fences simultaneous review and remediation acros
   );
 });
 
-test("one atomic global lock fences simultaneous reservations across repositories", async () => {
+void test("one atomic global lock fences simultaneous reservations across repositories", async () => {
   const secondOwner = "agent:owner-agent:dashboard:caption-owner";
   const policy = {
     enabled: true,
@@ -229,9 +229,11 @@ test("one atomic global lock fences simultaneous reservations across repositorie
   const bothAtPreflight = new Promise((resolve) => {
     releasePreflight = resolve;
   });
-  api.__testReadWorkspaceHead = async (_workspace, expectedHeadSha) => {
+  api["__testReadWorkspaceHead"] = async (_workspace, expectedHeadSha) => {
     arrivals += 1;
-    if (arrivals === 2) releasePreflight();
+    if (arrivals === 2) {
+      releasePreflight();
+    }
     await bothAtPreflight;
     return expectedHeadSha;
   };
@@ -253,7 +255,7 @@ test("one atomic global lock fences simultaneous reservations across repositorie
   );
 });
 
-test("a synchronized head cancels the old exact worker before redispatch", async () => {
+void test("a synchronized head cancels the old exact worker before redispatch", async () => {
   const { api, bound, calls, storeFor } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -298,7 +300,7 @@ test("a synchronized head cancels the old exact worker before redispatch", async
   assert.equal(continued.flow.lastGhostCleanup.reason, "orphan_task_cancelled");
 });
 
-test("distinct repositories with distinct workspaces launch reviews in parallel", async () => {
+void test("distinct repositories with distinct workspaces launch reviews in parallel", async () => {
   const { api, bound, calls } = makeApi(
     pluginConfig({
       repositories: {
@@ -376,7 +378,7 @@ test("distinct repositories with distinct workspaces launch reviews in parallel"
   assert.equal(calls.subagents[1].cwd, "/workspace/sample-app");
 });
 
-test("three distinct repositories with distinct workspaces launch reviews in parallel", async () => {
+void test("three distinct repositories with distinct workspaces launch reviews in parallel", async () => {
   const policy = {
     enabled: true,
     mode: "active",
@@ -465,7 +467,7 @@ test("three distinct repositories with distinct workspaces launch reviews in par
   assert.equal(calls.subagents[2].cwd, "/workspace/sample-service");
 });
 
-test("per-repo owner sessions isolate controller wakes and continue rights", async () => {
+void test("per-repo owner sessions isolate controller wakes and continue rights", async () => {
   const exampleRepoOwner = "agent:owner-agent:dashboard:example-repo";
   const captionOwner = "agent:owner-agent:dashboard:sample-app";
   const policy = {
@@ -553,7 +555,7 @@ test("per-repo owner sessions isolate controller wakes and continue rights", asy
   assert.equal(calls.subagents[1].cwd, "/workspace/sample-app");
 });
 
-test("shared-workspace repos still serialize across distinct owner sessions", async () => {
+void test("shared-workspace repos still serialize across distinct owner sessions", async () => {
   const exampleRepoOwner = "agent:owner-agent:dashboard:example-repo";
   const captionOwner = "agent:owner-agent:dashboard:sample-app";
   const policy = {

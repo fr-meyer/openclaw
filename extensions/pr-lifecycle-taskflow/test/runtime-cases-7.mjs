@@ -583,7 +583,7 @@ void test("revision-fenced notifications drop stale progress and safely replay a
     }),
   );
   api.testReadWorkspaceHead = async () => SHA_A;
-  api.__testReadWorkspaceHead = async () => SHA_A;
+  api["__testReadWorkspaceHead"] = async () => SHA_A;
   let current = bound.get(created.flowId);
   const sinkTool = toolFor(calls, OWNER);
   await sinkTool.execute("block-new-head", {

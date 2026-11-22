@@ -33,7 +33,7 @@ import {
   reviewResult,
 } from "./controller-helpers-1.mjs";
 
-test("normalizes policy and enforces actor separation", () => {
+void test("normalizes policy and enforces actor separation", () => {
   const normalized = normalizePolicy(policy());
   assert.equal(normalized.reviewActor, "broker");
   assert.equal(normalized.authorActor, "author-worker");
@@ -101,7 +101,7 @@ test("normalizes policy and enforces actor separation", () => {
   );
 });
 
-test("rejects non-normalized declarative profile paths and incomplete test coverage", () => {
+void test("rejects non-normalized declarative profile paths and incomplete test coverage", () => {
   for (const invalidPath of ["../src", "./src", "src\\test.mjs", "src//test.mjs", "."]) {
     assert.throws(
       () => normalizeRemediatorProfile(remediatorProfile({ allowedWritePaths: [invalidPath] })),
@@ -126,7 +126,7 @@ test("rejects non-normalized declarative profile paths and incomplete test cover
   );
 });
 
-test("creates an exact-head review flow with bounded budgets", () => {
+void test("creates an exact-head review flow with bounded budgets", () => {
   const state = createState(prEvent(), policy(), NOW);
   assert.equal(state.phase, PHASE.REVIEW_QUEUED);
   assert.equal(state.headSha, SHA_A);
@@ -138,7 +138,7 @@ test("creates an exact-head review flow with bounded budgets", () => {
   assert.equal(state.mergeReady, null);
 });
 
-test("rejects non-allowlisted bases and forks by default", () => {
+void test("rejects non-allowlisted bases and forks by default", () => {
   assert.throws(
     () => createState(prEvent({ baseRef: "main" }), policy(), NOW),
     /base branch is not allowlisted/,
@@ -149,7 +149,7 @@ test("rejects non-allowlisted bases and forks by default", () => {
   );
 });
 
-test("deduplicates pull-request deliveries", () => {
+void test("deduplicates pull-request deliveries", () => {
   const state = createState(prEvent(), policy(), NOW);
   const transition = applyPullRequestEvent(state, prEvent(), policy(), NOW + 1);
   assert.equal(transition.changed, false);
@@ -157,7 +157,7 @@ test("deduplicates pull-request deliveries", () => {
   assert.equal(transition.state, state);
 });
 
-test("accepts the first signed head update after owner admission", () => {
+void test("accepts the first signed head update after owner admission", () => {
   const admitted = createState(
     prEvent({ eventId: "owner-admit:initial-head", action: "synchronize", updatedAt: undefined }),
     policy(),
@@ -183,7 +183,7 @@ test("accepts the first signed head update after owner admission", () => {
   assert.equal(transition.state.githubUpdatedAt, Date.parse(githubTimestamp(2)));
 });
 
-test("same-head base advancement invalidates queued review work", () => {
+void test("same-head base advancement invalidates queued review work", () => {
   const state = reserve(createState(prEvent(), policy(), NOW));
   const transition = applyPullRequestEvent(
     state,
@@ -207,7 +207,7 @@ test("same-head base advancement invalidates queued review work", () => {
   assert.equal(transition.state.orphanedWorker.reason, "pull_request_base_changed");
 });
 
-test("same-head base advancement invalidates merge-ready evidence", () => {
+void test("same-head base advancement invalidates merge-ready evidence", () => {
   const ready = applyCurrentReview(createState(prEvent(), policy(), NOW), {}, NOW + 1).state;
   assert.equal(ready.phase, PHASE.MERGE_READY);
   const transition = applyPullRequestEvent(
@@ -229,7 +229,7 @@ test("same-head base advancement invalidates merge-ready evidence", () => {
   assert.equal(transition.state.mergeReady, null);
 });
 
-test("invalidates stale work and restarts at a new exact head", () => {
+void test("invalidates stale work and restarts at a new exact head", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = reserve(state);
   const oldWorker = state.activeWorker;
@@ -259,7 +259,7 @@ test("invalidates stale work and restarts at a new exact head", () => {
   assert.equal(transition.state.review, null);
 });
 
-test("preserves an active remediation worker as an orphan on head change", () => {
+void test("preserves an active remediation worker as an orphan on head change", () => {
   let state = createState(prEvent(), policy(), NOW);
   state = applyCurrentReview(
     state,
@@ -288,7 +288,7 @@ test("preserves an active remediation worker as an orphan on head change", () =>
   });
 });
 
-test("new exact head adopts the current policy mode", () => {
+void test("new exact head adopts the current policy mode", () => {
   const state = createState(prEvent(), policy({ mode: "dogfood" }), NOW);
   const transition = applyPullRequestEvent(
     state,
@@ -306,7 +306,7 @@ test("new exact head adopts the current policy mode", () => {
   assert.equal(transition.effect, "continue");
 });
 
-test("rejects out-of-order GitHub heads after delivery IDs are evicted", () => {
+void test("rejects out-of-order GitHub heads after delivery IDs are evicted", () => {
   let state = createState(prEvent({ updatedAt: githubTimestamp(1) }), policy(), NOW);
   state = applyPullRequestEvent(
     state,
@@ -366,14 +366,14 @@ test("rejects out-of-order GitHub heads after delivery IDs are evicted", () => {
   assert.ok(ambiguous.state.seenEventIds.includes("github:equal-timestamp-different-head"));
 });
 
-test("ignores stale-head review completion", () => {
+void test("ignores stale-head review completion", () => {
   const state = createState(prEvent({ headSha: SHA_C }), policy(), NOW);
   const transition = applyReviewResult(state, reviewResult({ headSha: SHA_A }), NOW + 1);
   assert.equal(transition.changed, false);
   assert.equal(transition.reason, "stale_head_result");
 });
 
-test("ignores same-head review replays after the flow advanced to remediation", () => {
+void test("ignores same-head review replays after the flow advanced to remediation", () => {
   const state = {
     ...createState(prEvent(), policy(), NOW),
     phase: PHASE.REMEDIATION_QUEUED,
@@ -383,7 +383,7 @@ test("ignores same-head review replays after the flow advanced to remediation", 
   assert.equal(transition.reason, "unexpected_review_phase");
 });
 
-test("requires complete zero-finding coverage for merge-ready", () => {
+void test("requires complete zero-finding coverage for merge-ready", () => {
   const state = createState(prEvent(), policy(), NOW);
   const incomplete = applyCurrentReview(state, { coverageComplete: false }, NOW + 1);
   assert.equal(incomplete.state.phase, PHASE.BLOCKED);
@@ -393,7 +393,7 @@ test("requires complete zero-finding coverage for merge-ready", () => {
   assert.equal(contradictory.state.phase, PHASE.BLOCKED);
 });
 
-test("marks only an exact-head complete approval as merge-ready without authorizing merge", () => {
+void test("marks only an exact-head complete approval as merge-ready without authorizing merge", () => {
   const state = createState(prEvent(), policy(), NOW);
   const transition = applyCurrentReview(state, {}, NOW + 1);
   assert.equal(transition.effect, "merge_ready");
@@ -403,7 +403,7 @@ test("marks only an exact-head complete approval as merge-ready without authoriz
   assert.equal(transition.state.mergeReady.mergeAuthorized, false);
 });
 
-test("rejects unsolicited and mismatched review completions", () => {
+void test("rejects unsolicited and mismatched review completions", () => {
   const queued = createState(prEvent(), policy(), NOW);
   const unsolicited = applyReviewResult(queued, reviewResult(), NOW + 1);
   assert.equal(unsolicited.changed, false);
@@ -606,7 +606,7 @@ void test("requires owner authorization after every exact approved review", () =
   );
 });
 
-test("adopts a durable authorization only for the exact merge-ready review", () => {
+void test("adopts a durable authorization only for the exact merge-ready review", () => {
   const reviewPolicy = policy({ autoMergeBaseBranches: ["dev"] });
   const ready = applyCurrentReview(createState(prEvent(), reviewPolicy, NOW), {}, NOW + 1);
   assert.equal(ready.state.phase, PHASE.MERGE_READY);
@@ -639,7 +639,7 @@ test("adopts a durable authorization only for the exact merge-ready review", () 
   assert.strictEqual(expired.state, ready.state);
 });
 
-test("review completion preserves a still-running review worker as an orphan", () => {
+void test("review completion preserves a still-running review worker as an orphan", () => {
   const state = attachWorkerIdentity(reserve(createState(prEvent(), policy(), NOW)), "review");
   const transition = applyReviewResult(
     state,
@@ -656,7 +656,7 @@ test("review completion preserves a still-running review worker as an orphan", (
   assert.equal(holdsWorkerLease(transition.state), true);
 });
 
-test("moves complete changes-requested findings into bounded remediation", () => {
+void test("moves complete changes-requested findings into bounded remediation", () => {
   const state = createState(prEvent(), policy(), NOW);
   const transition = applyCurrentReview(
     state,
@@ -672,7 +672,7 @@ test("moves complete changes-requested findings into bounded remediation", () =>
   assert.equal(transition.state.findings.length, 1);
 });
 
-test("rejects changes-requested without complete structured findings", () => {
+void test("rejects changes-requested without complete structured findings", () => {
   const state = createState(prEvent(), policy(), NOW);
   const noFindings = applyCurrentReview(
     state,

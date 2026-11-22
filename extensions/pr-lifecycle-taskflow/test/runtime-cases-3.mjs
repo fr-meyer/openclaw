@@ -3,8 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
-import { afterEach } from "node:test";
+import test, { afterEach } from "node:test";
 import { useAutoCleanupTempDirTracker } from "openclaw/plugin-sdk/test-temp-dir";
 import { PHASE, createState } from "../src/controller.mjs";
 import { __testing, registerPrLifecycleTaskflow } from "../src/runtime.mjs";
@@ -23,7 +22,7 @@ import { createWorkspaceHeadMismatchBlock, details } from "./runtime-helpers-2.m
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
-test("stale scheduled turns are fenced by expected TaskFlow revision", async () => {
+void test("stale scheduled turns are fenced by expected TaskFlow revision", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -41,9 +40,9 @@ test("stale scheduled turns are fenced by expected TaskFlow revision", async () 
   assert.equal(calls.subagents.length, 0);
 });
 
-test("controller blocks before launch when the local workspace head is stale", async () => {
+void test("controller blocks before launch when the local workspace head is stale", async () => {
   const { api, bound, calls } = makeApi();
-  api.__testReadWorkspaceHead = async () => SHA_C;
+  api["__testReadWorkspaceHead"] = async () => SHA_C;
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   const created = await __testing.ingestPullRequest(api, config, prEvent());
@@ -61,7 +60,7 @@ test("controller blocks before launch when the local workspace head is stale", a
   assert.equal(calls.subagents.length, 0);
 });
 
-test("owner admit independently revalidates and reopens a corrected workspace head", async () => {
+void test("owner admit independently revalidates and reopens a corrected workspace head", async () => {
   const { api, bound, calls } = makeApi();
   const blocked = await createWorkspaceHeadMismatchBlock(api, bound, calls);
   const stored = bound.flows.get(blocked.flowId);
@@ -108,7 +107,7 @@ test("owner admit independently revalidates and reopens a corrected workspace he
   assert.equal(calls.subagents.length, 0);
 });
 
-test("owner admit leaves a workspace-head block unchanged when revalidation still fails", async (t) => {
+void test("owner admit leaves a workspace-head block unchanged when revalidation still fails", async (t) => {
   for (const scenario of [
     {
       name: "persistent head mismatch",
@@ -171,12 +170,12 @@ test("owner admit leaves a workspace-head block unchanged when revalidation stil
   }
 });
 
-test("owner workspace revalidation refuses a stale revision without probing or mutation", async () => {
+void test("owner workspace revalidation refuses a stale revision without probing or mutation", async () => {
   const { api, bound, calls } = makeApi();
   const blocked = await createWorkspaceHeadMismatchBlock(api, bound, calls);
   const before = bound.get(blocked.flowId);
   let probes = 0;
-  api.__testReadWorkspaceHead = async () => {
+  api["__testReadWorkspaceHead"] = async () => {
     probes += 1;
     return SHA_A;
   };
@@ -199,12 +198,12 @@ test("owner workspace revalidation refuses a stale revision without probing or m
   assert.deepEqual(bound.get(blocked.flowId), before);
 });
 
-test("owner workspace revalidation rejects a non-owner before probing or mutation", async () => {
+void test("owner workspace revalidation rejects a non-owner before probing or mutation", async () => {
   const { api, bound, calls } = makeApi();
   const blocked = await createWorkspaceHeadMismatchBlock(api, bound, calls);
   const before = bound.get(blocked.flowId);
   let probes = 0;
-  api.__testReadWorkspaceHead = async () => {
+  api["__testReadWorkspaceHead"] = async () => {
     probes += 1;
     return SHA_A;
   };
@@ -227,9 +226,9 @@ test("owner workspace revalidation rejects a non-owner before probing or mutatio
   assert.deepEqual(bound.get(blocked.flowId), before);
 });
 
-test("controller blocks before launch when the local workspace is dirty", async () => {
+void test("controller blocks before launch when the local workspace is dirty", async () => {
   const { api, bound, calls } = makeApi();
-  api.__testReadWorkspaceHead = async () => {
+  api["__testReadWorkspaceHead"] = async () => {
     throw new Error("workspace_dirty");
   };
   registerPrLifecycleTaskflow(api);
@@ -249,7 +248,7 @@ test("controller blocks before launch when the local workspace is dirty", async 
   assert.equal(calls.subagents.length, 0);
 });
 
-test("controller blocks and cleans up when isolated worktree provisioning fails", async () => {
+void test("controller blocks and cleans up when isolated worktree provisioning fails", async () => {
   const base = pluginConfig();
   const { api, bound, calls } = makeApi(
     pluginConfig({
@@ -281,7 +280,7 @@ test("controller blocks and cleans up when isolated worktree provisioning fails"
   assert.equal(calls.subagents.length, 0);
 });
 
-test("parallel flow workspace advances a clean detached worktree to a synchronized head", async () => {
+void test("parallel flow workspace advances a clean detached worktree to a synchronized head", async () => {
   const root = tempDirs.make("mprl-flow-worktree-", tmpdir());
   try {
     const seed = join(root, "seed");
@@ -374,7 +373,7 @@ test("parallel flow workspace advances a clean detached worktree to a synchroniz
   }
 });
 
-test("remediator admission rejects identity, branch, and executable drift before model spend", async () => {
+void test("remediator admission rejects identity, branch, and executable drift before model spend", async () => {
   const cases = [
     {
       label: "non-git scratch identity",
@@ -433,7 +432,7 @@ test("remediator admission rejects identity, branch, and executable drift before
   }
 });
 
-test("legacy owner bindings remain operable from the current owner and status is allowlisted", async () => {
+void test("legacy owner bindings remain operable from the current owner and status is allowlisted", async () => {
   const oldOwner = "agent:owner-agent:dashboard:old-owner";
   const newOwner = "agent:controller:main";
   const statusSession = "agent:owner-agent:dashboard:status-reader";
@@ -489,7 +488,7 @@ test("legacy owner bindings remain operable from the current owner and status is
   );
 });
 
-test("an exact owner-ledger worker task wins over a mismatched worker-ledger projection", async () => {
+void test("an exact owner-ledger worker task wins over a mismatched worker-ledger projection", async () => {
   const { api, bound, calls, storeFor } = makeApi();
   api.runtime.subagent.run = async (params) => {
     calls.subagents.push(params);
@@ -528,7 +527,7 @@ test("an exact owner-ledger worker task wins over a mismatched worker-ledger pro
   assert.equal(output.flow.infrastructureRetryCount, 0);
 });
 
-test("a worker-session identity mismatch retains and cancels the actual orphan", async () => {
+void test("a worker-session identity mismatch retains and cancels the actual orphan", async () => {
   const { api, bound, calls, storeFor } = makeApi();
   let launchCount = 0;
   api.runtime.subagent.run = async (params) => {
@@ -589,7 +588,7 @@ test("a worker-session identity mismatch retains and cancels the actual orphan",
   );
 });
 
-test("tasks without the exact worker session are rejected across all ledgers", async () => {
+void test("tasks without the exact worker session are rejected across all ledgers", async () => {
   const { api, bound, calls, storeFor } = makeApi();
   api.runtime.subagent.run = async (params) => {
     calls.subagents.push(params);
@@ -621,7 +620,7 @@ test("tasks without the exact worker session are rejected across all ledgers", a
   assert.match(output.flow.infrastructureLastFailure, /^task_link_missing:/);
 });
 
-test("owner continuation resolves one canonical exact-head worker task", async () => {
+void test("owner continuation resolves one canonical exact-head worker task", async () => {
   const { api, bound, calls, storeFor } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);

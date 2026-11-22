@@ -10,8 +10,8 @@ import {
 } from "./runtime-foundation.mjs";
 
 export async function readWorkspaceHead(api, workspace, expectedHeadSha) {
-  if (typeof api.__testReadWorkspaceHead === "function") {
-    return await api.__testReadWorkspaceHead(workspace, expectedHeadSha);
+  if (typeof api["__testReadWorkspaceHead"] === "function") {
+    return await api["__testReadWorkspaceHead"](workspace, expectedHeadSha);
   }
   const { stdout: status } = await execFile(
     "git",
@@ -104,10 +104,10 @@ export function normalizeAuthoritativePullRequest(state, payload) {
 }
 
 export async function readAuthoritativePullRequest(api, config, state) {
-  if (typeof api.__testReadPullRequestState === "function") {
+  if (typeof api["__testReadPullRequestState"] === "function") {
     return normalizeAuthoritativePullRequest(
       state,
-      await api.__testReadPullRequestState(structuredClone(state)),
+      await api["__testReadPullRequestState"](structuredClone(state)),
     );
   }
   const policy = config.repositories.get(state.repo);

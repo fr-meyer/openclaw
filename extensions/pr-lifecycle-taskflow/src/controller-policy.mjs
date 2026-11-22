@@ -193,7 +193,7 @@ export function normalizeRemediatorProfile(input) {
     "remediatorProfile.headBranchPattern",
   );
   try {
-    new RegExp(headBranchPattern);
+    RegExp(headBranchPattern);
   } catch {
     throw new Error("remediatorProfile.headBranchPattern is invalid");
   }

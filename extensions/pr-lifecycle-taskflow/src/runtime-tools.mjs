@@ -41,8 +41,11 @@ import {
   requireOwnerContext,
   statusView,
 } from "./runtime-status-primitives.mjs";
-import { dispatchWorker, reconcileGithubHead } from "./runtime-worker-orchestration.mjs";
-import { applyEffect } from "./runtime-worker-orchestration.mjs";
+import {
+  dispatchWorker,
+  reconcileGithubHead,
+  applyEffect,
+} from "./runtime-worker-orchestration.mjs";
 import { isWorkspaceHeadMismatchBlock } from "./runtime-workspace-primitives.mjs";
 import { revalidateWorkspaceHeadBlock } from "./runtime-workspace.mjs";
 
@@ -188,8 +191,8 @@ export function createControllerTool(api, config, ctx) {
         let state = stateOf(flow);
         const ownerKey = ownerSessionKeyForRepo(config, state.repo);
         if (input.action === "status") {
-          const state = stateOf(flow);
-          if (!canInspectStatus(config, ctx, ownerKey, state)) {
+          const statusState = stateOf(flow);
+          if (!canInspectStatus(config, ctx, ownerKey, statusState)) {
             throw new Error("flow_status_not_visible_to_this_session");
           }
           return result(statusView(flow));
@@ -257,7 +260,7 @@ export function createControllerTool(api, config, ctx) {
                 ),
                 updatedAt: confirmedAt,
               };
-              flow = requireApplied(await persistState(boundFlows, flow, next));
+              requireApplied(await persistState(boundFlows, flow, next));
               return result({
                 ok: true,
                 deliver: false,
@@ -338,7 +341,7 @@ export function createControllerTool(api, config, ctx) {
             ].slice(-32),
             updatedAt: Date.now(),
           };
-          flow = requireApplied(await persistState(boundFlows, flow, next));
+          requireApplied(await persistState(boundFlows, flow, next));
           return result({
             ok: true,
             deliver: true,
@@ -349,8 +352,8 @@ export function createControllerTool(api, config, ctx) {
           });
         }
         if (input.action === "report") {
-          const state = stateOf(flow);
-          const transition = applyWorkerReport(state, input, ctx.sessionKey);
+          const reportState = stateOf(flow);
+          const transition = applyWorkerReport(reportState, input, ctx.sessionKey);
           flow = requireApplied(await persistState(boundFlows, flow, transition.state));
           let nextState = transition.state;
           let nextEffect = transition.effect;
@@ -480,7 +483,6 @@ export function createControllerTool(api, config, ctx) {
           const refreshed = refreshPolicySnapshot(state, policy);
           if (refreshed.changed) {
             flow = requireApplied(await persistState(boundFlows, flow, refreshed.state));
-            state = refreshed.state;
           }
           state = stateOf(flow);
           const evidence = await reconcileRemediationEvidence(api, config, boundFlows, flow);

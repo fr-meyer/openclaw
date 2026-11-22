@@ -25,7 +25,7 @@ import {
   ownerAuthorizeAndContinue,
 } from "./runtime-helpers-2.mjs";
 
-test("old-head review completion releases the retained lease after synchronize", async () => {
+void test("old-head review completion releases the retained lease after synchronize", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -61,7 +61,7 @@ test("old-head review completion releases the retained lease after synchronize",
   assert.equal(flow.stateJson.phase, PHASE.REVIEW_QUEUED);
 });
 
-test("dogfood mode permits review but blocks live remediation", async () => {
+void test("dogfood mode permits review but blocks live remediation", async () => {
   const dogfood = pluginConfig({
     repositories: {
       "example-org/example-repo": {
@@ -87,7 +87,7 @@ test("dogfood mode permits review but blocks live remediation", async () => {
   assert.equal(calls.unschedules.at(-1).tag.startsWith("mprl-"), true);
 });
 
-test("active mode blocks remediation until the Author worker publisher is attested", async () => {
+void test("active mode blocks remediation until the Author worker publisher is attested", async () => {
   const repository = {
     ...pluginConfig().repositories["example-org/example-repo"],
   };
@@ -113,7 +113,7 @@ test("active mode blocks remediation until the Author worker publisher is attest
   assert.equal(calls.subagents.length, 0);
 });
 
-test("owner admit reopens a publisher block only after attestation is configured", async () => {
+void test("owner admit reopens a publisher block only after attestation is configured", async () => {
   const repository = {
     ...pluginConfig().repositories["example-org/example-repo"],
   };
@@ -145,7 +145,7 @@ test("owner admit reopens a publisher block only after attestation is configured
   assert.equal(flow.stateJson.publisherBoundary.brokerId, "attested-broker/v1");
 });
 
-test("active policy reopens a dogfood remediation block", async () => {
+void test("active policy reopens a dogfood remediation block", async () => {
   const dogfood = pluginConfig({
     repositories: {
       "example-org/example-repo": {
@@ -179,7 +179,7 @@ test("active policy reopens a dogfood remediation block", async () => {
   assert.equal(calls.schedules.at(-1).tag.startsWith("mprl-"), true);
 });
 
-test("owner authorize revision-fences post-review merge authorization", async () => {
+void test("owner authorize revision-fences post-review merge authorization", async () => {
   const repositoryPolicy = {
     ...pluginConfig().repositories["example-org/example-repo"],
     autoMergeBaseBranches: ["dev"],
@@ -244,7 +244,7 @@ test("owner authorize revision-fences post-review merge authorization", async ()
   assert.match(calls.schedules[0].message, /"action":"continue"/);
 });
 
-test("owner admit refreshes a stale live policy snapshot and deadline", async () => {
+void test("owner admit refreshes a stale live policy snapshot and deadline", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -281,7 +281,7 @@ test("owner admit refreshes a stale live policy snapshot and deadline", async ()
   assert.ok(refreshed.deadlineAt >= before + 120 * 60_000);
 });
 
-test("owner admit requeues an exhausted infrastructure failure with bounded backoff", async () => {
+void test("owner admit requeues an exhausted infrastructure failure with bounded backoff", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -317,7 +317,7 @@ test("owner admit requeues an exhausted infrastructure failure with bounded back
   assert.ok(flow.stateJson.infrastructureRetryAt > Date.now());
 });
 
-test("owner admit explicitly reopens an exhausted content failure", async () => {
+void test("owner admit explicitly reopens an exhausted content failure", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
@@ -349,7 +349,7 @@ test("owner admit explicitly reopens an exhausted content failure", async () => 
   assert.equal(flow.stateJson.blocker, null);
 });
 
-test("owner admit starts an active review worker after continue", async () => {
+void test("owner admit starts an active review worker after continue", async () => {
   const { api, bound, calls } = makeApi();
   registerPrLifecycleTaskflow(api);
   const tool = toolFor(calls, OWNER);
@@ -377,7 +377,7 @@ test("owner admit starts an active review worker after continue", async () => {
   assert.equal(bound.get(admitted.admit.flowId).stateJson.mode, "active");
 });
 
-test("observe mode records state without starting or scheduling workers", async () => {
+void test("observe mode records state without starting or scheduling workers", async () => {
   const observe = pluginConfig({
     repositories: {
       "example-org/example-repo": {
@@ -394,7 +394,7 @@ test("observe mode records state without starting or scheduling workers", async 
   assert.equal(calls.subagents.length, 0);
 });
 
-test("startup reconciliation uses bounded scheduled wakes rather than polling loops", async () => {
+void test("startup reconciliation uses bounded scheduled wakes rather than polling loops", async () => {
   const { api, calls } = makeApi();
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   await __testing.ingestPullRequest(api, config, prEvent());
@@ -407,7 +407,7 @@ test("startup reconciliation uses bounded scheduled wakes rather than polling lo
   assert.equal(calls.schedules[0].deliveryMode, "none");
 });
 
-test("restart migrates legacy merge-ready state and permits authorization and merge", async () => {
+void test("restart migrates legacy merge-ready state and permits authorization and merge", async () => {
   const repositoryPolicy = authorizedAutoMergePolicy();
   const { api, bound, calls } = makeApi(
     pluginConfig({ repositories: { "example-org/example-repo": repositoryPolicy } }),
@@ -483,7 +483,7 @@ test("restart migrates legacy merge-ready state and permits authorization and me
   assert.equal(merged.stateJson.merged.receipt.sha, SHA_C);
 });
 
-test("startup refreshes policy and requeues a legacy infrastructure block", async () => {
+void test("startup refreshes policy and requeues a legacy infrastructure block", async () => {
   const { api, bound, calls } = makeApi();
   const config = __testing.normalizeRuntimeConfig(api.pluginConfig);
   const created = await __testing.ingestPullRequest(api, config, prEvent());
@@ -510,7 +510,7 @@ test("startup refreshes policy and requeues a legacy infrastructure block", asyn
   assert.match(calls.schedules[0].message, /"action":"recover"/);
 });
 
-test("restart recovery selects the current canonical worker instead of aggregate history", () => {
+void test("restart recovery selects the current canonical worker instead of aggregate history", () => {
   const { api, bound } = makeApi();
   bound.tasks.set("task-old", {
     taskId: "task-old",
@@ -537,7 +537,7 @@ test("restart recovery selects the current canonical worker instead of aggregate
   assert.equal(current.status, "failed");
 });
 
-test("recover cancels the dead canonical worker before redispatch", async () => {
+void test("recover cancels the dead canonical worker before redispatch", async () => {
   const { api, bound, calls, storeFor, sessionEntries } = makeApi();
   registerPrLifecycleTaskflow(api);
   const tool = toolFor(calls, OWNER);
@@ -580,7 +580,7 @@ test("recover cancels the dead canonical worker before redispatch", async () => 
   assert.equal(retried.flow.lastGhostCleanup.reason, "orphan_task_cancelled");
 });
 
-test("an unavailable session registry still cancels the exact canonical task before retry", async () => {
+void test("an unavailable session registry still cancels the exact canonical task before retry", async () => {
   const { api, bound, calls, storeFor } = makeApi();
   api.runtime.agent.session.getSessionEntry = () => {
     throw new Error("session registry temporarily unavailable");
@@ -619,7 +619,7 @@ test("an unavailable session registry still cancels the exact canonical task bef
   assert.notEqual(retried.flow.activeWorker.sessionKey, workerKey);
 });
 
-test("recover keeps a live worker session as worker_active", async () => {
+void test("recover keeps a live worker session as worker_active", async () => {
   const { api, bound, calls, sessionEntries } = makeApi();
   registerPrLifecycleTaskflow(api);
   const tool = toolFor(calls, OWNER);
@@ -643,7 +643,7 @@ test("recover keeps a live worker session as worker_active", async () => {
   assert.equal(recovered.flow.activeWorker.sessionKey, workerKey);
 });
 
-test("workerSessionAlive treats ended or missing session entries as dead", () => {
+void test("workerSessionAlive treats ended or missing session entries as dead", () => {
   const { api, sessionEntries } = makeApi();
   const key = "agent:broker-review-launcher:subagent:mprl-dead";
   const state = { activeWorker: { sessionKey: key } };
