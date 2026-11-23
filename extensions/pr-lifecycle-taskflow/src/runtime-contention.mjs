@@ -140,6 +140,7 @@ export async function olderReadyWaiter(boundFlows, flow, state, policies) {
   return await withTaskBindings(async () => {
     const [olderWaiter] = (await lifecycleFlows(boundFlows))
       .filter((other) => other.flowId !== flow.flowId)
+      // oxlint-disable-next-line unicorn/prefer-array-find -- Preserve full eager predicate evaluation and ordering before selecting the first match.
       .filter((other) => {
         const otherState = stateOf(other);
         if (!otherState || occupyingWorkerKind(otherState)) {
