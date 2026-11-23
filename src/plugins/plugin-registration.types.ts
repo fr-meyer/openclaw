@@ -263,6 +263,19 @@ export type OpenClawPluginNodeInvokePolicyContext = {
     /** Stable, content-free family name; never include user or action arguments. */
     family: string;
   };
+  /**
+   * Host-owned admitted principal, never params.sessionKey or model-provided context.
+   * Absent for callers without an active native runtime identity. This snapshot is
+   * not a serialized proof; assertCurrent must precede principal-sensitive work.
+   * invokeNode independently revalidates the same authority at transport dispatch.
+   */
+  runtimeCaller?: Readonly<{
+    agentId: string;
+    sessionKey?: string;
+    assertCurrent: () => void;
+    /** This host enforces invokeNode dispatch predicates at the final send gate. */
+    supportsDispatchAuthorization?: true;
+  }>;
   approvals?: OpenClawPluginNodeInvokePolicyApprovalRuntime;
   /** Full covers only the selected harness's declared node commands; undefined requires a human decision. */
   invokeNodeWithSessionFull?: (input: {
@@ -276,6 +289,8 @@ export type OpenClawPluginNodeInvokePolicyContext = {
     workspace?: OpenClawPluginNodeWorkspace;
     timeoutMs?: number;
     idempotencyKey?: string;
+    /** Host-only synchronous predicate; supplied values must return exactly true. */
+    isDispatchAuthorized?: () => boolean;
   }) => Promise<OpenClawPluginNodeInvokeTransportResult>;
 };
 

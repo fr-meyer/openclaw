@@ -234,6 +234,7 @@ export async function applyPluginNodeInvokePolicy(params: {
   const dispatchNode = async (
     override: Parameters<OpenClawPluginNodeInvokePolicyContext["invokeNode"]>[0] = {},
     sessionAuthority?: { assertCurrent: () => void; signal: AbortSignal },
+    policyDispatchGuard?: () => boolean,
   ): Promise<OpenClawPluginNodeInvokeTransportResult> => {
     const deny = (
       reasonCode: string,
@@ -398,6 +399,14 @@ export async function applyPluginNodeInvokePolicy(params: {
       isDispatchAuthorized: () => {
         try {
           sessionAuthority?.assertCurrent();
+          if (policyDispatchGuard !== undefined) {
+            // Plugins may be JavaScript: validate the runtime result, not its type promise.
+            const decision: unknown =
+              typeof policyDispatchGuard === "function" ? policyDispatchGuard() : undefined;
+            if (decision !== true) {
+              return false;
+            }
+          }
         } catch {
           return false;
         }
@@ -491,6 +500,7 @@ export async function applyPluginNodeInvokePolicy(params: {
     source: "human-approved" | "session-full",
     override: NonNullable<Parameters<OpenClawPluginNodeInvokePolicyContext["invokeNode"]>[0]>,
     createParams?: () => unknown,
+    policyDispatchGuard?: () => boolean,
   ) =>
     ownedInvocation && override.workspace
       ? ownedInvocation(
@@ -508,15 +518,18 @@ export async function applyPluginNodeInvokePolicy(params: {
             return await dispatchNode(
               createParams ? { ...override, params: createParams() } : override,
               { assertCurrent, signal },
+              policyDispatchGuard,
             );
           },
         )
       : undefined;
   const invokeNode: OpenClawPluginNodeInvokePolicyContext["invokeNode"] = async (override = {}) => {
+    // Capture once before any await; never reread a mutable override at dispatch.
+    const policyDispatchGuard = override.isDispatchAuthorized;
     if (!ownedInvocation || !override.workspace) {
-      return await dispatchNode(override);
+      return await dispatchNode(override, undefined, policyDispatchGuard);
     }
-    const result = await invokeOwned("human-approved", override);
+    const result = await invokeOwned("human-approved", override, undefined, policyDispatchGuard);
     if (!result) {
       throw new Error("Node launch lost its admitted owner");
     }
@@ -548,6 +561,27 @@ export async function applyPluginNodeInvokePolicy(params: {
           }
         : null,
       ...(risk ? { risk } : {}),
+      ...(callerIdentity && isCallerRuntimeAuthorityActive()
+        ? {
+            runtimeCaller: Object.freeze({
+              agentId: callerIdentity.agentId,
+              sessionKey: callerIdentity.sessionKey,
+              supportsDispatchAuthorization: true,
+              assertCurrent: () => {
+                params.signal?.throwIfAborted();
+                if (
+                  !isPluginCurrent() ||
+                  !isCallerRuntimeAuthorityActive() ||
+                  params.privateTransport?.isCurrent() === false ||
+                  params.nodeInvokeStream?.isRuntimeCurrent() === false ||
+                  params.isApprovalAuthorityActive?.() === false
+                ) {
+                  throw new ApprovalObserverClosedError();
+                }
+              },
+            }),
+          }
+        : {}),
       approvals: createPluginNodeInvokeApprovalRuntime({
         context: params.context,
         client: params.client,
