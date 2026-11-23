@@ -424,8 +424,35 @@ describe("provider local service", () => {
   it("reconciles a healthy external process and cancels its health response body", async () => {
     let socketClosed = false;
     const sockets = new Set<net.Socket>();
+    const diagnosticStartedAt = performance.now();
+    const socketDiagnostics: Array<{
+      socket: net.Socket;
+      events: Array<{ event: string; elapsedMs: number }>;
+    }> = [];
+    const snapshotSocket = (socket: net.Socket) => ({
+      readableLength: socket.readableLength,
+      readableEnded: socket.readableEnded,
+      writableEnded: socket.writableEnded,
+      destroyed: socket.destroyed,
+      readable: socket.readable,
+      writable: socket.writable,
+    });
     const server = net.createServer((socket) => {
       sockets.add(socket);
+      if (socketDiagnostics.length < 4) {
+        const diagnostic = { socket, events: [] as Array<{ event: string; elapsedMs: number }> };
+        socketDiagnostics.push(diagnostic);
+        const record = (event: string) => {
+          if (diagnostic.events.length < 32) {
+            diagnostic.events.push({ event, elapsedMs: performance.now() - diagnosticStartedAt });
+          }
+        };
+        record("connection");
+        // Do not consume request bytes or change the socket's readable flow.
+        socket.on("end", () => record("end"));
+        socket.on("close", () => record("close"));
+        socket.on("error", () => record("error"));
+      }
       socket.on("error", () => undefined);
       socket.on("close", () => {
         sockets.delete(socket);
@@ -469,7 +496,30 @@ describe("provider local service", () => {
       expect(lease).toBeDefined();
       expect(reconcile).toHaveBeenCalledOnce();
       lease?.release();
-      await expect.poll(() => socketClosed, { timeout: 1000, interval: 20 }).toBe(true);
+      try {
+        await expect.poll(() => socketClosed, { timeout: 1000, interval: 20 }).toBe(true);
+      } catch (error) {
+        // Report before finally destroys sockets, without changing the assertion failure.
+        try {
+          console.error(
+            "local-service-health-response-diagnostic",
+            JSON.stringify({
+              node: process.versions.node,
+              undici: process.versions.undici ?? null,
+              elapsedMs: performance.now() - diagnosticStartedAt,
+              socketClosed,
+              trackedSockets: sockets.size,
+              sockets: socketDiagnostics.map((diagnostic) => ({
+                events: diagnostic.events,
+                state: snapshotSocket(diagnostic.socket),
+              })),
+            }),
+          );
+        } catch {
+          // Diagnostic output must not replace the original assertion error.
+        }
+        throw error;
+      }
     } finally {
       for (const socket of sockets) {
         socket.destroy();
