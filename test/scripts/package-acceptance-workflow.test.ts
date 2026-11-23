@@ -2536,8 +2536,28 @@ describe("frozen admission workflow barriers", () => {
         parserRequired: true,
         consumers: ["agent-bundle-mcp-tools"],
       });
+      const copyStarted = process.hrtime.bigint();
       f.provisionParser();
+      const copyReturned = process.hrtime.bigint();
       const result = f.admit();
+      if (result.status !== 0) {
+        try {
+          const diagnostic = JSON.stringify({
+            test: "runs the actual " + layout + " workflow request and shared parser before producers",
+            root: f.root,
+            tooling: f.tooling,
+            selectedSha: f.sha,
+            toolingSha: f.toolingSha,
+            copyStartedNs: String(copyStarted),
+            copyReturnedNs: String(copyReturned),
+            admissionReturnedNs: String(process.hrtime.bigint()),
+          });
+          process.stderr.write(Buffer.from(diagnostic).subarray(0, 8191));
+          process.stderr.write(String.fromCharCode(10));
+        } catch {
+          // Retain the original assertion even if diagnostic output fails.
+        }
+      }
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain("producer-ran");
       const record = JSON.parse(readFileSync(join(f.root, "frozen-admission.json"), "utf8"));

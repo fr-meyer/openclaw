@@ -172,18 +172,76 @@ export function createNativeTypeScriptParser({
       files: names,
     });
     virtual = createVirtualFileSystem(files);
-    api ??= new API({
-      cwd: root,
-      tsserverPath,
-      fs: {
-        readFile: (file) => virtual.readFile?.(file) ?? null,
-        fileExists: (file) => virtual.fileExists?.(file) ?? false,
-        directoryExists: (directory) => virtual.directoryExists?.(directory) ?? false,
-        getAccessibleEntries: (directory) =>
-          virtual.getAccessibleEntries?.(directory) ?? { files: [], directories: [] },
-        realpath: (file) => file,
-      },
-    });
+    const allocationStarted = process.hrtime.bigint();
+    try {
+      api ??= new API({
+        cwd: root,
+        tsserverPath,
+        fs: {
+          readFile: (file) => virtual.readFile?.(file) ?? null,
+          fileExists: (file) => virtual.fileExists?.(file) ?? false,
+          directoryExists: (directory) => virtual.directoryExists?.(directory) ?? false,
+          getAccessibleEntries: (directory) =>
+            virtual.getAccessibleEntries?.(directory) ?? { files: [], directories: [] },
+          realpath: (file) => file,
+        },
+      });
+    } catch (error) {
+      // Observe only this lazy allocation failure; never replace the original error.
+      try {
+        const allocationFailed = process.hrtime.bigint();
+        const failure = error as NodeJS.ErrnoException;
+        let executable: fs.Stats | undefined;
+        let pin: unknown;
+        if (tsserverPath) {
+          try {
+            executable = fs.statSync(tsserverPath);
+          } catch {
+            // Supplementary stat failure must not suppress spawn error fields.
+          }
+          try {
+            const descriptor = fs.openSync(path.join(root, "package.json"), "r");
+            try {
+              const buffer = Buffer.alloc(16_384);
+              const length = fs.readSync(descriptor, buffer, 0, buffer.length, 0);
+              pin = JSON.parse(buffer.subarray(0, length).toString("utf8"))
+                .devDependencies?.typescript;
+            } finally {
+              fs.closeSync(descriptor);
+            }
+          } catch {
+            // Supplementary pin failure must not suppress spawn error fields.
+          }
+        }
+        const diagnostic = JSON.stringify({
+          boundary: "native-typescript-parser-api-allocation",
+          code: failure?.code,
+          syscall: failure?.syscall,
+          path: failure?.path,
+          allocationStartedNs: String(allocationStarted),
+          allocationFailedNs: String(allocationFailed),
+          root,
+          executable: tsserverPath,
+          platform: process.platform,
+          arch: process.arch,
+          package: "@typescript/typescript-" + process.platform + "-" + process.arch,
+          pin,
+          stat: executable && {
+            dev: executable.dev,
+            ino: executable.ino,
+            mode: executable.mode,
+            size: executable.size,
+            mtimeMs: executable.mtimeMs,
+          },
+          stack: failure?.stack,
+        });
+        process.stderr.write(Buffer.from(diagnostic).subarray(0, 8191));
+        process.stderr.write(String.fromCharCode(10));
+      } catch {
+        // Diagnostics must not mask the original allocation failure.
+      }
+      throw error;
+    }
     const previousNames = new Set(sourceNames);
     const currentNames = new Set(names);
     snapshot = api.updateSnapshot({
