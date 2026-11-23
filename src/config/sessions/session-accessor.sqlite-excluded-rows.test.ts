@@ -139,10 +139,25 @@ describe.each(readers)("SQLite $name exclusions", ({ read }) => {
       }
       expect(database.db.prepare("PRAGMA encoding").get()?.encoding).toBe(encoding);
       const excluded = new Set(["agent:main:\uFFFE", "agent:main:\uFFFF", ...keys.slice(1)]);
-      expect(read(database, excluded).toSorted()).toEqual(
-        encoding === "UTF-8" ? ["id-0"] : ["id-0", "id-1", "id-2"],
-      );
-      const storedKeys = database.db.prepare("SELECT session_key FROM session_nodes").all();
+      // Use the binding's returned keys, not a version-specific UTF-16 conversion.
+      const storedKeys = database.db
+        .prepare("SELECT session_key, current_session_id FROM session_nodes")
+        .all();
+      const expected = storedKeys
+        .filter((row) => !excluded.has(String(row.session_key)))
+        .map((row) => String(row.current_session_id))
+        .toSorted();
+      expect(expected).toContain("id-0");
+      expect(expected).not.toContain("id-3");
+      for (const row of storedKeys) {
+        if (row.current_session_id === "id-1" || row.current_session_id === "id-2") {
+          const original = row.current_session_id === "id-1" ? keys[1] : keys[2];
+          const returned = String(row.session_key);
+          expect([original, original.slice(0, -1) + "\uFFFD"]).toContain(returned);
+          expect(excluded.has(returned)).toBe(returned === original);
+        }
+      }
+      expect(read(database, excluded).toSorted()).toEqual(expected);
       expect(read(database, new Set(storedKeys.map((row) => String(row.session_key))))).toEqual([]);
     },
   );
@@ -233,9 +248,14 @@ describe("SQLite exclusion survivor semantics", () => {
         const metadata = fullEntry ? { ...fullEntry } : undefined;
         if (metadata) {
           delete metadata.skillsSnapshot;
-          // SQLite's JSON projection normalizes raw UTF-16 noncharacters; full TEXT reads retain them.
+          // Full TEXT and SQLite-converted TEXT can differ on older supported builds.
           if (rawLabel === "noncharacters" && encoding !== "UTF-8" && !suffix) {
-            metadata.label = "\uFFFD\uFFFD";
+            // Exercise SQLite's own TEXT conversion on the actual persisted value.
+            // Older builds normalize these noncharacters during JSON projection.
+            const converted = database.db
+              .prepare("SELECT printf('%s', entry_json) AS entry_json FROM session_nodes")
+              .get();
+            metadata.label = JSON.parse(String(converted?.entry_json)).label;
           }
         }
         expect(readSessionMaintenanceCapCandidates({ database, excludedKeys: new Set() })).toEqual(
