@@ -214,7 +214,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: passive docked link-reader contracts.
       // +1: typed decision provider contract.
       // +1: shared Code Mode executor contract for the bundled QuickJS owner.
-      158,
+      // +1: framework-neutral test-temp-dir cleanup facade.
+      159,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -408,7 +409,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved canonical resolveConfigPath export for pre-config native browser admission.
       // +1: supported read-only admitted operator scopes for tool presentation.
       // +2: canonical OAuth refresh fence and generation checks for managed runtimes.
-      4572,
+      // +1: useAutoCleanupTempDirTracker through test-temp-dir.
+      4573,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -569,7 +571,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved canonical resolveConfigPath callable for pre-config native browser admission.
       // +1: supported read-only readGatewayToolOperatorScopes callable.
       // +2: canonical OAuth refresh fence and generation checks for managed runtimes.
-      2684,
+      // +1: useAutoCleanupTempDirTracker callable through test-temp-dir.
+      2685,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
