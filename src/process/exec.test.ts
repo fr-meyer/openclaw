@@ -91,16 +91,36 @@ describe("runCommandWithTimeout", () => {
         controller.abort();
       }
       const result = await running;
-      expect(result.cleanup).toBe(mode === "default-signal" ? "cooperative" : mode);
-      expect(result.killIssuedByAbort).toBe(mode === "normal" ? undefined : true);
-      if (mode === "default-signal") {
-        expect(result).toMatchObject({ code: null, signal: "SIGINT", termination: "signal" });
-      }
-      if (mode === "normal" || mode === "cooperative") {
-        expect(result.code).toBe(17);
-      }
-      if (mode === "cooperative") {
-        expect(result.stdout).toContain("interrupted");
+      try {
+        expect(result.cleanup).toBe(mode === "default-signal" ? "cooperative" : mode);
+        expect(result.killIssuedByAbort).toBe(mode === "normal" ? undefined : true);
+        if (mode === "default-signal") {
+          expect(result).toMatchObject({ code: null, signal: "SIGINT", termination: "signal" });
+        }
+        if (mode === "normal" || mode === "cooperative") {
+          expect(result.code).toBe(17);
+        }
+        if (mode === "cooperative") {
+          expect(result.stdout).toContain("interrupted");
+        }
+      } catch (error) {
+        if (mode === "cooperative") {
+          try {
+            console.error("cooperative invocation cleanup result", {
+              stdoutMarkers: {
+                ready: result.stdout.includes("ready"),
+                interrupted: result.stdout.includes("interrupted"),
+              },
+              code: result.code,
+              signal: result.signal,
+              cleanup: result.cleanup,
+              killIssuedByAbort: result.killIssuedByAbort,
+            });
+          } catch {
+            // Diagnostic output must not replace the original assertion failure.
+          }
+        }
+        throw error;
       }
     },
   );
