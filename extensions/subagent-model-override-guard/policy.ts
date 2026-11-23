@@ -1,3 +1,7 @@
+import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+
+export { isRecord };
+
 export const DEFAULT_MESSAGE =
   "sessions_spawn model overrides are disabled by policy; omit model so the configured subagent default chain is used.";
 export const THINKING_MESSAGE =
@@ -17,10 +21,6 @@ export type OverrideGuardDecision =
       code: "model_override_denied" | "thinking_override_denied";
       reason: string;
     };
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 export function resolvePluginConfig(apiConfig: unknown): OverrideGuardConfig {
   const raw = isRecord(apiConfig) ? apiConfig : {};
