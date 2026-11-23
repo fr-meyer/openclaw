@@ -1,0 +1,10 @@
+{
+  "name": "@openclaw/secret-command-launcher",
+  "version": "0.0.0-private",
+  "private": true,
+  "description": "Shell-free launch plans for commands using protected secret environment bindings",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
