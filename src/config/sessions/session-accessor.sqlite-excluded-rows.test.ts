@@ -152,6 +152,9 @@ describe.each(readers)("SQLite $name exclusions", ({ read }) => {
       for (const row of storedKeys) {
         if (row.current_session_id === "id-1" || row.current_session_id === "id-2") {
           const original = row.current_session_id === "id-1" ? keys[1] : keys[2];
+          if (original === undefined) {
+            throw new Error("Missing original session key for SQLite exclusion comparison");
+          }
           const returned = String(row.session_key);
           expect([original, original.slice(0, -1) + "\uFFFD"]).toContain(returned);
           expect(excluded.has(returned)).toBe(returned === original);
