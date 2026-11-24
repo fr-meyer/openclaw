@@ -1,4 +1,5 @@
 import { getAgentWorkspaceAccess } from "openclaw/plugin-sdk/agent-workspace-runtime";
+import { isDiagnosticFlagEnabled } from "openclaw/plugin-sdk/diagnostic-flags";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { classifyMemoryMultimodalPath } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import {
@@ -38,6 +39,7 @@ import { resolveMemorySearchPreflight } from "./manager-search-preflight.js";
 import { searchVector } from "./manager-search-vector.js";
 import type { MemoryKeywordWorkerResult } from "./manager-search.worker.js";
 import { applyProjectRanking, prepareActiveProjectKeys } from "./project-ranking.js";
+import { startSearchPhase, timeSearchPhase, withSearchTimings } from "./search-timings.js";
 import { applyTemporalDecayToHybridResults } from "./temporal-decay.js";
 
 const SNIPPET_MAX_CHARS = 700;
@@ -80,14 +82,20 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
     // Only cap the expanded window here so partial and final recall survive together.
     const selectResults = (results: MemoryRetrievalResult[]) =>
       results.slice(0, maxResults).map(({ sourceMtime: _sourceMtime, ...result }) => result);
-    const results = await this.searchCandidates(normalizedQuery, {
-      ...opts,
-      maxResults: candidateMaxResults,
-      minScore,
-      onPartialResults: opts?.onPartialResults
-        ? (partial) => opts.onPartialResults?.(partial && selectResults(partial))
-        : undefined,
-    });
+    const results = await withSearchTimings(
+      isDiagnosticFlagEnabled("memory.search.timings", this.cfg),
+      (event) => log.info(`memory.search.timings ${JSON.stringify(event)}`),
+      opts?.signal,
+      () =>
+        this.searchCandidates(normalizedQuery, {
+          ...opts,
+          maxResults: candidateMaxResults,
+          minScore,
+          onPartialResults: opts?.onPartialResults
+            ? (partial) => opts.onPartialResults?.(partial && selectResults(partial))
+            : undefined,
+        }),
+    );
     return selectResults(results);
   }
 
@@ -169,10 +177,10 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
     const runSearch = async () => {
       opts?.onDebug?.({ backend: "builtin" });
       if (this.providerRequirement.mode === "required") {
-        await this.ensureProviderInitialized();
+        await timeSearchPhase("provider-ready", () => this.ensureProviderInitialized());
         this.assertRequiredProviderAvailable("search");
       }
-      let indexState = await readIndexState();
+      let indexState = await timeSearchPhase("index", readIndexState);
       let hasIndexedContent = this.hasIndexedContent(indexState);
       if (!hasIndexedContent) {
         await releaseReadGeneration();
@@ -212,7 +220,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
             log.warn(`memory sync failed (search-bootstrap): ${String(err)}`);
           }
         }
-        indexState = await readIndexState();
+        indexState = await timeSearchPhase("index", readIndexState);
         hasIndexedContent = this.hasIndexedContent(indexState);
       }
       const preflight = resolveMemorySearchPreflight({
@@ -233,12 +241,11 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       if (recoveringEmbeddingProvider) {
         await releaseReadGeneration();
       }
-      const embeddingBootstrapKeywordOnly = await this.ensureEmbeddingProviderForSearch(
-        indexState,
-        opts?.onDebug,
+      const embeddingBootstrapKeywordOnly = await timeSearchPhase("provider-ready", () =>
+        this.ensureEmbeddingProviderForSearch(indexState, opts?.onDebug),
       );
       if (recoveringEmbeddingProvider) {
-        indexState = await readIndexState();
+        indexState = await timeSearchPhase("index", readIndexState);
       }
       const sessionStartSync = this.claimSessionWarmSync(opts?.sessionKey);
       const searchSyncEnabled =
@@ -256,7 +263,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         // Reinitialize it before identity validation; leaving the lifecycle pending
         // makes a valid existing index look mismatched and drops keyword results.
         this.resetProviderInitializationForRetry();
-        await this.ensureProviderInitialized();
+        await timeSearchPhase("provider-ready", () => this.ensureProviderInitialized());
       }
       this.assertRequiredProviderAvailable("search");
       if (
@@ -305,7 +312,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           }
           log.warn(`memory sync failed (search-identity-repair): ${formatErrorMessage(err)}`);
         });
-        indexState = await readIndexState();
+        indexState = await timeSearchPhase("index", readIndexState);
       }
       let repairedIndexIdentity = shouldRepairIdentity
         ? embeddingBootstrapKeywordOnly
@@ -374,7 +381,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       let effectiveIdentity: MemoryIndexIdentityState = repairedIndexIdentity;
       for (let identityAttempt = 0; identityAttempt < 2; identityAttempt += 1) {
         if (!releaseGeneration) {
-          indexState = await readIndexState();
+          indexState = await timeSearchPhase("index", readIndexState);
         }
         const leasedIdentity = embeddingBootstrapKeywordOnly
           ? this.refreshKeywordFallbackIndexIdentity(indexState)
@@ -403,13 +410,15 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         return [];
       }
       const finalizeKeywords = (results: KeywordSearchHit[]) =>
-        this.finalizeKeywordOnlyResults({
-          results,
-          temporalDecay: hybrid.temporalDecay,
-          maxResults,
-          minScore,
-          activeProjectKeys: opts?.activeProjectKeys,
-        });
+        timeSearchPhase("rank", () =>
+          this.finalizeKeywordOnlyResults({
+            results,
+            temporalDecay: hybrid.temporalDecay,
+            maxResults,
+            minScore,
+            activeProjectKeys: opts?.activeProjectKeys,
+          }),
+        );
 
       const keywordOnly =
         embeddingBootstrapKeywordOnly ||
@@ -472,13 +481,15 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       try {
         keywordResults = await loadKeywordResults();
         try {
-          queryVec = await this.embedQueryWithRetry(
-            cleaned,
-            opts?.signal,
-            semanticProvider,
-            false,
-            semanticProviderRuntime,
-            opts?.[MEMORY_SEARCH_DEADLINE_CONTROL],
+          queryVec = await timeSearchPhase("embedding", () =>
+            this.embedQueryWithRetry(
+              cleaned,
+              opts?.signal,
+              semanticProvider,
+              false,
+              semanticProviderRuntime,
+              opts?.[MEMORY_SEARCH_DEADLINE_CONTROL],
+            ),
           );
         } catch (err) {
           releaseSemanticProvider();
@@ -524,13 +535,15 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
             try {
               keywordResults = await loadKeywordResults();
               try {
-                queryVec = await this.embedQueryWithRetry(
-                  cleaned,
-                  opts?.signal,
-                  semanticProvider,
-                  false,
-                  semanticProviderRuntime,
-                  opts?.[MEMORY_SEARCH_DEADLINE_CONTROL],
+                queryVec = await timeSearchPhase("embedding", () =>
+                  this.embedQueryWithRetry(
+                    cleaned,
+                    opts?.signal,
+                    semanticProvider,
+                    false,
+                    semanticProviderRuntime,
+                    opts?.[MEMORY_SEARCH_DEADLINE_CONTROL],
+                  ),
                 );
               } catch (fallbackErr) {
                 releaseFallbackProvider();
@@ -557,13 +570,15 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       }
       const hasVector = queryVec.some((v) => v !== 0);
       const vectorResults = hasVector
-        ? await this.searchVector(
-            queryVec,
-            candidates,
-            sourceFilterList,
-            vectorProviderIdentity,
-            indexState,
-            opts?.signal,
+        ? await timeSearchPhase("vector", () =>
+            this.searchVector(
+              queryVec,
+              candidates,
+              sourceFilterList,
+              vectorProviderIdentity,
+              indexState,
+              opts?.signal,
+            ),
           ).catch((err: unknown) => {
             opts?.signal?.throwIfAborted();
             if (err instanceof WorkerTaskError && err.code === "overloaded") {
@@ -574,44 +589,49 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           })
         : [];
 
-      if (!hybrid.enabled || !this.fts.enabled || !this.fts.available) {
-        const decayed = await applyTemporalDecayToHybridResults({
-          results: vectorResults,
-          temporalDecay: hybrid.temporalDecay,
-          workspaceDir: this.workspaceDir,
-          sessionSourceMtimes: this.loadSourceMtimes("sessions", vectorResults),
-          memorySourceMtimes: this.loadSourceMtimes("memory", vectorResults),
-        });
-        // Decay and importance can reverse the order returned by vector retrieval.
-        const activeProjects = prepareActiveProjectKeys(opts?.activeProjectKeys);
-        return applyProjectRanking(applyImportanceMultiplier(decayed), activeProjects)
-          .filter((entry) => entry.score >= minScore)
-          .toSorted(
-            (left, right) =>
-              right.score - left.score ||
-              left.path.localeCompare(right.path) ||
-              left.startLine - right.startLine ||
-              left.endLine - right.endLine,
-          )
-          .slice(0, maxResults);
-      }
+      const finishRank = startSearchPhase("rank");
+      try {
+        if (!hybrid.enabled || !this.fts.enabled || !this.fts.available) {
+          const decayed = await applyTemporalDecayToHybridResults({
+            results: vectorResults,
+            temporalDecay: hybrid.temporalDecay,
+            workspaceDir: this.workspaceDir,
+            sessionSourceMtimes: this.loadSourceMtimes("sessions", vectorResults),
+            memorySourceMtimes: this.loadSourceMtimes("memory", vectorResults),
+          });
+          // Decay and importance can reverse the order returned by vector retrieval.
+          const activeProjects = prepareActiveProjectKeys(opts?.activeProjectKeys);
+          return applyProjectRanking(applyImportanceMultiplier(decayed), activeProjects)
+            .filter((entry) => entry.score >= minScore)
+            .toSorted(
+              (left, right) =>
+                right.score - left.score ||
+                left.path.localeCompare(right.path) ||
+                left.startLine - right.startLine ||
+                left.endLine - right.endLine,
+            )
+            .slice(0, maxResults);
+        }
 
-      const merged = await this.mergeHybridResults({
-        query: cleaned,
-        vector: vectorResults,
-        keyword: keywordResults,
-        vectorWeight: hybrid.vectorWeight,
-        textWeight: hybrid.textWeight,
-        mmr: hybrid.mmr,
-        temporalDecay: hybrid.temporalDecay,
-        activeProjectKeys: opts?.activeProjectKeys,
-      });
-      return selectHybridSearchResults({
-        merged,
-        keyword: keywordResults,
-        maxResults,
-        minScore,
-      });
+        const merged = await this.mergeHybridResults({
+          query: cleaned,
+          vector: vectorResults,
+          keyword: keywordResults,
+          vectorWeight: hybrid.vectorWeight,
+          textWeight: hybrid.textWeight,
+          mmr: hybrid.mmr,
+          temporalDecay: hybrid.temporalDecay,
+          activeProjectKeys: opts?.activeProjectKeys,
+        });
+        return selectHybridSearchResults({
+          merged,
+          keyword: keywordResults,
+          maxResults,
+          minScore,
+        });
+      } finally {
+        finishRank();
+      }
     };
     return await this.withManagerOperation(async () => {
       try {
