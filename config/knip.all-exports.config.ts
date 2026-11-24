@@ -140,7 +140,12 @@ const workspaces = Object.fromEntries(
           return relative.startsWith("../") ? [] : [`${relative}!`];
         }),
         ...(workspace === "."
-          ? [".agents/skills/**/scripts/**/*.{js,mjs,cjs,ts,mts,cts}!", ...ROOT_TEST_ENTRY_GLOBS]
+          ? [
+              // Documented source-checkout CLI is invoked by path, not a static import.
+              "scripts/pnpm.mjs",
+              ".agents/skills/**/scripts/**/*.{js,mjs,cjs,ts,mts,cts}!",
+              ...ROOT_TEST_ENTRY_GLOBS,
+            ]
           : [
               TEST_ENTRY_GLOB,
               // Vitest's root aliases execute these Discord-owned runtime adapters.

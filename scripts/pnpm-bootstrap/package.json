@@ -1,0 +1,8 @@
+{
+  "name": "openclaw-pnpm-bootstrap",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "corepack": "0.35.0"
+  }
+}
