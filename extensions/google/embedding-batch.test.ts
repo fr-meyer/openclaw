@@ -2,7 +2,21 @@ import * as embeddingSdk from "openclaw/plugin-sdk/memory-core-host-engine-embed
 import { withServer } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGeminiEmbeddingBatches } from "./embedding-batch.js";
-import type { GeminiEmbeddingClient } from "./embedding-provider.js";
+import {
+  batchRequest,
+  batchStageForUrl,
+  captureRejection,
+  createSubmissionLifecycle,
+  defaultBatchResponse,
+  fetchInputUrl,
+  jsonResponse,
+  makeGeminiClient,
+  makeOversizedResponse,
+  runBatch,
+  singleRequest,
+  stubBatchFetch,
+  type BatchStage,
+} from "./embedding-batch.test-support.js";
 import { geminiMemoryEmbeddingProviderAdapter } from "./memory-embedding-adapter.js";
 
 const loggerMocks = vi.hoisted(() => ({
@@ -44,170 +58,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-
-function fetchInputUrl(input: RequestInfo | URL): string {
-  if (typeof input === "string") {
-    return input;
-  }
-  if (input instanceof URL) {
-    return input.href;
-  }
-  return input.url;
-}
-
-function makeGeminiClient(
-  baseUrl = "https://generativelanguage.googleapis.com/v1beta",
-): GeminiEmbeddingClient {
-  return {
-    baseUrl,
-    model: "gemini-embedding-001",
-    modelPath: "models/gemini-embedding-001",
-    headers: { "x-goog-api-client": "test-client" },
-    apiKeys: ["test-key"],
-    ssrfPolicy: undefined,
-  };
-}
-
-type GeminiBatchRequest = Parameters<typeof runGeminiEmbeddingBatches>[0]["requests"][number];
-type SubmissionLifecycle = NonNullable<
-  Parameters<typeof runGeminiEmbeddingBatches>[0]["submissionLifecycle"]
->;
-
-function batchRequest(customId: string, text: string): GeminiBatchRequest {
-  return {
-    custom_id: customId,
-    chunkHash: customId,
-    request: {
-      model: "models/gemini-embedding-001",
-      content: { parts: [{ text }] },
-      taskType: "RETRIEVAL_DOCUMENT",
-    },
-  };
-}
-
-function singleRequest(): GeminiBatchRequest[] {
-  return [batchRequest("r0", "hello")];
-}
-
-type BatchStage = "upload" | "create" | "status" | "download";
-
-function batchStageForUrl(url: string): BatchStage {
-  if (url.includes("/upload/")) {
-    return "upload";
-  }
-  if (url.includes(":asyncBatchEmbedContent")) {
-    return "create";
-  }
-  if (url.includes("/batches/")) {
-    return "status";
-  }
-  if (url.includes(":download")) {
-    return "download";
-  }
-  throw new Error(`unexpected Gemini batch URL: ${url}`);
-}
-
-function defaultBatchResponse(stage: BatchStage): Response {
-  switch (stage) {
-    case "upload":
-      return Response.json({ file: { name: "files/f-ok" } });
-    case "create":
-      return Response.json({
-        name: "batches/b-0",
-        done: false,
-        metadata: { state: "BATCH_STATE_PENDING" },
-      });
-    case "status":
-      return Response.json({
-        name: "batches/b-0",
-        done: true,
-        metadata: { state: "BATCH_STATE_SUCCEEDED" },
-        response: { responsesFile: "files/out-0" },
-      });
-    case "download":
-      return new Response(
-        JSON.stringify({ key: "r0", response: { embedding: { values: [1, 0, 0] } } }),
-        { status: 200 },
-      );
-  }
-  throw new Error("unexpected Gemini batch stage");
-}
-
-function stubBatchFetch(
-  override?: (stage: BatchStage, url: string, init?: RequestInit) => Response | undefined,
-): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = fetchInputUrl(input);
-    const stage = batchStageForUrl(url);
-    return override?.(stage, url, init) ?? defaultBatchResponse(stage);
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
-function runBatch(
-  requests = singleRequest(),
-  gemini = makeGeminiClient(),
-  submissionLifecycle?: SubmissionLifecycle,
-): Promise<Map<string, number[]>> {
-  return runGeminiEmbeddingBatches({
-    gemini,
-    agentId: "main",
-    requests,
-    wait: true,
-    concurrency: 1,
-    pollIntervalMs: 1,
-    timeoutMs: 5_000,
-    ...(submissionLifecycle ? { submissionLifecycle } : {}),
-  });
-}
-
-function createSubmissionLifecycle() {
-  return {
-    resumeAccepted: vi.fn<NonNullable<SubmissionLifecycle["resumeAccepted"]>>(async () => null),
-    started: vi.fn<SubmissionLifecycle["started"]>(),
-    accepted: vi.fn<SubmissionLifecycle["accepted"]>(),
-    rejected: vi.fn<SubmissionLifecycle["rejected"]>(),
-  } satisfies SubmissionLifecycle;
-}
-
-async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
-  return await promise.then(
-    () => undefined,
-    (error: unknown) => error,
-  );
-}
-
-function makeOversizedResponse(status = 200): {
-  response: Response;
-  getReadCount: () => number;
-  wasCanceled: () => boolean;
-} {
-  const chunkSize = 1024 * 1024;
-  const chunkCount = 20; // 20 MiB — over 16 MiB cap
-  let readCount = 0;
-  let canceled = false;
-  return {
-    response: new Response(
-      new ReadableStream<Uint8Array>({
-        pull(controller) {
-          if (readCount >= chunkCount) {
-            controller.close();
-            return;
-          }
-          readCount += 1;
-          controller.enqueue(new Uint8Array(chunkSize));
-        },
-        cancel() {
-          canceled = true;
-        },
-      }),
-      { status, headers: { "Content-Type": "application/json" } },
-    ),
-    getReadCount: () => readCount,
-    wasCanceled: () => canceled,
-  };
-}
 
 describe("Google embedding-batch bounded JSON reads", () => {
   it.each([
@@ -546,16 +396,14 @@ describe("Google embedding-batch bounded JSON reads", () => {
     expect((error as Error).message).toContain("gemini.batch-file-content");
     expect(streamed.wasCanceled()).toBe(true);
     expect(streamed.getReadCount()).toBeLessThan(20);
-    if (stage === "download") {
-      expect(loggerMocks.warn).toHaveBeenCalledWith(
-        "memory embeddings: gemini batch output reconciliation failed",
-        expect.objectContaining({
-          failureKind: "http",
-          providerStatus: 503,
-          unreconciledResponses: 1,
-        }),
-      );
-    }
+    expect(loggerMocks.warn).toHaveBeenCalledWith(
+      "memory embeddings: gemini batch output reconciliation failed",
+      expect.objectContaining({
+        failureKind: "http",
+        providerStatus: 503,
+        unreconciledResponses: 1,
+      }),
+    );
   });
 
   it("marks create 404 as unavailable while preserving the structured cause", async () => {

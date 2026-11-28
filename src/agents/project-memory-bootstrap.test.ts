@@ -536,7 +536,9 @@ describe("project recall total budget and cancellation", () => {
   });
   const gate = () => {
     let resolve!: () => void;
-    const promise = new Promise<void>((accept) => { resolve = accept; });
+    const promise = new Promise<void>((accept) => {
+      resolve = accept;
+    });
     return { promise, resolve };
   };
 
@@ -544,12 +546,16 @@ describe("project recall total budget and cancellation", () => {
     const caller = new AbortController();
     const reason = { canceled: route };
     caller.abort(reason);
-    if (route === "no-runtime") runtimeMocks.providerRuntime = undefined;
-    await expect(prepareProjectMemoryBootstrap({
-      ...params,
-      activeProjectKeys: route === "empty" ? [] : params.activeProjectKeys,
-      context: context(caller.signal),
-    })).rejects.toBe(reason);
+    if (route === "no-runtime") {
+      runtimeMocks.providerRuntime = undefined;
+    }
+    await expect(
+      prepareProjectMemoryBootstrap({
+        ...params,
+        activeProjectKeys: route === "empty" ? [] : params.activeProjectKeys,
+        context: context(caller.signal),
+      }),
+    ).rejects.toBe(reason);
     expect(runtimeMocks.getProvider).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -561,19 +567,32 @@ describe("project recall total budget and cancellation", () => {
       const entered = gate();
       const released = gate();
       const close = vi.fn(async () => {
-        if (stage === "close") { entered.resolve(); await blocked.promise; }
+        if (stage === "close") {
+          entered.resolve();
+          await blocked.promise;
+        }
         released.resolve();
       });
       const candidates = vi.fn(async () => {
-        if (stage === "candidates") { entered.resolve(); await blocked.promise; }
-        return { hits: [{
-          reference: { providerId: "records", id: "late" },
-          excerpt: "Late result must not enter prompt",
-          automaticRecall: { eligible: true, projectKeys: ["alpha"] },
-        }] };
+        if (stage === "candidates") {
+          entered.resolve();
+          await blocked.promise;
+        }
+        return {
+          hits: [
+            {
+              reference: { providerId: "records", id: "late" },
+              excerpt: "Late result must not enter prompt",
+              automaticRecall: { eligible: true, projectKeys: ["alpha"] },
+            },
+          ],
+        };
       });
       runtimeMocks.getProvider.mockImplementation(async () => {
-        if (stage === "open") { entered.resolve(); await blocked.promise; }
+        if (stage === "open") {
+          entered.resolve();
+          await blocked.promise;
+        }
         return { provider: { capabilities: { candidates: ["project"] }, candidates, close } };
       });
       const pending = prepareProjectMemoryBootstrap(params);
@@ -583,7 +602,9 @@ describe("project recall total budget and cancellation", () => {
       blocked.resolve();
       await released.promise;
       expect(close).toHaveBeenCalledOnce();
-      if (stage === "open") expect(candidates).not.toHaveBeenCalled();
+      if (stage === "open") {
+        expect(candidates).not.toHaveBeenCalled();
+      }
       expect(vi.getTimerCount()).toBe(0);
     },
   );
@@ -597,20 +618,33 @@ describe("project recall total budget and cancellation", () => {
       const released = gate();
       const reason = { source: "parent", stage };
       const close = vi.fn(async () => {
-        if (stage === "close") { entered.resolve(); await blocked.promise; }
+        if (stage === "close") {
+          entered.resolve();
+          await blocked.promise;
+        }
         released.resolve();
       });
       const candidates = vi.fn(async () => {
-        if (stage === "candidates") { entered.resolve(); await blocked.promise; }
-        return { hits: [{
-          reference: { providerId: "records", id: "late" },
-          excerpt: "Late result must not enter prompt",
-          automaticRecall: { eligible: true, projectKeys: ["alpha"] },
-        }] };
+        if (stage === "candidates") {
+          entered.resolve();
+          await blocked.promise;
+        }
+        return {
+          hits: [
+            {
+              reference: { providerId: "records", id: "late" },
+              excerpt: "Late result must not enter prompt",
+              automaticRecall: { eligible: true, projectKeys: ["alpha"] },
+            },
+          ],
+        };
       });
       runtimeMocks.getProvider.mockImplementation(async ({ context: callerContext }) => {
         expect(callerContext.signal).toBe(caller.signal);
-        if (stage === "open") { entered.resolve(); await blocked.promise; }
+        if (stage === "open") {
+          entered.resolve();
+          await blocked.promise;
+        }
         return { provider: { capabilities: { candidates: ["project"] }, candidates, close } };
       });
       const pending = prepareProjectMemoryBootstrap({ ...params, context: context(caller.signal) });
@@ -631,7 +665,10 @@ describe("project recall total budget and cancellation", () => {
     const blocked = gate();
     runtimeMocks.providerRuntime = undefined;
     runtimeMocks.legacyRuntime = { getMemorySearchManager: runtimeMocks.getManager };
-    runtimeMocks.getManager.mockImplementation(async () => { await blocked.promise; return { manager: null }; });
+    runtimeMocks.getManager.mockImplementation(async () => {
+      await blocked.promise;
+      return { manager: null };
+    });
     setTimeout(() => caller.abort(reason), 1_000);
     const pending = prepareProjectMemoryBootstrap({ ...params, context: context(caller.signal) });
     const checked = expect(pending).rejects.toBe(reason);
@@ -681,7 +718,9 @@ describe("project recall total budget and cancellation", () => {
     const blocked = gate();
     const entered = gate();
     const released = gate();
-    const close = vi.fn(async () => { released.resolve(); });
+    const close = vi.fn(async () => {
+      released.resolve();
+    });
     // Model memory-runtime's own late-open rejection cleanup: no handle is returned.
     runtimeMocks.getProvider.mockImplementation(async () => {
       entered.resolve();
@@ -699,5 +738,4 @@ describe("project recall total budget and cancellation", () => {
     expect(close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
-
 });

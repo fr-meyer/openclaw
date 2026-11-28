@@ -37,6 +37,8 @@
     "test": "test"
   },
   "files": [
+    "vendor/npm/npm-12.2.3-local-ghsa-g3hv-75wg-m249.tgz",
+    "vendor/npm/PROVENANCE.json",
     "CHANGELOG.md",
     "LICENSE",
     "cli-root-options.mjs",
@@ -2247,9 +2249,7 @@
     "update:compat:check": "node scripts/update-compat-inventory.mts --check",
     "verify": "node --import ./scripts/tsx.mjs scripts/verify.mts"
   },
-  "bundleDependencies": [
-    "chrome-devtools-mcp"
-  ],
+  "bundleDependencies": ["chrome-devtools-mcp", "npm"],
   "dependencies": {
     "@agentclientprotocol/sdk": "1.7.0",
     "@anthropic-ai/sdk": "0.131.0",
@@ -2297,9 +2297,9 @@
     "koffi": "3.3.2",
     "kysely": "0.29.6",
     "linkedom": "0.18.13",
-    "minimatch": "10.2.6",
+    "minimatch": "11.0.1",
     "node-edge-tts": "1.2.10",
-    "npm": "12.2.0",
+    "npm": "file:./vendor/npm/npm-12.2.3-local-ghsa-g3hv-75wg-m249.tgz",
     "openai": "7.27.0",
     "p-limit": "7.3.3",
     "p-map": "7.0.8",

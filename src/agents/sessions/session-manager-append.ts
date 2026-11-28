@@ -15,13 +15,11 @@ import { applyAssistantDeliveryDirectives } from "../../config/sessions/transcri
 import { sameSessionTranscriptTargetBinding } from "../../config/sessions/transcript-target-binding.js";
 import { isSessionTranscriptSideAppendEntry } from "../../config/sessions/transcript-tree.js";
 import { SessionTranscriptWriterClaimReboundError } from "../../config/sessions/transcript-write-context.js";
-import type { Message } from "../../llm/types.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { readNestedToolActivity } from "../../sessions/nested-tool-activity.js";
 import { freezeJsonSnapshot } from "../../shared/immutable-data.js";
 import { recordModelFallbackStop } from "../model-fallback-stop.js";
 import { copyCodeModeSourceAppendOptions } from "../transcript-code-mode-source.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import { getSessionCompactionPersistenceAsync } from "./session-compaction-persistence.js";
 import { isTalkRealtimeVoiceEntry } from "./session-manager-codec.js";
 import {
@@ -41,6 +39,7 @@ import { SessionManagerActorCommittedError } from "./session-manager-persistence
 import { SessionManagerSuffixPersistence } from "./session-manager-suffix-persistence.js";
 import type {
   AppendPersistenceOptions,
+  SessionManagerAppendMessage,
   SessionEntry,
   SessionMessageEntry,
 } from "./session-manager-types.js";
@@ -537,23 +536,20 @@ export class SessionManagerAppend extends SessionManagerSuffixPersistence {
   }
 
   /** @deprecated Await appendMessageAsync. Removal: next Plugin SDK major. */
-  appendMessage(
-    message: Message | CustomMessage | BashExecutionMessage,
-    options?: AppendPersistenceOptions,
-  ): string {
+  appendMessage(message: SessionManagerAppendMessage, options?: AppendPersistenceOptions): string {
     prepareSessionManagerSync("appendMessage", this.persistenceTarget, this);
     return this.appendMessageWithTranscriptAnchorSync(message, options).entryId;
   }
 
   async appendMessageAsync(
-    message: Message | CustomMessage | BashExecutionMessage,
+    message: SessionManagerAppendMessage,
     options?: AppendPersistenceOptions,
   ): Promise<string | undefined> {
     return (await this.appendMessageWithTranscriptAnchorAsync(message, options)).entryId;
   }
 
   async appendMessageWithTranscriptAnchorAsync(
-    message: Message | CustomMessage | BashExecutionMessage,
+    message: SessionManagerAppendMessage,
     options?: AppendPersistenceOptions,
   ): Promise<
     ReturnType<SessionManagerAppend["appendMessageWithTranscriptAnchor"]> & {
@@ -585,7 +581,7 @@ export class SessionManagerAppend extends SessionManagerSuffixPersistence {
 
   /** @deprecated Await appendMessageWithTranscriptAnchorAsync. Removal: next Plugin SDK major. */
   appendMessageWithTranscriptAnchor(
-    message: Message | CustomMessage | BashExecutionMessage,
+    message: SessionManagerAppendMessage,
     options?: AppendPersistenceOptions,
   ) {
     prepareSessionManagerSync("appendMessageWithTranscriptAnchor", this.persistenceTarget, this);

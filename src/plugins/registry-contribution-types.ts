@@ -133,10 +133,15 @@ export type MemoryEmbeddingBatchOptions = Omit<EmbeddingBatchOptions, "chunks"> 
 
 export type MemoryEmbeddingProviderCallOptions = Pick<EmbeddingProviderCallOptions, "signal">;
 
-export type MemoryEmbeddingProviderRuntime = Omit<EmbeddingProviderRuntime, "batchEmbed" | "batchEmbedPartial" | "batchFailureMode"> & {
+export type MemoryEmbeddingProviderRuntime = Omit<
+  EmbeddingProviderRuntime,
+  "batchEmbed" | "batchEmbedPartial" | "batchFailureMode"
+> & {
   batchFailureMode?: "fallback" | "error" | "fail-closed";
   batchEmbed?: (options: MemoryEmbeddingBatchOptions) => Promise<number[][] | null>;
-  batchEmbedPartial?: (options: MemoryEmbeddingBatchOptions) => Promise<import("./embedding-provider-runtime-types.js").EmbeddingBatchResult | null>;
+  batchEmbedPartial?: (
+    options: MemoryEmbeddingBatchOptions,
+  ) => Promise<import("./embedding-provider-runtime-types.js").EmbeddingBatchResult | null>;
 };
 
 export type MemoryEmbeddingProviderIndexIdentity = EmbeddingProviderIndexIdentity;

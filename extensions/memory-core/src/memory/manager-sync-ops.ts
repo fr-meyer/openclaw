@@ -1,4 +1,3 @@
-import { assertBoundedMemoryOperation, boundedMemoryAdmissionActive, MemoryAdmissionRefused } from "./bounded-admission.js";
 import { randomUUID } from "node:crypto";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { resolveEmbeddingInputFormatVersion } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
@@ -17,6 +16,7 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
 import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
+import { assertBoundedMemoryOperation } from "./bounded-admission.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -570,14 +570,19 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
             candidate.signal?.throwIfAborted();
             // Store export identity in existing SQLite metadata before source work
             // can submit a provider request. No new journal or sidecar state owner.
-            await this.withDatabaseWrite(() => this.writeMeta({
-              model: candidate.expected.model,
-              provider: candidate.expected.provider,
-              providerKey: this.syncProviderGeneration?.providerKey,
-              chunkTokens: this.settings.chunking.tokens,
-              chunkOverlap: this.settings.chunking.overlap,
-              candidate: { ...candidate.stamp, candidateFileIdentity: readMemoryShadowIdentity(tempDbPath) },
-            }));
+            await this.withDatabaseWrite(() =>
+              this.writeMeta({
+                model: candidate.expected.model,
+                provider: candidate.expected.provider,
+                providerKey: this.syncProviderGeneration?.providerKey,
+                chunkTokens: this.settings.chunking.tokens,
+                chunkOverlap: this.settings.chunking.overlap,
+                candidate: {
+                  ...candidate.stamp,
+                  candidateFileIdentity: readMemoryShadowIdentity(tempDbPath),
+                },
+              }),
+            );
             candidate.signal?.throwIfAborted();
             // Any failure after admission may have paid results or UNKNOWN work.
             retainCandidate = true;
@@ -598,7 +603,15 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
           const vectorIndexComplete = syncProvider === null || this.vector.available === true;
           candidate?.signal?.throwIfAborted();
           const nextMeta: MemoryIndexMeta = {
-            ...(candidate ? { candidate: { ...candidate.stamp, candidateFileIdentity: readMemoryShadowIdentity(tempDbPath), phase: "complete" as const } } : {}),
+            ...(candidate
+              ? {
+                  candidate: {
+                    ...candidate.stamp,
+                    candidateFileIdentity: readMemoryShadowIdentity(tempDbPath),
+                    phase: "complete" as const,
+                  },
+                }
+              : {}),
             model: syncProvider?.model ?? "fts-only",
             provider: syncProvider?.id ?? "none",
             providerKey: this.syncProviderGeneration
@@ -623,12 +636,15 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
             nextMeta.vectorDims = this.vector.dims;
           }
 
-          if (candidate && (
-            nextMeta.provider !== candidate.expected.provider ||
-            nextMeta.model !== candidate.expected.model ||
-            nextMeta.vectorDims !== candidate.expected.dimensions
-          )) {
-            throw new Error("Memory candidate provider/model/dimensions differ from approved identity");
+          if (
+            candidate &&
+            (nextMeta.provider !== candidate.expected.provider ||
+              nextMeta.model !== candidate.expected.model ||
+              nextMeta.vectorDims !== candidate.expected.dimensions)
+          ) {
+            throw new Error(
+              "Memory candidate provider/model/dimensions differ from approved identity",
+            );
           }
           await this.withDatabaseWrite(() => this.writeMeta(nextMeta));
           return {
@@ -687,6 +703,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
       // Cache-only rebuilds bypass insertion-time eviction; prune the canonical
       // cache only after successful publication so failed rebuilds retain their work.
       await this.pruneEmbeddingCacheIfNeeded();
+      return undefined;
     } catch (err) {
       this.adoptReindexRetryState(originalRetryState);
       this.markFailedFullReindexRetry({

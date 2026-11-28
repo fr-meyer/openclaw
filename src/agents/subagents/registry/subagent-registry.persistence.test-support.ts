@@ -315,10 +315,7 @@ export function registerSubagentRegistrationCompletionTest({
   getRegistry: () => SubagentRegistryHarness;
   mocks: Pick<
     ReturnType<typeof createSubagentRegistryMockState>,
-    | "runSubagentAnnounceFlow"
-    | "entries"
-    | "emitSessionLifecycleEvent"
-    | "persistRegistryRows"
+    "runSubagentAnnounceFlow" | "entries" | "emitSessionLifecycleEvent" | "persistRegistryRows"
   >;
 }) {
   it("completes a registered run across timing persistence, lifecycle status, and announce cleanup", async () => {

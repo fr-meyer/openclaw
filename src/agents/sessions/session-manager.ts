@@ -6,7 +6,6 @@
  */
 import { isDeepStrictEqual } from "node:util";
 import type { AgentMessage } from "../../../packages/agent-core/src/types.js";
-import type { SessionTranscriptRuntimeTarget } from "../../config/sessions/session-accessor.js";
 import { readSessionTranscriptBoundedActiveContextCore } from "../../config/sessions/session-accessor.sqlite-active-context.js";
 import { prepareTranscriptRewriteSync } from "../../config/sessions/session-accessor.sqlite-branch-rewrite.js";
 import type { SessionTranscriptContextVersion } from "../../config/sessions/session-accessor.sqlite-contract.js";
@@ -18,6 +17,7 @@ import {
 import { loadTranscriptReadSnapshotSync } from "../../config/sessions/session-accessor.sqlite-read.js";
 import { redactTranscriptMessageForStorage } from "../../config/sessions/session-accessor.sqlite-transcript-store.js";
 import { appendTranscriptMessageSync } from "../../config/sessions/session-accessor.sqlite-transcript-write.js";
+import type { SessionTranscriptRuntimeTarget } from "../../config/sessions/session-accessor.types.js";
 import {
   assertCurrentSessionTranscriptHeader,
   findSessionTranscriptHeader,
@@ -35,11 +35,9 @@ import {
   captureOwnedTranscriptWriteAssertion,
 } from "../../config/sessions/transcript-write-context.js";
 import { CURRENT_SESSION_VERSION } from "../../config/sessions/version.js";
-import type { Message } from "../../llm/types.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import type { UserTurnTranscriptAdmissionReceipt } from "../../sessions/user-turn-transcript.types.js";
 import { freezeJsonSnapshot } from "../../shared/immutable-data.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import { SessionManagerBranching } from "./session-manager-branching.js";
 import { sessionManagerOpenTranscriptCohort } from "./session-manager-core.js";
 import {
@@ -57,6 +55,7 @@ import { openSessionManagerBoundedView } from "./session-manager-reload.js";
 import type {
   SessionLeafControl,
   AppendPersistenceOptions,
+  SessionManagerAppendMessage,
   FileEntry,
   SessionEntry,
 } from "./session-manager-types.js";
@@ -173,7 +172,7 @@ export class SessionManager extends SessionManagerBranching {
   // Worker rollback instrumentation wraps the method on this public prototype.
   /** @deprecated Await appendMessageAsync. Removal: next Plugin SDK major. */
   override appendMessage(
-    message: Message | CustomMessage | BashExecutionMessage,
+    message: SessionManagerAppendMessage,
     options?: AppendPersistenceOptions,
   ): string {
     return super.appendMessage(message, options);
@@ -181,7 +180,7 @@ export class SessionManager extends SessionManagerBranching {
 
   /** @deprecated Await appendMessageWithTranscriptAnchorAsync. Removal: next Plugin SDK major. */
   override appendMessageWithTranscriptAnchor(
-    message: Message | CustomMessage | BashExecutionMessage,
+    message: SessionManagerAppendMessage,
     options?: AppendPersistenceOptions,
   ) {
     return super.appendMessageWithTranscriptAnchor(message, options);
@@ -676,7 +675,7 @@ export class SessionManager extends SessionManagerBranching {
    */
   static appendMessageToTranscript(
     target: SessionTranscriptRuntimeTarget,
-    message: Message | CustomMessage | BashExecutionMessage,
+    message: SessionManagerAppendMessage,
     options?: Pick<AppendPersistenceOptions, "config">,
   ): string {
     prepareSessionManagerSync("appendMessageToTranscript", target);
@@ -697,7 +696,7 @@ export class SessionManager extends SessionManagerBranching {
 
   static async appendMessageToTranscriptAsync(
     target: SessionTranscriptRuntimeTarget,
-    message: Message | CustomMessage | BashExecutionMessage,
+    message: SessionManagerAppendMessage,
     options?: Pick<AppendPersistenceOptions, "config">,
   ): Promise<string> {
     return (await appendSessionTranscriptNote(target, message, options)).messageId;

@@ -1,9 +1,9 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, vi } from "vitest";
-import { createTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as journalRuntime from "./embedding-batch-journal.js";
 import type { OpenAiBatchJournalContext } from "./embedding-batch-journal.js";
 import { runOpenAiEmbeddingBatches } from "./embedding-batch.js";
+import { createTempDirTracker } from "./test-temp-dir.js";
 
 type BatchParams = Parameters<typeof runOpenAiEmbeddingBatches>[0];
 const tempDirs = createTempDirTracker();

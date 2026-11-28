@@ -1,13 +1,12 @@
 import path from "node:path";
-import { captureSensitiveTextRedactionSnapshot } from "../../logging/redact.js";
-import { readOwnedWarmSessionSnapshotSync } from "./session-accessor.sqlite-read.js";
-import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 import {
   resolveWorkerPoolSize,
   SESSION_TRANSCRIPT_FOREGROUND_WORKERS,
 } from "../../infra/worker-pool-sizing.js";
+import { captureSensitiveTextRedactionSnapshot } from "../../logging/redact.js";
 import type { SensitiveTextRedactionSnapshot } from "../../logging/redact.js";
 import type { readSessionTranscriptModelContext } from "./session-accessor.sqlite-model-context.js";
+import { readOwnedWarmSessionSnapshotSync } from "./session-accessor.sqlite-read.js";
 import type { SessionTranscriptRuntimeTarget } from "./session-accessor.types.js";
 import type { SessionContextMessagesWorkerInput } from "./session-history-read.types.js";
 import { unwrapSessionTranscriptWorkerReply } from "./session-history-worker-errors.js";
@@ -20,6 +19,7 @@ import type {
   SessionModelContextWorkerInput,
   SessionSqliteTargetWorkerInput,
 } from "./session-transcript-worker.types.js";
+import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 
 // Callers retain writer admission and validate snapshots before consuming parallel reads.
 const modelContextReads = createSessionTranscriptReadPool<
@@ -99,32 +99,72 @@ export async function prepareOwnedSessionEntryProjectionInWorker(
 ) {
   try {
     signal?.throwIfAborted();
-    const captured = Object.freeze({ agentId: options.agentId, sessionId: options.sessionId,
-      storePath: options.storePath, sessionKey: options.sessionKey, parseYieldEveryLines: options.parseYieldEveryLines });
-    if (path.resolve(absPath) !== path.resolve(captured.storePath)) { throw new Error(); }
+    const captured = Object.freeze({
+      agentId: options.agentId,
+      sessionId: options.sessionId,
+      storePath: options.storePath,
+      sessionKey: options.sessionKey,
+      parseYieldEveryLines: options.parseYieldEveryLines,
+    });
+    if (path.resolve(absPath) !== path.resolve(captured.storePath)) {
+      throw new Error();
+    }
     const namespace = captureSessionTranscriptStorageEnvironment(env);
     const redaction = captureSensitiveTextRedactionSnapshot();
     const observed = readOwnedWarmSessionSnapshotSync({ ...captured, env: namespace });
-    if (observed.status !== "observed-not-atomic") { throw new Error(); }
-    const binding = JSON.stringify([absPath, captured.agentId, captured.sessionId, captured.storePath,
-      observed.value.sessionKey, redaction.registryRevision]);
+    if (observed.status !== "observed-not-atomic") {
+      throw new Error();
+    }
+    const binding = JSON.stringify([
+      absPath,
+      captured.agentId,
+      captured.sessionId,
+      captured.storePath,
+      observed.value.sessionKey,
+      redaction.registryRevision,
+    ]);
     const input: SessionEntryProjectionWorkerInput = {
-      kind: "session-entry-projection", binding, absPath,
-      options: { agentId: captured.agentId, sessionId: captured.sessionId, storePath: captured.storePath,
-        parseYieldEveryLines: captured.parseYieldEveryLines },
-      snapshot: observed.value, redaction,
+      kind: "session-entry-projection",
+      binding,
+      absPath,
+      options: {
+        agentId: captured.agentId,
+        sessionId: captured.sessionId,
+        storePath: captured.storePath,
+        parseYieldEveryLines: captured.parseYieldEveryLines,
+      },
+      snapshot: observed.value,
+      redaction,
     };
     // Existing native pool owns task ids, cancellation, deadline and the reply promise.
-    const result = unwrapSessionTranscriptWorkerReply<"session-entry" | "session-reset-recall" | "session-entry-projection">(await sessionEntries.run(input,
-      { inputBytes: JSON.stringify(input).length * 2, timeoutMs: 60_000, signal }));
+    const result = unwrapSessionTranscriptWorkerReply<
+      "session-entry" | "session-reset-recall" | "session-entry-projection"
+    >(
+      await sessionEntries.run(input, {
+        inputBytes: JSON.stringify(input).length * 2,
+        timeoutMs: 60_000,
+        signal,
+      }),
+    );
     signal?.throwIfAborted();
-    if (!("kind" in result) || result.kind !== "session-entry-projection" ||
-      result.binding !== binding || result.registryRevision !== redaction.registryRevision ||
-      !result.entry || result.entry.absPath !== absPath || typeof result.entry.content !== "string" ||
-      typeof result.entry.hash !== "string" || !result.resetRecallCutoff ||
-      typeof result.resetRecallCutoff.state !== "string") { throw new Error(); }
+    if (
+      !("kind" in result) ||
+      result.kind !== "session-entry-projection" ||
+      result.binding !== binding ||
+      result.registryRevision !== redaction.registryRevision ||
+      !result.entry ||
+      result.entry.absPath !== absPath ||
+      typeof result.entry.content !== "string" ||
+      typeof result.entry.hash !== "string" ||
+      !result.resetRecallCutoff ||
+      typeof result.resetRecallCutoff.state !== "string"
+    ) {
+      throw new Error();
+    }
     return result;
-  } catch { throw new Error("Native session projection unavailable"); }
+  } catch {
+    throw new Error("Native session projection unavailable");
+  }
 }
 
 export async function prepareSessionEntryInWorker(

@@ -1,5 +1,8 @@
-import type { MemoryBatchSubmissionCommand, MemoryBatchSubmissionReply } from "./manager-batch-submission-task.js";
 import type { ensureMemoryIndexSchema } from "openclaw/plugin-sdk/memory-core-host-engine-schema";
+import type {
+  MemoryBatchSubmissionCommand,
+  MemoryBatchSubmissionReply,
+} from "./manager-batch-submission-task.js";
 import type { loadMemoryEmbeddingCache } from "./manager-embedding-cache.js";
 import type { MemoryIndexProviderIdentity } from "./manager-reindex-state.js";
 import type { MemoryShadowConnection, MemoryShadowFailure } from "./manager-shadow-task.js";

@@ -233,8 +233,8 @@ describe("Gateway worker namespace readback", { concurrent: false }, () => {
         url: `ws://127.0.0.1:${port}`,
         token,
         scopes: ["operator.read"],
-        onHelloOk: (observed) => {
-          hello = observed;
+        onHelloOk: (connectedHello) => {
+          hello = connectedHello;
         },
       });
     }
@@ -257,7 +257,7 @@ describe("Gateway worker namespace readback", { concurrent: false }, () => {
     }
     await expect(requiredClient().request<Association>(METHOD, {})).resolves.toEqual({
       bootId: hello.server.bootId,
-        namespace: NAMESPACE,
+      namespace: NAMESPACE,
     });
     context.readWorkerRuntimeIdentity = undefined;
     try {
@@ -299,7 +299,7 @@ describe("Gateway worker namespace readback", { concurrent: false }, () => {
       throw new Error("Expected prepared association reader");
     }
     expect(read()).toEqual({ bootId: "synthetic-worker-boot-a", namespace: NAMESPACE });
-    await kernel.beginClosePrelude();
+    await kernel.runClosePrelude();
     expect(() => read()).toThrow("Gateway worker runtime identity is unavailable");
     await disconnectGatewayClient(requiredClient());
     await server?.close({ reason: "replace worker namespace fixture boot" });

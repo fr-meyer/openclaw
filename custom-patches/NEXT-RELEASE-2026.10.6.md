@@ -6,15 +6,15 @@ no 10.5 runtime, image or data qualification forward.
 
 ## Frozen inputs
 
-| Input | Exact identity |
-| --- | --- |
-| Official stable release | [v2026.10.6](https://github.com/openclaw/openclaw/releases/tag/v2026.10.6), published 2026-10-22 12:53:10 UTC |
-| Annotated tag object | `3494baecba2366a89fa703158a2c2b5c9edcd6ba` (GitHub reports verified signature) |
-| Upstream source | `fe06181dc5ecc01cf8904abbfc26925925efefbc` |
-| Upstream tree | `de35137f62064ebdfd93c7d146b78b05a0332ff1` |
-| Common upstream 10.5 base | `1b58cb9a1b4f4353e1add63c8506db4d890962e8` |
-| Carried fork source | `7f3ac1fbfd3691546c5b1fd247680a3d00851c76`, from [PR #18](https://github.com/fr-meyer/openclaw/pull/18) |
-| Pipeline dependency | [PR #17](https://github.com/fr-meyer/openclaw/pull/17); future exact 10.6 binding pending |
+| Input                     | Exact identity                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Official stable release   | [v2026.10.6](https://github.com/openclaw/openclaw/releases/tag/v2026.10.6), published 2026-10-22 12:53:10 UTC |
+| Annotated tag object      | `3494baecba2366a89fa703158a2c2b5c9edcd6ba` (GitHub reports verified signature)                                |
+| Upstream source           | `fe06181dc5ecc01cf8904abbfc26925925efefbc`                                                                    |
+| Upstream tree             | `de35137f62064ebdfd93c7d146b78b05a0332ff1`                                                                    |
+| Common upstream 10.5 base | `1b58cb9a1b4f4353e1add63c8506db4d890962e8`                                                                    |
+| Carried fork source       | `7f3ac1fbfd3691546c5b1fd247680a3d00851c76`, from [PR #18](https://github.com/fr-meyer/openclaw/pull/18)       |
+| Pipeline dependency       | [PR #17](https://github.com/fr-meyer/openclaw/pull/17); future exact 10.6 binding pending                     |
 
 The official target is a direct descendant of official 10.5: 294 commits ahead,
 zero behind, 1,669 changed paths. The fork contributes 22 commits and 142 changed
@@ -46,16 +46,16 @@ without ancestry or content proof against this stable commit.
 
 ## Compatibility and limits
 
-| Area | Target contract and remaining evidence |
-| --- | --- |
-| Schemas | State 20 / agent 25 remain unchanged; recovery behavior changes, so all applicable stores still need native migration/completion inspection. |
-| Runtime | Node `>=24.22.1 <25` or `>=26.12.1`; pnpm 12.15.0 with its package.json integrity pin. |
-| Codex | Managed binary remains 0.160.0; plugin API/build metadata advances to 2026.10.6. External app-server floor 0.149.0 is a separate contract. Verify actual binary, plugin and bounded offline protocol initialization. |
-| Workboard | Peer floor `>=2026.10.6`; test parent-completion claim eligibility for review/running cards and persistence. |
-| Matrix / Nowistay | Matrix crypto remains 0.6.6 with matching asset hashes; MCP SDK remains 1.32.0. Native addon and retained SDK regressions remain required. |
-| Reuse | `REUSE_NOT_QUALIFIED_10_6`: the existing parser accepts only its reviewed 10.5 transition. Normal new-release backup capture remains available without that proof. Cross-version reuse needs a reviewed compatibility path; do not relabel receipts or change the allowlist to pass. |
-| Startup wait | Upstream `src/plugins/services.ts` is byte-identical between 10.5 and 10.6. Dreaming still awaits cron reconciliation; no fix for the current service wait is established. |
-| Pipeline | This source planner identifies 10.6. The active executor/profile/receipt contracts remain owned by PR #17; future exact binding and synthetic qualification are pending. |
+| Area              | Target contract and remaining evidence                                                                                                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Schemas           | State 20 / agent 25 remain unchanged; recovery behavior changes, so all applicable stores still need native migration/completion inspection.                                                                                                                                         |
+| Runtime           | Node `>=24.22.1 <25` or `>=26.12.1`; pnpm 12.15.0 with its package.json integrity pin.                                                                                                                                                                                               |
+| Codex             | Managed binary remains 0.160.0; plugin API/build metadata advances to 2026.10.6. External app-server floor 0.149.0 is a separate contract. Verify actual binary, plugin and bounded offline protocol initialization.                                                                 |
+| Workboard         | Peer floor `>=2026.10.6`; test parent-completion claim eligibility for review/running cards and persistence.                                                                                                                                                                         |
+| Matrix / Nowistay | Matrix crypto remains 0.6.6 with matching asset hashes; MCP SDK remains 1.32.0. Native addon and retained SDK regressions remain required.                                                                                                                                           |
+| Reuse             | `REUSE_NOT_QUALIFIED_10_6`: the existing parser accepts only its reviewed 10.5 transition. Normal new-release backup capture remains available without that proof. Cross-version reuse needs a reviewed compatibility path; do not relabel receipts or change the allowlist to pass. |
+| Startup wait      | Upstream `src/plugins/services.ts` is byte-identical between 10.5 and 10.6. Dreaming still awaits cron reconciliation; no fix for the current service wait is established.                                                                                                           |
+| Pipeline          | This source planner identifies 10.6. The active executor/profile/receipt contracts remain owned by PR #17; future exact binding and synthetic qualification are pending.                                                                                                             |
 
 10.6 adds eligible missing-deletion-journal recovery with verified originals even
 in disposable rehearsals. The merged backup owner requires both

@@ -182,6 +182,14 @@ function registeredApi(
   return { tools, routes, subscriptions, services, schedules, unschedules, launches };
 }
 
+function requiredTool(registration: ReturnType<typeof registeredApi>) {
+  const [tool] = registration.tools;
+  if (!tool) {
+    throw new Error("Expected the controller tool to be registered");
+  }
+  return tool;
+}
+
 it("projects controller parity through the loaded plugin record, without changing the shared runtime", () => {
   const tasks = createGatewayManagedTaskFlowRuntime();
   const builder = createTestPluginRegistry({ tasks } as PluginRuntime);
@@ -198,7 +206,7 @@ it("projects controller parity through the loaded plugin record, without changin
   const packaged = availability(pluginId, packagedEntry, "config", packagedRoot);
   expect(tasks.availability.controllerParity).toBe(false);
   expect(packaged?.availability.controllerParity).toBe(true);
-  expect(packaged?.managedFlows.bindSession).toBe(tasks.managedFlows.bindSession);
+  expect(packaged?.managedFlows.bindSession === tasks.managedFlows.bindSession).toBe(true);
   expect(
     availability(pluginId, oldEntry, "config", oldEntry.slice(0, oldEntry.lastIndexOf("/")))
       ?.availability.controllerParity,
@@ -249,7 +257,7 @@ it("activates the packaged controller only for the real Gateway owner and exact 
       expect(inert.subscriptions).toHaveLength(0);
       expect(inert.services).toHaveLength(0);
       await expect(
-        inert.tools[0].factory({ sessionKey: ownerKey }).execute("call", {
+        requiredTool(inert).factory({ sessionKey: ownerKey }).execute("call", {
           action: "status",
           flowId: "absent",
         }),
@@ -384,7 +392,7 @@ it("binds packaged status and reviewer reports to the exact native SQLite flow a
           { context, resolveGatewayContext, client: null, isWebchatConnect: () => false },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory;
+      const tool = requiredTool(registered).factory;
       try {
         const statusClient = clientFor("status", statusKey, new AbortController().signal);
         await callAs(statusClient, async () => {
@@ -843,7 +851,7 @@ it("admits one packaged native root and never relaunches after a lost acknowledg
           { context, resolveGatewayContext, client: null, isWebchatConnect: () => false },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      const tool = requiredTool(registered).factory({ sessionKey: ownerKey, agentId: "franck" });
       try {
         const first = callBackground(() =>
           tool.execute("first", { action: "continue", flowId: flow.flowId }),

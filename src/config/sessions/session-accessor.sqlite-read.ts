@@ -1,10 +1,5 @@
-import { assertSupportedAgentSchemaVersion, assertCanonicalAgentPersistenceVersion,
-  assertCurrentAgentSchemaMetadata, readExistingAgentSchemaMeta } from "../../state/openclaw-agent-db-schema-read.js";
 import fs from "node:fs";
 import path from "node:path";
-import { normalizeAgentId, parseAgentSessionKey, isIncognitoSessionKey } from "../../routing/session-key.js";
-import { borrowCommittedOpenClawAgentDatabaseIfOpen } from "../../state/openclaw-agent-db.js";
-import { resolveSqliteSessionKey } from "./session-accessor.sqlite-scope-helpers.js";
 import { parseDateFirstTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import {
@@ -20,7 +15,19 @@ import {
   assertTransactionUsable,
   runSqliteDeferredTransactionSync,
 } from "../../infra/sqlite-transaction.js";
+import {
+  normalizeAgentId,
+  parseAgentSessionKey,
+  isIncognitoSessionKey,
+} from "../../routing/session-key.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
+import {
+  assertSupportedAgentSchemaVersion,
+  assertCanonicalAgentPersistenceVersion,
+  assertCurrentAgentSchemaMetadata,
+  readExistingAgentSchemaMeta,
+} from "../../state/openclaw-agent-db-schema-read.js";
+import { borrowCommittedOpenClawAgentDatabaseIfOpen } from "../../state/openclaw-agent-db.js";
 import {
   openOpenClawAgentDatabase,
   type OpenClawAgentDatabase,
@@ -36,6 +43,7 @@ import type {
 } from "./session-accessor.sqlite-contract.js";
 import { readSessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.js";
 import type { SessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.types.js";
+import { resolveSqliteSessionKey } from "./session-accessor.sqlite-scope-helpers.js";
 import {
   getSessionKysely,
   resolveSqliteTranscriptReadScope,
@@ -190,51 +198,120 @@ export function readTranscriptExportSnapshotReadOnlySync(
 
 /** Metadata is an observation, not a caller-replayable capability or SQLite FD identity proof. */
 export function readOwnedWarmSessionSnapshotSync(scope: SessionTranscriptReadScope) {
-  const captured = { agentId: scope.agentId, sessionId: scope.sessionId, sessionKey: scope.sessionKey,
-    storePath: scope.storePath, env: Object.freeze({ ...(scope.env ?? process.env) }), maxEventBytes: scope.maxEventBytes };
+  const captured = {
+    agentId: scope.agentId,
+    sessionId: scope.sessionId,
+    sessionKey: scope.sessionKey,
+    storePath: scope.storePath,
+    env: Object.freeze({ ...(scope.env ?? process.env) }),
+    maxEventBytes: scope.maxEventBytes,
+  };
   let release: (() => void) | undefined;
   try {
-    if (!captured.agentId || !captured.sessionKey || !captured.sessionId || !captured.storePath) { throw new Error(); }
+    if (!captured.agentId || !captured.sessionKey || !captured.sessionId || !captured.storePath) {
+      throw new Error();
+    }
     const agentId = normalizeAgentId(captured.agentId);
     const expected = resolveOpenClawAgentSqlitePath({ agentId, env: captured.env });
     const physical = fs.realpathSync.native(captured.storePath);
-    if (path.resolve(captured.storePath) !== physical || fs.realpathSync.native(expected) !== physical) { throw new Error(); }
+    if (
+      path.resolve(captured.storePath) !== physical ||
+      fs.realpathSync.native(expected) !== physical
+    ) {
+      throw new Error();
+    }
     // The locator only selects a candidate. Actual native admission/cache owner is mandatory.
-    const lease = borrowCommittedOpenClawAgentDatabaseIfOpen({ agentId, path: physical, env: captured.env });
+    const lease = borrowCommittedOpenClawAgentDatabaseIfOpen({
+      agentId,
+      path: physical,
+      env: captured.env,
+    });
     release = lease.release;
     const database = lease.database;
     lease.assertCurrent();
-    if (database.agentId !== agentId || database.path !== physical) { throw new Error(); }
+    if (database.agentId !== agentId || database.path !== physical) {
+      throw new Error();
+    }
     const key = resolveSqliteSessionKey(captured.sessionKey, agentId);
-    if (isIncognitoSessionKey(key) || normalizeAgentId(parseAgentSessionKey(key)?.agentId ?? "") !== agentId || !parseAgentSessionKey(key)) { throw new Error(); }
-    const value = runSqliteReadOperationSync(database.db, () => runSqliteDeferredTransactionSync(database.db, () => {
-      const version = assertSupportedAgentSchemaVersion(database.db, database.path);
-      assertCanonicalAgentPersistenceVersion(database.db, database.path, version);
-      assertCurrentAgentSchemaMetadata(readExistingAgentSchemaMeta(database.db), agentId, database.path);
-      const matches = executeSqliteQuerySync(database.db, getSessionKysely(database.db)
-        .selectFrom("session_windows").select(["session_key", "session_id"])
-        .where((eb) => eb.or([eb("session_key", "=", key), eb("session_id", "=", captured.sessionId)]))).rows;
-      if (matches.length !== 1 || matches[0]?.session_key !== key || matches[0]?.session_id !== captured.sessionId) { throw new Error(); }
-      const fence = resolveSqliteSessionTranscriptReadFence({
-        database,
-        ...resolveSqliteTranscriptReadScope({ ...captured, agentId, sessionKey: key }),
-      });
-      const events = loadTranscriptEventsFromDatabase(database, captured.sessionId, {
-        beforeEventSeq: fence?.beforeRawSeq,
-        maxEventBytes: captured.maxEventBytes,
-      });
-      const stats = readTranscriptStatsFromDatabase(database, captured.sessionId);
-      return { events, stats, sessionKey: key, sessionId: captured.sessionId };
-    }, { operationLabel: "owned warm session snapshot" }), "fresh");
+    if (
+      isIncognitoSessionKey(key) ||
+      normalizeAgentId(parseAgentSessionKey(key)?.agentId ?? "") !== agentId ||
+      !parseAgentSessionKey(key)
+    ) {
+      throw new Error();
+    }
+    const value = runSqliteReadOperationSync(
+      database.db,
+      () =>
+        runSqliteDeferredTransactionSync(
+          database.db,
+          () => {
+            const version = assertSupportedAgentSchemaVersion(database.db, database.path);
+            assertCanonicalAgentPersistenceVersion(database.db, database.path, version);
+            assertCurrentAgentSchemaMetadata(
+              readExistingAgentSchemaMeta(database.db),
+              agentId,
+              database.path,
+            );
+            const matches = executeSqliteQuerySync(
+              database.db,
+              getSessionKysely(database.db)
+                .selectFrom("session_windows")
+                .select(["session_key", "session_id"])
+                .where((eb) =>
+                  eb.or([eb("session_key", "=", key), eb("session_id", "=", captured.sessionId)]),
+                ),
+            ).rows;
+            if (
+              matches.length !== 1 ||
+              matches[0]?.session_key !== key ||
+              matches[0]?.session_id !== captured.sessionId
+            ) {
+              throw new Error();
+            }
+            const fence = resolveSqliteSessionTranscriptReadFence({
+              database,
+              ...resolveSqliteTranscriptReadScope({ ...captured, agentId, sessionKey: key }),
+            });
+            const events = loadTranscriptEventsFromDatabase(database, captured.sessionId, {
+              beforeEventSeq: fence?.beforeRawSeq,
+              maxEventBytes: captured.maxEventBytes,
+            });
+            const stats = readTranscriptStatsFromDatabase(database, captured.sessionId);
+            return { events, stats, sessionKey: key, sessionId: captured.sessionId };
+          },
+          { operationLabel: "owned warm session snapshot" },
+        ),
+      "fresh",
+    );
     lease.assertCurrent();
-    return { status: "observed-not-atomic" as const, value,
-      receipt: { nativeOwner: "existing-committed" as const, logicalAgentId: agentId,
-        sessionKey: key, sessionId: captured.sessionId, noNewConnection: true as const,
-        noMaterialization: true as const, nativeOpenedHandleIdentity: false as const } };
+    return {
+      status: "observed-not-atomic" as const,
+      value,
+      receipt: {
+        nativeOwner: "existing-committed" as const,
+        logicalAgentId: agentId,
+        sessionKey: key,
+        sessionId: captured.sessionId,
+        noNewConnection: true as const,
+        noMaterialization: true as const,
+        nativeOpenedHandleIdentity: false as const,
+      },
+    };
   } catch {
-    return { status: "unverified" as const, reason: "native-warm-owner-snapshot-unavailable" as const };
+    return {
+      status: "unverified" as const,
+      reason: "native-warm-owner-snapshot-unavailable" as const,
+    };
   } finally {
-    try { release?.(); } catch { return { status: "unverified" as const, reason: "native-warm-owner-snapshot-unavailable" as const }; }
+    try {
+      release?.();
+    } catch {
+      return {
+        status: "unverified" as const,
+        reason: "native-warm-owner-snapshot-unavailable" as const,
+      };
+    }
   }
 }
 

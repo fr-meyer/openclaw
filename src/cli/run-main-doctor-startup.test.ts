@@ -15,9 +15,9 @@ describe("Doctor CLI startup reuse proof", () => {
     vi.stubEnv("OPENCLAW_UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH", "");
     vi.stubEnv("OPENCLAW_DOCTOR_BACKUP_REUSE_PROOF", "{}");
 
-    await expect(prepareDoctorCliStartup(["node", "openclaw", "doctor"], { json: false })).rejects.toThrow(
-      "proof fields or syntax differ from the reviewed contract",
-    );
+    await expect(
+      prepareDoctorCliStartup(["node", "openclaw", "doctor"], { json: false }),
+    ).rejects.toThrow("proof fields or syntax differ from the reviewed contract");
     expect(preflightUpdateDoctorCli).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,3 @@
-import { createWorkboardLiveExecutionTracker, type WorkboardLiveExecutionTracker } from "./live-execution.js";
 import type { WorkboardCard, WorkboardSessionsBoardView } from "@openclaw/workboard-contract";
 import { readStringParam } from "openclaw/plugin-sdk/core";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -15,6 +14,10 @@ import {
   WorkboardUploadsDisabledError,
   type GatewayMethodContext,
 } from "./gateway-helpers.js";
+import {
+  createWorkboardLiveExecutionTracker,
+  type WorkboardLiveExecutionTracker,
+} from "./live-execution.js";
 import type { WorkboardSessionsBoardService } from "./sessions-board.js";
 import { resolveWorkboardSqliteWorkerModuleUrl } from "./sqlite-store-paths.js";
 import { registerWorkboardStoreLifecycle } from "./store-lifecycle.js";

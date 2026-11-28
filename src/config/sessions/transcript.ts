@@ -1,6 +1,6 @@
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import type { AgentMessage } from "../../agents/runtime/index.js";
-import type { SessionManager } from "../../agents/sessions/session-manager.js";
+import type { SessionManagerAppendMessage } from "../../agents/sessions/session-manager-types.js";
 import { redactTranscriptMessage } from "../../agents/transcript-redact.js";
 import { makeZeroUsageSnapshot } from "../../agents/usage.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -107,7 +107,7 @@ type InternalSessionTranscriptDeliveryMirror =
       kind: typeof CRON_DIRECT_DELIVERY_CONTEXT_KIND;
     };
 
-export type SessionTranscriptAssistantMessage = Parameters<SessionManager["appendMessage"]>[0] & {
+export type SessionTranscriptAssistantMessage = SessionManagerAppendMessage & {
   role: "assistant";
   [ASSISTANT_DISPLAY_CONTENT_FIELD]?: Array<Record<string, unknown>>;
 };
@@ -511,7 +511,7 @@ async function appendExactAssistantMessageWithSource(
   const message = {
     ...params.message,
     ...(explicitIdempotencyKey ? { idempotencyKey: explicitIdempotencyKey } : {}),
-  } as Parameters<SessionManager["appendMessage"]>[0];
+  } as SessionManagerAppendMessage;
   const preparedUnkeyedMessage =
     !explicitIdempotencyKey && params.beforeMessageWrite
       ? applyBeforeMessageWriteToAssistant({
@@ -571,7 +571,7 @@ async function appendExactAssistantMessageWithSource(
               workerPreparation: {
                 prepareMessageAfterIdempotencyCheck: (candidate: unknown) =>
                   applyBeforeMessageWriteToAssistant({
-                    message: candidate as Parameters<SessionManager["appendMessage"]>[0],
+                    message: candidate as SessionManagerAppendMessage,
                     beforeMessageWrite: params.beforeMessageWrite,
                     explicitIdempotencyKey,
                     agentId: transcriptAgentId,

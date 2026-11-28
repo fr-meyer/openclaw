@@ -70,7 +70,7 @@ function isVerifiedReadAuthMethod(
 }
 
 /** One authenticated, read-scoped RPC on the exact selected Gateway connection. */
-export async function callGatewayVerifiedRead(
+export async function callGatewayWorkerNamespaceVerifiedRead(
   opts: GatewayCliTransportRpcOpts & {
     expectedBootId: string;
     expectUrl: string;
@@ -171,6 +171,9 @@ export async function callGatewayVerifiedRead(
   }
   return { kind: "gateway-verified-read", method, connection: admitted, result };
 }
+
+// Compatibility export for existing direct runtime consumers.
+export { callGatewayWorkerNamespaceVerifiedRead as callGatewayVerifiedRead };
 
 export async function isImplicitLocalGatewayTargetFromCliRuntime(
   opts: GatewayCliTransportRpcOpts,

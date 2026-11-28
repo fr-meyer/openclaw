@@ -94,7 +94,10 @@ export function createPackagedMergeguezTaskFlowProjector(
       return source;
     }
     if (cached?.source !== source) {
-      cached = { source, value: projectPackagedMergeguezTaskFlowRuntime(source, record, admission) };
+      cached = {
+        source,
+        value: projectPackagedMergeguezTaskFlowRuntime(source, record, admission),
+      };
     }
     return cached.value;
   };

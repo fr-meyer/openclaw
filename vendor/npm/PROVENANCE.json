@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "artifact": "npm-12.2.3-local-ghsa-g3hv-75wg-m249.tgz",
+  "distribution": "locally backported npm archive; not official fixed upstream version",
+  "name": "npm",
+  "version": "12.2.3",
+  "bytes": 3070405,
+  "sha256": "011eae277f98de740a9601ccc5da1230e70ab48a474763487410d815d231b25d",
+  "integrity": "sha512-wwVl/dSkcAxwqEyvl+m0PW8cRW9+kP2kW5iUpHpOoReWztJsvMI0tyW22dkvt8YcnJgJgss1hshdOcNVngTX9Q==",
+  "upstream": {
+    "tarball": "https://registry.npmjs.org/npm/-/npm-12.2.3.tgz",
+    "integrity": "sha512-ovmNRRe76Jvcp1E6iOePQ6H9Zr4XMOrqgfaeGNhtRvP3XSl2Lo/a9C1N5/jRlLLrsqCem/omgGdZHpZ5a6yn1Q=="
+  },
+  "securityBackport": {
+    "advisory": "GHSA-g3hv-75wg-m249",
+    "standaloneMinimatchVersionUnchanged": "10.2.5",
+    "globVersionUnchanged": "13.0.6",
+    "guards": [
+      "bound first-phase clones by existing braceExpandMax default100000",
+      "skip optional quadratic second-phase above1000"
+    ],
+    "publicVersionRangeStillAffected": true,
+    "notGenericVersionExceptionOrAdvisoryWithdrawal": true
+  },
+  "changedPayloadMembers": [
+    {
+      "path": "package/node_modules/minimatch/dist/commonjs/index.js",
+      "preSha256": "d224f71f20d7c206fcc5b7e9f747324c7698345a0b2c28d717dd9cf698306783",
+      "postSha256": "433fb0d8006bd8236caddc56752567dd4b9d98d2053f249ca08ac81159dccc18",
+      "preBytes": 45140,
+      "postBytes": 45498,
+      "mode": 420,
+      "role": "standalone commonjs",
+      "changes": [
+        "existing braceExpandMax default100000 limits first-phase cloning",
+        "second phase returns unchanged set above1000 to avoid quadratic merge",
+        "remove absent/stale sourceMappingURL, no map fabricated"
+      ],
+      "versionUnchanged": "minimatch10.2.5 / glob13.0.6",
+      "notOfficialFixedVersionClaim": true
+    },
+    {
+      "path": "package/node_modules/minimatch/dist/esm/index.js",
+      "preSha256": "59821ec2ce0d3df968292036e5c831ad322b33e9c33a949ecbc9dfe125d165be",
+      "postSha256": "e440570b9cdb5fd581de97998558b216d23fd4da3362f6c9a2b84da48910dbe0",
+      "preBytes": 43810,
+      "postBytes": 44168,
+      "mode": 420,
+      "role": "standalone esm",
+      "changes": [
+        "existing braceExpandMax default100000 limits first-phase cloning",
+        "second phase returns unchanged set above1000 to avoid quadratic merge",
+        "remove absent/stale sourceMappingURL, no map fabricated"
+      ],
+      "versionUnchanged": "minimatch10.2.5 / glob13.0.6",
+      "notOfficialFixedVersionClaim": true
+    },
+    {
+      "path": "package/node_modules/glob/dist/commonjs/index.min.js",
+      "preSha256": "3178e109aa75b45d6970a51a718f01e5b5b8f87150563ee6cb4c0e75ec215617",
+      "postSha256": "b483e5022b090ec3a3b6415a176fb36a3805acf34e4d92bf4c971dea0e353d5b",
+      "preBytes": 88495,
+      "postBytes": 88562,
+      "mode": 420,
+      "role": "actual default glob commonjs embedded minimatch runtime",
+      "changes": [
+        "existing braceExpandMax default100000 limits first-phase cloning",
+        "second phase returns unchanged set above1000 to avoid quadratic merge",
+        "remove absent/stale sourceMappingURL, no map fabricated"
+      ],
+      "versionUnchanged": "minimatch10.2.5 / glob13.0.6",
+      "notOfficialFixedVersionClaim": true
+    },
+    {
+      "path": "package/node_modules/glob/dist/esm/index.min.js",
+      "preSha256": "9eff492e16fdf9ea47a5f3c3d64784f9238b607f95a278101eb5a4e882f6ea85",
+      "postSha256": "8a93cc1084898973802bbc0e022eda10503ef03f6a89a3a255cb91b3f52ecf50",
+      "preBytes": 82749,
+      "postBytes": 82816,
+      "mode": 420,
+      "role": "actual default glob esm embedded minimatch runtime",
+      "changes": [
+        "existing braceExpandMax default100000 limits first-phase cloning",
+        "second phase returns unchanged set above1000 to avoid quadratic merge",
+        "remove absent/stale sourceMappingURL, no map fabricated"
+      ],
+      "versionUnchanged": "minimatch10.2.5 / glob13.0.6",
+      "notOfficialFixedVersionClaim": true
+    }
+  ],
+  "unchangedPayloadMembers": 1939,
+  "method": "Four audited JS member patches; absent stale map references removed; deterministic reconstruction independently reproduced."
+}

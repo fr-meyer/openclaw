@@ -1,4 +1,3 @@
-import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { ErrorCodes, errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
@@ -10,6 +9,7 @@ import {
 import type { OpenClawPluginApi } from "../api.js";
 import { redactClaimToken, redactDispatchResult } from "./card-redaction.js";
 import { dispatchAndStartWorkboardCards } from "./dispatcher.js";
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { WorkboardCardConflictError, type WorkboardStore } from "./store.js";
 import {
   assertWorkboardWorkspaceMutationAccess,
@@ -165,10 +165,7 @@ export function createWorkboardDispatchHandler(params: {
       }
     }
     const { boardId: rawBoardId, maxStarts: rawMaxStarts } = input;
-    if (
-      Object.hasOwn(input, "boardId") &&
-      (typeof rawBoardId !== "string" || !rawBoardId.trim())
-    ) {
+    if (Object.hasOwn(input, "boardId") && (typeof rawBoardId !== "string" || !rawBoardId.trim())) {
       throw new Error("boardId must be a non-empty string.");
     }
     const boardId = typeof rawBoardId === "string" ? rawBoardId.trim() : undefined;
@@ -181,9 +178,7 @@ export function createWorkboardDispatchHandler(params: {
     if (cardId && maxStarts !== undefined && maxStarts !== 1) {
       throw new Error("maxStarts must be 1 when cardId is provided.");
     }
-    const provider = options.directCard
-      ? normalizeOptionalString(input.provider)
-      : undefined;
+    const provider = options.directCard ? normalizeOptionalString(input.provider) : undefined;
     const model = options.directCard ? normalizeOptionalString(input.model) : undefined;
     const result = await dispatchAndStartWorkboardCards({
       liveExecutions: params.liveExecutions,
@@ -191,7 +186,9 @@ export function createWorkboardDispatchHandler(params: {
       subagent: params.api.runtime.subagent,
       worktrees: params.api.runtime.worktrees,
       options: {
-        ...(cardId ? { cardId, maxStarts: 1, targetMode: options.directCard ? "start" : "dispatch" } : {}),
+        ...(cardId
+          ? { cardId, maxStarts: 1, targetMode: options.directCard ? "start" : "dispatch" }
+          : {}),
         ...(typeof intentRunId === "string" ? { intentRunId } : {}),
         boardId,
         ...(maxStarts !== undefined ? { maxStarts } : {}),

@@ -3,7 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { acquireFileLock } from "openclaw/plugin-sdk/file-lock";
 import type { EmbeddingBatchExecutionParams } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
-import { updateOpenAiBatchJournal, type OpenAiBatchJournalContext } from "./embedding-batch-journal.js";
+import {
+  updateOpenAiBatchJournal,
+  type OpenAiBatchJournalContext,
+} from "./embedding-batch-journal.js";
 import type { OpenAiBatchRequest } from "./embedding-batch-recovery.js";
 import { runOpenAiEmbeddingBatches } from "./embedding-batch.js";
 import type { OpenAiEmbeddingClient } from "./embedding-provider.js";
@@ -17,7 +20,10 @@ export type OpenAiBatchControllerManifest = Readonly<{
 
 export type OpenAiBoundBatchController = {
   readonly manifest: OpenAiBatchControllerManifest;
-  runBatch(requests: OpenAiBatchRequest[], execution: EmbeddingBatchExecutionParams): Promise<Map<string, number[]>>;
+  runBatch(
+    requests: OpenAiBatchRequest[],
+    execution: EmbeddingBatchExecutionParams,
+  ): Promise<Map<string, number[]>>;
 };
 
 /** A bounded operation, not a service or authorization to transmit a corpus.
@@ -39,14 +45,22 @@ export async function withOpenAiBatchController<T>(
   const agentId = params.agentId;
   const route = new URL(journal.route);
   if (
-    route.protocol !== "https:" || route.username || route.password || route.search || route.hash ||
-    journal.route !== inputClient.baseUrl || !agentId ||
+    route.protocol !== "https:" ||
+    route.username ||
+    route.password ||
+    route.search ||
+    route.hash ||
+    journal.route !== inputClient.baseUrl ||
+    !agentId ||
     !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(journal.migrationId) ||
     !/^[a-f0-9]{40,64}$/.test(journal.sourceRevision) ||
     !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/.test(journal.accountId) ||
-    expected.model !== "text-embedding-3-small" || expected.dimensions !== 256 ||
-    inputClient.model !== expected.model || inputClient.outputDimensionality !== expected.dimensions ||
-    !path.isAbsolute(journal.path) || inputClient.batchJournal
+    expected.model !== "text-embedding-3-small" ||
+    expected.dimensions !== 256 ||
+    inputClient.model !== expected.model ||
+    inputClient.outputDimensionality !== expected.dimensions ||
+    !path.isAbsolute(journal.path) ||
+    inputClient.batchJournal
   ) {
     throw new Error("Invalid or prebound OpenAI Batch controller admission");
   }
@@ -54,16 +68,25 @@ export async function withOpenAiBatchController<T>(
   const directory = await fs.lstat(parent);
   if (
     journal.path !== path.join(parent, path.basename(journal.path)) ||
-    !directory.isDirectory() || (directory.mode & 0o077) !== 0 ||
+    !directory.isDirectory() ||
+    (directory.mode & 0o077) !== 0 ||
     (typeof process.getuid === "function" && directory.uid !== process.getuid())
   ) {
     throw new Error("OpenAI Batch controller requires an owned private canonical directory");
   }
-  const identity = createHash("sha256").update(JSON.stringify({
-    migrationId: journal.migrationId, sourceRevision: journal.sourceRevision,
-    accountId: journal.accountId, route: journal.route,
-    agentId, model: expected.model, dimensions: expected.dimensions,
-  })).digest("hex");
+  const identity = createHash("sha256")
+    .update(
+      JSON.stringify({
+        migrationId: journal.migrationId,
+        sourceRevision: journal.sourceRevision,
+        accountId: journal.accountId,
+        route: journal.route,
+        agentId,
+        model: expected.model,
+        dimensions: expected.dimensions,
+      }),
+    )
+    .digest("hex");
   const lock = await acquireFileLock(journal.path, {
     retries: { retries: 0, factor: 1, minTimeout: 1, maxTimeout: 1 },
     stale: 30_000,
@@ -78,11 +101,14 @@ export async function withOpenAiBatchController<T>(
     // A reserved, non-provider intent pins the controller identity in the SAME
     // existing receipt DB. Reopen never creates a second state/journal owner.
     const receipt = await updateOpenAiBatchJournal({
-      path: journal.path, operationId: "controller:identity", identity,
+      path: journal.path,
+      operationId: "controller:identity",
+      identity,
     });
     if (
       receipt.receipt.phase !== "upload-unknown" ||
-      receipt.receipt.inputFileId || receipt.receipt.batchId
+      receipt.receipt.inputFileId ||
+      receipt.receipt.batchId
     ) {
       throw new Error("Invalid OpenAI Batch controller identity marker");
     }
@@ -93,7 +119,8 @@ export async function withOpenAiBatchController<T>(
     // Do not mutate or leak the original provider client; binding lives only
     // within this owner. Frozen adapter/provider postimages stay unchanged.
     const client: OpenAiEmbeddingClient = {
-      ...inputClient, batchJournal: journal,
+      ...inputClient,
+      batchJournal: journal,
     };
     const manifest = Object.freeze({ journal, identity, ...expected });
     const controller: OpenAiBoundBatchController = {
@@ -105,7 +132,9 @@ export async function withOpenAiBatchController<T>(
           return work;
         };
         if (!active || batchActive) {
-          return observe(Promise.reject(new Error("OpenAI Batch controller custody is retired or already busy")));
+          return observe(
+            Promise.reject(new Error("OpenAI Batch controller custody is retired or already busy")),
+          );
         }
         let requestSnapshot: OpenAiBatchRequest[];
         let executionSnapshot: EmbeddingBatchExecutionParams;
@@ -115,21 +144,36 @@ export async function withOpenAiBatchController<T>(
           // Native contract has scalar controls and a debug capability only.
           // Preserve the callback; do not clone functions or AbortSignals.
           executionSnapshot = {
-            wait: execution.wait, pollIntervalMs: execution.pollIntervalMs,
-            timeoutMs: execution.timeoutMs, concurrency: execution.concurrency,
+            wait: execution.wait,
+            pollIntervalMs: execution.pollIntervalMs,
+            timeoutMs: execution.timeoutMs,
+            concurrency: execution.concurrency,
             debug: execution.debug,
           };
-          if (!Array.isArray(requestSnapshot) || requestSnapshot.some((request) =>
-            request.method !== "POST" || request.url !== "/v1/embeddings" ||
-            typeof request.custom_id !== "string" || !request.custom_id ||
-            request.body.model !== expected.model || request.body.dimensions !== expected.dimensions ||
-            typeof request.body.input !== "string") ||
+          if (
+            !Array.isArray(requestSnapshot) ||
+            requestSnapshot.some(
+              (request) =>
+                request.method !== "POST" ||
+                request.url !== "/v1/embeddings" ||
+                typeof request.custom_id !== "string" ||
+                !request.custom_id ||
+                request.body.model !== expected.model ||
+                request.body.dimensions !== expected.dimensions ||
+                typeof request.body.input !== "string",
+            ) ||
             typeof executionSnapshot.wait !== "boolean" ||
-            !Number.isFinite(executionSnapshot.pollIntervalMs) || executionSnapshot.pollIntervalMs < 0 ||
-            !Number.isFinite(executionSnapshot.timeoutMs) || executionSnapshot.timeoutMs <= 0 ||
-            !Number.isSafeInteger(executionSnapshot.concurrency) || executionSnapshot.concurrency < 1 ||
-            (executionSnapshot.debug !== undefined && typeof executionSnapshot.debug !== "function")) {
-            throw new Error("OpenAI Batch invocation differs from admitted request/execution identity");
+            !Number.isFinite(executionSnapshot.pollIntervalMs) ||
+            executionSnapshot.pollIntervalMs < 0 ||
+            !Number.isFinite(executionSnapshot.timeoutMs) ||
+            executionSnapshot.timeoutMs <= 0 ||
+            !Number.isSafeInteger(executionSnapshot.concurrency) ||
+            executionSnapshot.concurrency < 1 ||
+            (executionSnapshot.debug !== undefined && typeof executionSnapshot.debug !== "function")
+          ) {
+            throw new Error(
+              "OpenAI Batch invocation differs from admitted request/execution identity",
+            );
           }
         } catch (error) {
           return observe(Promise.reject(error));
@@ -138,16 +182,29 @@ export async function withOpenAiBatchController<T>(
         pending = (async () => {
           try {
             const current = await fs.lstat(journal.path);
-            if (!current.isFile() || current.isSymbolicLink() ||
-              current.dev !== file.dev || current.ino !== file.ino || (current.mode & 0o077) !== 0) {
+            if (
+              !current.isFile() ||
+              current.isSymbolicLink() ||
+              current.dev !== file.dev ||
+              current.ino !== file.ino ||
+              (current.mode & 0o077) !== 0
+            ) {
               throw new Error("OpenAI Batch controller journal identity changed");
             }
             const vectors = await runOpenAiEmbeddingBatches({
-              ...executionSnapshot, openAi: client, agentId,
-              requests: requestSnapshot, journal,
+              ...executionSnapshot,
+              openAi: client,
+              agentId,
+              requests: requestSnapshot,
+              journal,
             });
-            if ([...vectors.values()].some((vector) => vector.length !== expected.dimensions ||
-              vector.some((value) => !Number.isFinite(value)))) {
+            if (
+              [...vectors.values()].some(
+                (vector) =>
+                  vector.length !== expected.dimensions ||
+                  vector.some((value) => !Number.isFinite(value)),
+              )
+            ) {
               throw new Error("OpenAI Batch results differ from admitted vector dimensions");
             }
             return vectors;
@@ -169,15 +226,21 @@ export async function withOpenAiBatchController<T>(
     try {
       await pending;
     } catch (error) {
-      if (!failures.includes(error)) { failures.push(error); }
+      if (!failures.includes(error)) {
+        failures.push(error);
+      }
     }
     try {
       await lock.release();
     } catch (error) {
-      if (!failures.includes(error)) { failures.push(error); }
+      if (!failures.includes(error)) {
+        failures.push(error);
+      }
     }
   }
-  if (failures.length === 1) { throw failures[0]; }
+  if (failures.length === 1) {
+    throw failures[0];
+  }
   if (failures.length > 1) {
     throw new AggregateError(failures, "OpenAI Batch controller callback/drain/release failed", {
       cause: failures[0],

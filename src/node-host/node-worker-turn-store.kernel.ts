@@ -26,11 +26,11 @@ import {
 } from "./node-worker-launch-receipt.js";
 import { readNodeWorkerLaunchReceipt } from "./node-worker-launch-store.kernel.js";
 import type { NodeWorkerProcessIdentity } from "./node-worker-process-identity.js";
+import { settleNodeWorkerActiveTurns } from "./node-worker-turn-settlement.worker.js";
 import type {
   NodeWorkerTurnJournalSnapshot,
   NodeWorkerTurnJournalSnapshotQuery,
 } from "./node-worker-turn-snapshot.types.js";
-import { settleNodeWorkerActiveTurns } from "./node-worker-turn-settlement.worker.js";
 
 type TurnDatabase = Pick<OpenClawStateDatabase, "node_worker_turns">;
 type TurnRow = Selectable<TurnDatabase["node_worker_turns"]>;

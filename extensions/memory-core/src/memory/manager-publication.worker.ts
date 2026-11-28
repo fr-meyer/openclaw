@@ -1,5 +1,3 @@
-import { MemoryBatchSubmissionKernel } from "./manager-batch-submission-kernel.js";
-import type { MemoryBatchSubmissionCommand, MemoryBatchSubmissionReply } from "./manager-batch-submission-task.js";
 import type { DatabaseSync } from "node:sqlite";
 import {
   ensureMemoryIndexSchema,
@@ -15,6 +13,11 @@ import {
   type SqliteWorkerBackend,
 } from "openclaw/plugin-sdk/sqlite-worker-runtime";
 import { hasMemorySessionTombstone } from "../memory-session-tombstones.js";
+import { MemoryBatchSubmissionKernel } from "./manager-batch-submission-kernel.js";
+import type {
+  MemoryBatchSubmissionCommand,
+  MemoryBatchSubmissionReply,
+} from "./manager-batch-submission-task.js";
 import { publishMemoryDatabaseTables, readMemoryDatabaseRevision } from "./manager-db-kernel.js";
 import {
   clearMemoryEmbeddingCacheIdentities,
@@ -42,22 +45,55 @@ import {
   refreshMemorySessionSourceState,
 } from "./manager-source-state.js";
 
-function executeBatchSubmission(db: DatabaseSync, request: MemoryBatchSubmissionCommand): MemoryBatchSubmissionReply {
+function executeBatchSubmission(
+  db: DatabaseSync,
+  request: MemoryBatchSubmissionCommand,
+): MemoryBatchSubmissionReply {
   const kernel = new MemoryBatchSubmissionKernel(() => db);
   kernel.restorePendingKeys(request.pendingKeys);
   const finish = <Kind extends string, Value>(kind: Kind, value: Value) => ({
-    kind, value, status: kernel.readStatus(), pendingKeys: kernel.pendingKeys(),
+    kind,
+    value,
+    status: kernel.readStatus(),
+    pendingKeys: kernel.pendingKeys(),
   });
   switch (request.kind) {
-    case "assert": return finish(request.kind, kernel.assertReady());
-    case "clear": return finish(request.kind, kernel.clear());
-    case "commit": return finish(request.kind, kernel.commit());
-    case "started": return finish(request.kind, kernel.createLifecycle(request.identity).started(...request.args));
-    case "accepted": return finish(request.kind, kernel.createLifecycle(request.identity).accepted(...request.args));
-    case "rejected": return finish(request.kind, kernel.createLifecycle(request.identity).rejected(...request.args));
-    case "resumeAccepted": return finish(request.kind, kernel.createLifecycle(request.identity).resumeAccepted(...request.args));
-    case "listAccepted": return finish(request.kind, kernel.createLifecycle(request.identity).listAccepted(...request.args));
-    case "publishRecovered": return finish(request.kind, kernel.createLifecycle(request.identity).publishRecovered(...request.args));
+    case "assert":
+      return finish(request.kind, kernel.assertReady());
+    case "clear":
+      return finish(request.kind, kernel.clear());
+    case "commit":
+      return finish(request.kind, kernel.commit());
+    case "started":
+      return finish(
+        request.kind,
+        kernel.createLifecycle(request.identity).started(...request.args),
+      );
+    case "accepted":
+      return finish(
+        request.kind,
+        kernel.createLifecycle(request.identity).accepted(...request.args),
+      );
+    case "rejected":
+      return finish(
+        request.kind,
+        kernel.createLifecycle(request.identity).rejected(...request.args),
+      );
+    case "resumeAccepted":
+      return finish(
+        request.kind,
+        kernel.createLifecycle(request.identity).resumeAccepted(...request.args),
+      );
+    case "listAccepted":
+      return finish(
+        request.kind,
+        kernel.createLifecycle(request.identity).listAccepted(...request.args),
+      );
+    case "publishRecovered":
+      return finish(
+        request.kind,
+        kernel.createLifecycle(request.identity).publishRecovered(...request.args),
+      );
   }
 }
 

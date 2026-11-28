@@ -3,6 +3,11 @@ import type {
   SessionTreeEntry,
 } from "../../../packages/agent-core/src/harness/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { Message } from "../../llm/types.js";
+import type { BashExecutionMessage, CustomMessage } from "./messages.js";
+
+/** Canonical append payload, shared without depending on the stateful SessionManager. */
+export type SessionManagerAppendMessage = Message | CustomMessage | BashExecutionMessage;
 
 export interface SessionHeader {
   type: "session";

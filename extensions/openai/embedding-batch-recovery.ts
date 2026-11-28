@@ -128,7 +128,8 @@ export class OpenAiBatchRecovery {
     }
     const timeoutSignal = AbortSignal.timeout(Math.min(120_000, this.remaining()));
     const signal = this.options.signal
-      ? AbortSignal.any([this.options.signal, timeoutSignal]) : timeoutSignal;
+      ? AbortSignal.any([this.options.signal, timeoutSignal])
+      : timeoutSignal;
     try {
       return await withRemoteHttpResponse({
         url: url.toString(),
@@ -271,7 +272,10 @@ export class OpenAiBatchRecovery {
         requests: group,
         errorPrefix: "openai batch file upload failed",
         signal: this.options.signal
-          ? AbortSignal.any([this.options.signal, AbortSignal.timeout(Math.min(120_000, this.remaining()))])
+          ? AbortSignal.any([
+              this.options.signal,
+              AbortSignal.timeout(Math.min(120_000, this.remaining())),
+            ])
           : AbortSignal.timeout(Math.min(120_000, this.remaining())),
       });
     } catch (error) {
@@ -474,9 +478,14 @@ export class OpenAiBatchRecovery {
                   typeof body === "object" ? body?.data : undefined,
                   1,
                   `openai batch response ${id}`,
-                  dimensions,
                 );
-                vectors.set(id, vector!);
+                if (!vector || (dimensions !== undefined && vector.length !== dimensions)) {
+                  throw Object.assign(
+                    new Error(`openai batch response ${id}: invalid embedding dimensions`),
+                    { code: "INVALID_EMBEDDING_RESPONSE" },
+                  );
+                }
+                vectors.set(id, vector);
               } catch (error) {
                 if (!conclusivelyFailed.has(id)) ambiguousFailures.add(id);
                 problems.push(diagnostic(error));

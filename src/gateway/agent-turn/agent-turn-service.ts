@@ -33,8 +33,8 @@ import { prepareAgentRequestRouting } from "./agent-request-routing.js";
 import { prepareAgentRunDispatch } from "./agent-run-admission-phase.js";
 import { startAgentRunExecution } from "./agent-run-execution-phase.js";
 import { persistAgentSessionPhase } from "./agent-session-persist.js";
-import { trackAgentTurnExecutionSettlement } from "./execution-settlement.js";
 import { prepareAgentWaitForTurn } from "./agent-wait.js";
+import { trackAgentTurnExecutionSettlement } from "./execution-settlement.js";
 import type { RequesterSettleWakeReplay } from "./internal-facade.types.js";
 import type { AgentTurnIo, AgentTurnPrincipal } from "./types.js";
 

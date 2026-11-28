@@ -84,6 +84,7 @@ type RunNodeRequirementDeps = {
   env: NodeJS.ProcessEnv;
   fs: typeof fs;
   privateQaRequiredDistEntries?: string[];
+  onMissingBundledPluginRuntimeEntryOutput?: (filePath: string) => void;
   sourceRoots: Array<{ name: string; path: string }>;
   spawnSync: RunNodeSpawnSync;
 };
@@ -314,7 +315,13 @@ const hasRuntimePostBuildInputMtimeChanged = (stampMtime: number, deps: RunNodeR
 const hasMissingBuiltBundledPluginRuntimeEntryOutput = (deps: RunNodeRequirementDeps) => {
   return collectRunNodeBundledPluginBuildEntries(deps).some((pluginEntry) => {
     const entryPaths = listBundledPluginRuntimeEntryPaths(pluginEntry, deps);
-    return entryPaths.some((filePath) => !deps.fs.existsSync(filePath));
+    return entryPaths.some((filePath) => {
+      if (deps.fs.existsSync(filePath)) {
+        return false;
+      }
+      deps.onMissingBundledPluginRuntimeEntryOutput?.(filePath);
+      return true;
+    });
   });
 };
 
@@ -1767,7 +1774,20 @@ export async function runNodeMain(params: RunNodeMainParams = {}): Promise<RunNo
       if (shouldFastPathExistingDist(deps)) {
         return 0;
       }
-      const lockedBuildRequirement = resolveBuildRequirement(deps);
+      let missingBundledPluginRuntimeOutput: string | undefined;
+      const lockedBuildRequirement = resolveBuildRequirement({
+        ...deps,
+        onMissingBundledPluginRuntimeEntryOutput: (filePath) => {
+          const relativePath = normalizePath(path.relative(deps.cwd, filePath));
+          missingBundledPluginRuntimeOutput =
+            relativePath &&
+            !path.isAbsolute(relativePath) &&
+            relativePath !== ".." &&
+            !relativePath.startsWith("../")
+              ? JSON.stringify(relativePath)
+              : "<outside repository>";
+        },
+      });
       if (!lockedBuildRequirement.shouldBuild) {
         const runtimePostBuildRequirement = resolveRuntimePostBuildRequirement(deps);
         if (!runtimePostBuildRequirement.shouldSync) {
@@ -1791,6 +1811,15 @@ export async function runNodeMain(params: RunNodeMainParams = {}): Promise<RunNo
               `Building TypeScript (dist is stale: ${lockedBuildRequirement.reason} - ${formatBuildReason(lockedBuildRequirement.reason)}).`,
               deps,
             );
+            if (
+              lockedBuildRequirement.reason === "missing_bundled_plugin_dist_entry" &&
+              missingBundledPluginRuntimeOutput
+            ) {
+              logRunner(
+                `Missing bundled plugin runtime output (${lockedBuildRequirement.reason}): ${missingBundledPluginRuntimeOutput}.`,
+                deps,
+              );
+            }
             return await withRunNodeProgress(deps, "Building local CLI artifacts", async () => {
               deps.cancellation.signal.throwIfAborted();
               const build = deps.spawn(

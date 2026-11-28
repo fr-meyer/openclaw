@@ -32,7 +32,10 @@ export type EmbeddingProviderBatchRuntime = {
   /** Invoked only through the native registry's exact provider/runtime owner. */
   withCandidateBatch?: <T>(
     admission: EmbeddingCandidateAdmission,
-    run: (batch: EmbeddingProviderBatchRuntime["batchEmbed"], identity: EmbeddingCandidateControllerIdentity) => Promise<T>,
+    run: (
+      batch: EmbeddingProviderBatchRuntime["batchEmbed"],
+      identity: EmbeddingCandidateControllerIdentity,
+    ) => Promise<T>,
   ) => Promise<T>;
   /** Returns one vector per chunk in input order, or null for fallback unless fail-closed. */
   batchEmbed: (options: EmbeddingBatchOptions) => Promise<number[][] | null>;
@@ -47,7 +50,15 @@ export type EmbeddingProviderBatchRuntime = {
 /** Candidate-only durable admission. Account/source/spend authorization is external. */
 export type EmbeddingCandidateAdmission = {
   agentId: string;
-  journal: { path: string; migrationId: string; sourceRevision: string; accountId: string; route: string };
+  journal: {
+    path: string;
+    migrationId: string;
+    sourceRevision: string;
+    accountId: string;
+    route: string;
+  };
   expected: { model: string; dimensions: number };
 };
-export type EmbeddingCandidateControllerIdentity = EmbeddingCandidateAdmission & { identity: string };
+export type EmbeddingCandidateControllerIdentity = EmbeddingCandidateAdmission & {
+  identity: string;
+};

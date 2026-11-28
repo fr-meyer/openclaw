@@ -1,4 +1,3 @@
-import type { OpenAiBatchJournalContext } from "./embedding-batch-journal.js";
 import {
   createRemoteEmbeddingProvider,
   normalizeEmbeddingModelWithPrefixes,
@@ -8,6 +7,7 @@ import {
   type RemoteEmbeddingClient,
 } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import { OPENAI_DEFAULT_EMBEDDING_MODEL } from "./default-models.js";
+import type { OpenAiBatchJournalContext } from "./embedding-batch-journal.js";
 
 export type OpenAiEmbeddingClient = RemoteEmbeddingClient & {
   /** Independent controller custody only; never inferred from credentials. */

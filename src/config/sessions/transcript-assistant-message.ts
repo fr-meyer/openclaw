@@ -1,5 +1,5 @@
 import type { AgentMessage } from "../../agents/runtime/index.js";
-import type { SessionManager } from "../../agents/sessions/session-manager.js";
+import type { SessionManagerAppendMessage } from "../../agents/sessions/session-manager-types.js";
 import { applyAssistantDeliveryDirectives } from "./transcript-assistant-delivery.js";
 
 export type AssistantBeforeMessageWrite = (params: {
@@ -9,12 +9,12 @@ export type AssistantBeforeMessageWrite = (params: {
 }) => AgentMessage | null;
 
 export function applyBeforeMessageWriteToAssistant(params: {
-  message: Parameters<SessionManager["appendMessage"]>[0];
+  message: SessionManagerAppendMessage;
   beforeMessageWrite?: AssistantBeforeMessageWrite;
   explicitIdempotencyKey?: string;
   agentId?: string;
   sessionKey: string;
-}): Parameters<SessionManager["appendMessage"]>[0] | undefined {
+}): SessionManagerAppendMessage | undefined {
   const nextMessage = params.beforeMessageWrite
     ? params.beforeMessageWrite({
         message: params.message as AgentMessage,
@@ -28,5 +28,5 @@ export function applyBeforeMessageWriteToAssistant(params: {
   return Object.assign(
     applyAssistantDeliveryDirectives(nextMessage),
     params.explicitIdempotencyKey ? { idempotencyKey: params.explicitIdempotencyKey } : {},
-  ) as Parameters<SessionManager["appendMessage"]>[0];
+  ) as SessionManagerAppendMessage;
 }

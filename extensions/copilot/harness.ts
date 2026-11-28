@@ -24,6 +24,7 @@ import type {
 } from "./src/attempt-types.js";
 import { createCopilotByokAuth, resolveCopilotAuth, tokenFingerprint } from "./src/auth-bridge.js";
 import { createCopilotByokProxy } from "./src/byok-proxy.js";
+import { failedCompaction } from "./src/compaction-result.js";
 import {
   buildCopilotCompactionHookContext,
   isStaleSdkSessionError,
@@ -421,15 +422,6 @@ function computeAttemptCompactKey(params: AttemptParamsLike): string {
 
 function computeCompactRequestKey(params: CopilotCompactParamsLike): string {
   return computeSessionKey({ kind: "compact", params }, { includeApi: false, includeAuth: false });
-}
-
-function failedCompaction(reason: string, rawError?: string): AgentHarnessCompactResult {
-  return {
-    ok: false,
-    compacted: false,
-    reason,
-    failure: { reason, ...(rawError === undefined ? {} : { rawError }) },
-  };
 }
 
 export function createCopilotAgentHarness(

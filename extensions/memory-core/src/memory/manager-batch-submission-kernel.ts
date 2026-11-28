@@ -130,9 +130,11 @@ function parseBatchSubmissionQuarantine(value: string): MemoryBatchSubmissionQua
 }
 
 type SynchronousBatchLifecycle = {
-  [Key in keyof MemoryEmbeddingBatchSubmissionLifecycle]-?:
-    NonNullable<MemoryEmbeddingBatchSubmissionLifecycle[Key]> extends
-      (...args: infer Args) => Promise<infer Value> ? (...args: Args) => Value : never;
+  [Key in keyof MemoryEmbeddingBatchSubmissionLifecycle]-?: NonNullable<
+    MemoryEmbeddingBatchSubmissionLifecycle[Key]
+  > extends (...args: infer Args) => Promise<infer Value>
+    ? (...args: Args) => Value
+    : never;
 };
 
 export class MemoryBatchSubmissionKernel {
@@ -141,10 +143,14 @@ export class MemoryBatchSubmissionKernel {
   constructor(private readonly getDatabase: () => DatabaseSync) {}
 
   restorePendingKeys(keys: readonly string[]): void {
-    for (const key of keys) { this.keysPendingCommit.add(key); }
+    for (const key of keys) {
+      this.keysPendingCommit.add(key);
+    }
   }
 
-  pendingKeys(): string[] { return [...this.keysPendingCommit]; }
+  pendingKeys(): string[] {
+    return [...this.keysPendingCommit];
+  }
 
   readStatus(): MemoryBatchSubmissionQuarantineStatus | undefined {
     const rowValue = this.getDatabase()
@@ -336,10 +342,11 @@ export class MemoryBatchSubmissionKernel {
               db,
               provider: identity.provider,
               providerKey: identity.providerKey,
-              entries: () => entries.map((entry) => ({
-                hash: entry.chunkHash,
-                embedding: entry.embedding,
-              })),
+              entries: () =>
+                entries.map((entry) => ({
+                  hash: entry.chunkHash,
+                  embedding: entry.embedding,
+                })),
               now,
             });
           });

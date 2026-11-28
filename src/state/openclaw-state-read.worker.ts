@@ -111,11 +111,11 @@ import {
 import { readMcpOAuthStateCommand } from "./openclaw-state-read-mcp-oauth.js";
 import { stateReadRegistry } from "./openclaw-state-read-operation-registry.js";
 import { readStateRegistryCommand } from "./openclaw-state-read-registry.js";
+import { readSessionRowsSharedFacts } from "./openclaw-state-read-session-rows.worker.js";
 import {
   loadNodeWorkerTurnSnapshotReaderIfNeeded,
   readNodeWorkerTurnSnapshotReply,
 } from "./openclaw-state-read-snapshot-loader.js";
-import { readSessionRowsSharedFacts } from "./openclaw-state-read-session-rows.worker.js";
 import { readStateStream } from "./openclaw-state-read-stream.js";
 import type {
   OpenClawStateReadReply,
@@ -130,7 +130,9 @@ import { readUserProfileCommand } from "./user-profile-read.worker.js";
 
 serveOwnedWorkerTasks(
   async function read(input, channel, control): Promise<OpenClawStateReadReply> {
-    const pending = loadNodeWorkerTurnSnapshotReaderIfNeeded(input, () => read(input, channel, control));
+    const pending = loadNodeWorkerTurnSnapshotReaderIfNeeded(input, () =>
+      read(input, channel, control),
+    );
     if (pending) {
       return pending;
     }

@@ -4,9 +4,9 @@ import {
   requireNodeSqlite,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { describe, expect, it } from "vitest";
-import { MemoryBatchSubmissionOwner } from "./manager-batch-submission.js";
+import { MemoryBatchSubmissionKernel } from "./manager-batch-submission-kernel.js";
 
-describe("memory batch submission owner", () => {
+describe("memory batch submission durable kernel", () => {
   const { DatabaseSync } = requireNodeSqlite();
   const geminiIdentity = {
     provider: { id: "gemini", model: "gemini-embedding-2" },
@@ -27,12 +27,12 @@ describe("memory batch submission owner", () => {
   it("quarantines an accepted provider job across owner restart", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({ submissionId: "submission-1" });
       await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
-      const restarted = new MemoryBatchSubmissionOwner(() => db);
+      const restarted = new MemoryBatchSubmissionKernel(() => db);
       expect(restarted.readStatus()).toMatchObject({
         malformed: false,
         submissions: [
@@ -52,7 +52,7 @@ describe("memory batch submission owner", () => {
   it("resumes an acknowledged provider job across owner restart by exact fingerprint", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({
         submissionId: "submission-1",
@@ -60,7 +60,7 @@ describe("memory batch submission owner", () => {
       });
       await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
-      const restarted = new MemoryBatchSubmissionOwner(() => db);
+      const restarted = new MemoryBatchSubmissionKernel(() => db);
       expect(() => restarted.assertReady()).not.toThrow();
       const resumed = await restarted
         .createLifecycle(geminiIdentity)
@@ -77,7 +77,7 @@ describe("memory batch submission owner", () => {
   it("recovers an acknowledged job across source drift and atomically publishes its cache", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({
         submissionId: "submission-1",
@@ -89,9 +89,9 @@ describe("memory batch submission owner", () => {
       });
       await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
-      const restarted = new MemoryBatchSubmissionOwner(() => db);
+      const restarted = new MemoryBatchSubmissionKernel(() => db);
       const restartedLifecycle = restarted.createLifecycle(geminiIdentity);
-      await expect(restartedLifecycle.listAccepted?.()).resolves.toEqual([
+      expect(restartedLifecycle.listAccepted?.()).toEqual([
         {
           submissionId: "submission-1",
           batchName: "batches/job-1",
@@ -102,7 +102,7 @@ describe("memory batch submission owner", () => {
           ],
         },
       ]);
-      await expect(
+      expect(
         restartedLifecycle.publishRecovered?.({
           submissionId: "submission-1",
           entries: [
@@ -110,7 +110,7 @@ describe("memory batch submission owner", () => {
             { customId: "chunk-b", embedding: [0, 1] },
           ],
         }),
-      ).resolves.toEqual([
+      ).toEqual([
         { chunkHash: "hash-a", embedding: [1, 0] },
         { chunkHash: "hash-b", embedding: [0, 1] },
       ]);
@@ -147,7 +147,7 @@ describe("memory batch submission owner", () => {
   it("keeps the reservation and cache unchanged when recovered output is incomplete", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({
         submissionId: "submission-1",
@@ -159,12 +159,12 @@ describe("memory batch submission owner", () => {
       });
       await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
-      await expect(
+      expect(() =>
         lifecycle.publishRecovered?.({
           submissionId: "submission-1",
           entries: [{ customId: "chunk-a", embedding: [1, 0] }],
         }),
-      ).rejects.toThrow("output is incomplete");
+      ).toThrow("output is incomplete");
       expect(db.prepare("SELECT COUNT(*) AS count FROM memory_embedding_cache").get()).toEqual({
         count: 0,
       });
@@ -177,7 +177,7 @@ describe("memory batch submission owner", () => {
   it("never recovers a completed job under a different model or cache identity", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({
         submissionId: "submission-1",
@@ -186,17 +186,17 @@ describe("memory batch submission owner", () => {
       });
       await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
-      const changedLifecycle = new MemoryBatchSubmissionOwner(() => db).createLifecycle({
+      const changedLifecycle = new MemoryBatchSubmissionKernel(() => db).createLifecycle({
         provider: { id: "gemini", model: "gemini-embedding-future" },
         providerKey: "future-key",
       });
-      await expect(changedLifecycle.listAccepted?.()).resolves.toEqual([]);
-      await expect(
+      expect(changedLifecycle.listAccepted?.()).toEqual([]);
+      expect(() =>
         changedLifecycle.publishRecovered?.({
           submissionId: "submission-1",
           entries: [{ customId: "chunk-a", embedding: [1, 0] }],
         }),
-      ).rejects.toThrow("different provider identity");
+      ).toThrow("different provider identity");
       expect(db.prepare("SELECT COUNT(*) AS count FROM memory_embedding_cache").get()).toEqual({
         count: 0,
       });
@@ -209,7 +209,7 @@ describe("memory batch submission owner", () => {
   it("does not adopt or submit past an acknowledged job with a different fingerprint", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({
         submissionId: "submission-1",
@@ -217,17 +217,17 @@ describe("memory batch submission owner", () => {
       });
       await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
-      const restarted = new MemoryBatchSubmissionOwner(() => db);
+      const restarted = new MemoryBatchSubmissionKernel(() => db);
       const restartedLifecycle = restarted.createLifecycle(geminiIdentity);
-      await expect(
+      expect(
         restartedLifecycle.resumeAccepted?.({ requestFingerprint: "fingerprint-2" }),
-      ).resolves.toBeNull();
-      await expect(
+      ).toBeNull();
+      expect(() =>
         restartedLifecycle.started({
           submissionId: "submission-2",
           requestFingerprint: "fingerprint-2",
         }),
-      ).rejects.toThrow("already reserved by another sync");
+      ).toThrow("already reserved by another sync");
     } finally {
       db.close();
     }
@@ -236,7 +236,7 @@ describe("memory batch submission owner", () => {
   it("removes a reservation after a definitive pre-submit rejection", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({ submissionId: "submission-1" });
       await lifecycle.rejected({ submissionId: "submission-1" });
@@ -251,7 +251,7 @@ describe("memory batch submission owner", () => {
   it("clears only this sync's reservations after local publication commits", async () => {
     const db = createDb();
     try {
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
       await lifecycle.started({ submissionId: "submission-1" });
       await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
@@ -267,13 +267,13 @@ describe("memory batch submission owner", () => {
   it("serializes reservations across independent owners", async () => {
     const db = createDb();
     try {
-      const first = new MemoryBatchSubmissionOwner(() => db);
-      const second = new MemoryBatchSubmissionOwner(() => db);
+      const first = new MemoryBatchSubmissionKernel(() => db);
+      const second = new MemoryBatchSubmissionKernel(() => db);
       await first.createLifecycle(geminiIdentity).started({ submissionId: "submission-1" });
 
-      await expect(
+      expect(() =>
         second.createLifecycle(geminiIdentity).started({ submissionId: "submission-2" }),
-      ).rejects.toThrow("already reserved by another sync");
+      ).toThrow("already reserved by another sync");
     } finally {
       db.close();
     }
@@ -286,7 +286,7 @@ describe("memory batch submission owner", () => {
         "memory_batch_submission_quarantine_v1",
         "not json",
       );
-      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const owner = new MemoryBatchSubmissionKernel(() => db);
 
       expect(owner.readStatus()).toMatchObject({ malformed: true, submissions: [] });
       expect(() => owner.assertReady()).toThrow("record is malformed");

@@ -350,15 +350,18 @@ describe("iOS screenshot evidence", () => {
     { field: "targetSha", value: "c".repeat(40), error: "cross-SHA screenshot evidence" },
     { field: "workflowSha", value: "c".repeat(40), error: "workflow SHA" },
     { field: "runId", value: "99999", error: "workflow run id" },
-  ])("rejects retained earlier-attempt evidence with a different $field", ({ field, value, error }) => {
-    const root = tempDirs.make("ios-screenshot-retained-provenance-");
-    const input = collectAll(root, TARGET_SHA, { iphone: 1, "ipad-13": 1, watch: 1 });
-    updateAllManifests(input, (manifest) => {
-      manifest[field] = value;
-    });
+  ])(
+    "rejects retained earlier-attempt evidence with a different $field",
+    ({ field, value, error }) => {
+      const root = tempDirs.make("ios-screenshot-retained-provenance-");
+      const input = collectAll(root, TARGET_SHA, { iphone: 1, "ipad-13": 1, watch: 1 });
+      updateAllManifests(input, (manifest) => {
+        manifest[field] = value;
+      });
 
-    expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow(error);
-  });
+      expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow(error);
+    },
+  );
 
   it("rejects cross-SHA shard evidence", () => {
     const root = tempDirs.make("ios-screenshot-cross-sha-");

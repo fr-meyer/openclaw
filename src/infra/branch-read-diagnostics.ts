@@ -3,11 +3,29 @@
  * fallbackAvailable=0: navigation projection does not expose fallback provenance.
  */
 const fields = [
-  "cache", "full", "tail", "tailFallback", "fullRows", "tailRows",
-  "selectedHeadlineRows", "branchCount", "navigationUtf16CodeUnits",
-  "selectedBodyUtf16CodeUnits", "nextMs", "decodeMs", "projectMs",
-  "treeInclusiveMs", "headlineInclusiveMs", "cloneMs", "selectedQueryMs",
-  "ok", "missing", "failed", "exception", "saturated", "fallbackAvailable",
+  "cache",
+  "full",
+  "tail",
+  "tailFallback",
+  "fullRows",
+  "tailRows",
+  "selectedHeadlineRows",
+  "branchCount",
+  "navigationUtf16CodeUnits",
+  "selectedBodyUtf16CodeUnits",
+  "nextMs",
+  "decodeMs",
+  "projectMs",
+  "treeInclusiveMs",
+  "headlineInclusiveMs",
+  "cloneMs",
+  "selectedQueryMs",
+  "ok",
+  "missing",
+  "failed",
+  "exception",
+  "saturated",
+  "fallbackAvailable",
 ] as const;
 type Field = (typeof fields)[number];
 export type BranchReadAggregate = Readonly<Record<Field, number>>;
@@ -23,10 +41,18 @@ export function createBranchReadDiagnostics() {
     },
     measure<T>(key: Field, action: () => T): T {
       const start = performance.now();
-      try { return action(); } finally { this.add(key, Math.max(0, performance.now() - start)); }
+      try {
+        return action();
+      } finally {
+        this.add(key, Math.max(0, performance.now() - start));
+      }
     },
     emit(sink: BranchReadDiagnosticsSink) {
-      try { sink(Object.freeze({ ...values })); } catch { /* Never replace the read outcome. */ }
+      try {
+        sink(Object.freeze({ ...values }));
+      } catch {
+        /* Never replace the read outcome. */
+      }
     },
   };
 }

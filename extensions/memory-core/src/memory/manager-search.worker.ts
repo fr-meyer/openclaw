@@ -1,4 +1,3 @@
-import { MemoryBatchSubmissionKernel } from "./manager-batch-submission-kernel.js";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { openOpenClawAgentDatabaseReadOnly } from "openclaw/plugin-sdk/memory-core-host-engine-knn";
 import {
@@ -18,6 +17,7 @@ import type {
 } from "../memory-entry-origins-task.js";
 import { readMemoryForgetIndexInWorker } from "../memory-forget-index-read.js";
 import type { ForgetIndexPlan, ForgetIndexReadInput } from "../memory-forget-index-task.js";
+import { MemoryBatchSubmissionKernel } from "./manager-batch-submission-kernel.js";
 import {
   readMemoryRetrievalIndexState,
   readMemoryRecallData,
@@ -151,7 +151,10 @@ serveWorkerTasks(async (input): Promise<MemorySearchWorkerOutput> => {
   try {
     if (request.kind === "batch-status") {
       assertMemoryShadowIdentity(request.databasePath, request.fileIdentity);
-      return { kind: "batch-status", status: new MemoryBatchSubmissionKernel(() => db).readStatus() };
+      return {
+        kind: "batch-status",
+        status: new MemoryBatchSubmissionKernel(() => db).readStatus(),
+      };
     }
     if (request.kind === "source-state") {
       assertMemoryShadowIdentity(request.databasePath, request.fileIdentity);

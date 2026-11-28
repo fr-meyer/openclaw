@@ -50,6 +50,8 @@ overrides:
   "werift-ice@0.2.2>ip": "npm:neoip@3.1.0"
   # Development-only Sigstore chain: compatible refresh outside GHSA-ch52-4w7c-c8xp's range.
   "make-fetch-happen@16.0.1>http-cache-semantics": 4.3.0
+  # cacache uses glob token matching; glob14 supports minimatch11 Matcher tokens.
+  "cacache@21.0.1>glob": 14.0.3
   # GHSA-xcx6-jx8p-x3h5: reviewed real-parent compatibility for fixed MSAL.
   "@azure/identity@4.13.3>@azure/msal-node": 7.1.0
   "@microsoft/teams.apps@2.1.0>@azure/msal-node": 7.1.0
@@ -98,10 +100,10 @@ overrides:
   source-map-js: 1.2.2
   file-type: 22.1.1
   form-data: 4.0.6
-  ip-address: 10.7.3
+  ip-address: 10.7.5
   "mailauth@7.1.0>joi": 18.3.1
   "mailauth@7.1.0>nodemailer": 10.0.13
-  minimatch: 10.2.6
+  minimatch: 11.0.1
   path-to-regexp: 8.4.2
   proxy-addr: 2.0.8
   qs: 6.16.0

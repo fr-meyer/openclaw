@@ -134,23 +134,44 @@ export type BuildSessionEntryOptions = {
 /** A refused projection is not an empty/complete source snapshot. No private path in this error. */
 export class SessionEntryNoRestoreError extends Error {
   readonly status = "unverified";
-  constructor(readonly reason: "opaque-reader" | "unsupported-sqlite-custody" | "archive" | "missing" | "native-read" | "unprojectable") {
+  constructor(
+    readonly reason:
+      | "opaque-reader"
+      | "unsupported-sqlite-custody"
+      | "archive"
+      | "missing"
+      | "native-read"
+      | "unprojectable",
+  ) {
     super("Session projection unavailable under no-restore policy");
     this.name = "SessionEntryNoRestoreError";
   }
 }
 function captureSessionProjectionOptions(opts: BuildSessionEntryOptions): BuildSessionEntryOptions {
-  if (opts.readPolicy !== undefined && opts.readPolicy !== "no-restore") { throw new SessionEntryNoRestoreError("unprojectable"); }
+  if (opts.readPolicy !== undefined && opts.readPolicy !== "no-restore") {
+    throw new SessionEntryNoRestoreError("unprojectable");
+  }
   return opts.readPolicy === "no-restore" ? Object.freeze({ ...opts }) : opts;
 }
 function assertNoRestoreLocalProjection(absPath: string, opts: BuildSessionEntryOptions): void {
-  if (opts.readPolicy !== "no-restore") { return; }
-  if (opts.onTranscriptMessage || opts.sessionKey !== undefined || isIncognitoSessionKey(opts.sessionKey)) {
+  if (opts.readPolicy !== "no-restore") {
+    return;
+  }
+  if (
+    opts.onTranscriptMessage ||
+    opts.sessionKey !== undefined ||
+    isIncognitoSessionKey(opts.sessionKey)
+  ) {
     throw new SessionEntryNoRestoreError("opaque-reader");
   }
   // Native SQLite/actor snapshots need a separately attested no-restore owner contract.
   // Do not invoke worker/incognito/container fallback merely because policy was requested.
-  if (opts.agentId !== undefined || opts.sessionId !== undefined || opts.storePath !== undefined || resolveBuildSessionSqliteIdentity(absPath, opts)) {
+  if (
+    opts.agentId !== undefined ||
+    opts.sessionId !== undefined ||
+    opts.storePath !== undefined ||
+    resolveBuildSessionSqliteIdentity(absPath, opts)
+  ) {
     throw new SessionEntryNoRestoreError("unsupported-sqlite-custody");
   }
   // Caller classification hints are not a native eligibility receipt in this mode.
@@ -161,8 +182,11 @@ function assertNoRestoreLocalProjection(absPath: string, opts: BuildSessionEntry
     const candidate = fsSync.realpathSync.native(absPath);
     const parent = fsSync.realpathSync.native(path.dirname(absPath));
     // Reject candidate/parent aliases rather than silently falling back to container custody.
-    if (normalizeComparablePath(candidate) !== normalizeComparablePath(path.resolve(absPath)) ||
-      normalizeComparablePath(parent) !== normalizeComparablePath(path.resolve(path.dirname(absPath)))) {
+    if (
+      normalizeComparablePath(candidate) !== normalizeComparablePath(path.resolve(absPath)) ||
+      normalizeComparablePath(parent) !==
+        normalizeComparablePath(path.resolve(path.dirname(absPath)))
+    ) {
       throw new SessionEntryNoRestoreError("opaque-reader");
     }
     const agentId = extractAgentIdFromSessionPath(candidate) ?? "main";
@@ -173,22 +197,38 @@ function assertNoRestoreLocalProjection(absPath: string, opts: BuildSessionEntry
     const ownerRoots = [physicalRoot];
     // Only configured owner-root metadata, never corpus discovery or actor callbacks.
     for (const owner of fsSync.readdirSync(configuredAgents, { withFileTypes: true })) {
-      if (!owner.isDirectory() && !owner.isSymbolicLink()) { continue; }
-      if (normalizeAgentId(owner.name) !== owner.name) { throw new SessionEntryNoRestoreError("opaque-reader"); }
+      if (!owner.isDirectory() && !owner.isSymbolicLink()) {
+        continue;
+      }
+      if (normalizeAgentId(owner.name) !== owner.name) {
+        throw new SessionEntryNoRestoreError("opaque-reader");
+      }
       const root = fsSync.realpathSync.native(resolveSessionTranscriptsDirForAgent(owner.name));
-      if (!fsSync.statSync(root).isDirectory()) { throw new SessionEntryNoRestoreError("opaque-reader"); }
+      if (!fsSync.statSync(root).isDirectory()) {
+        throw new SessionEntryNoRestoreError("opaque-reader");
+      }
       ownerRoots.push(root);
     }
-    if (!fsSync.statSync(physicalRoot).isDirectory() || !fsSync.statSync(physicalAgents).isDirectory()) {
+    if (
+      !fsSync.statSync(physicalRoot).isDirectory() ||
+      !fsSync.statSync(physicalAgents).isDirectory()
+    ) {
       throw new SessionEntryNoRestoreError("opaque-reader");
     }
     const inside = (root: string, value: string) => {
       const relative = path.relative(normalizeComparablePath(root), normalizeComparablePath(value));
-      return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep));
+      return (
+        relative === "" ||
+        (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep))
+      );
     };
     // Physical ancestry covers aliased configured state roots and all ordinary agent descendants.
     // The exact native owner root is checked separately in case it is itself aliased outside agents/.
-    if ([physicalAgents, ...ownerRoots].some((root) => inside(root, candidate) || inside(root, parent))) {
+    if (
+      [physicalAgents, ...ownerRoots].some(
+        (root) => inside(root, candidate) || inside(root, parent),
+      )
+    ) {
       throw new SessionEntryNoRestoreError("opaque-reader");
     }
   } catch {
@@ -392,12 +432,16 @@ function readSessionTranscriptClassificationStore(
   try {
     const parsed = JSON.parse(fsSync.readFileSync(storePath, "utf-8")) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      if (strictRead) { throw new SessionEntryNoRestoreError("unprojectable"); }
+      if (strictRead) {
+        throw new SessionEntryNoRestoreError("unprojectable");
+      }
       return {};
     }
     return parsed as Record<string, SessionTranscriptStoreEntry>;
   } catch {
-    if (strictRead) { throw new SessionEntryNoRestoreError("native-read"); }
+    if (strictRead) {
+      throw new SessionEntryNoRestoreError("native-read");
+    }
     return {};
   }
 }
@@ -425,7 +469,10 @@ function classifySessionTranscriptCorpusEntries(
   };
 }
 
-function classifySessionTranscriptFromSessionStore(absPath: string, strictRead = false): {
+function classifySessionTranscriptFromSessionStore(
+  absPath: string,
+  strictRead = false,
+): {
   generatedByDreamingNarrative: boolean;
   generatedByCronRun: boolean;
 } {
@@ -600,30 +647,62 @@ async function yieldSessionEntryParseIfNeeded(
 }
 
 /** Only native admission may produce this prepared snapshot; never exported to caller snapshots. */
-async function buildOwnedNoRestoreEntry(absPath: string, opts: BuildSessionEntryOptions): Promise<SessionFileEntry | null> {
+async function buildOwnedNoRestoreEntry(
+  absPath: string,
+  opts: BuildSessionEntryOptions,
+): Promise<SessionFileEntry | null> {
   try {
-    if (!opts.agentId || !opts.sessionId || !opts.storePath || !opts.sessionKey ||
-      normalizeComparablePath(path.resolve(absPath)) !== normalizeComparablePath(path.resolve(opts.storePath))) {
+    if (
+      !opts.agentId ||
+      !opts.sessionId ||
+      !opts.storePath ||
+      !opts.sessionKey ||
+      normalizeComparablePath(path.resolve(absPath)) !==
+        normalizeComparablePath(path.resolve(opts.storePath))
+    ) {
       throw new SessionEntryNoRestoreError("unsupported-sqlite-custody");
     }
-    if (opts.onTranscriptMessage || opts.generatedByCronRun !== undefined || opts.generatedByDreamingNarrative !== undefined ||
-      opts.sessionKind !== undefined || opts.updatedAtMs !== undefined) { throw new SessionEntryNoRestoreError("opaque-reader"); }
+    if (
+      opts.onTranscriptMessage ||
+      opts.generatedByCronRun !== undefined ||
+      opts.generatedByDreamingNarrative !== undefined ||
+      opts.sessionKind !== undefined ||
+      opts.updatedAtMs !== undefined
+    ) {
+      throw new SessionEntryNoRestoreError("opaque-reader");
+    }
     const env = captureSessionTranscriptStorageEnvironment(process.env);
     const { sessionKey } = opts;
     for (let attempt = 0; attempt < 2; attempt++) {
       const redaction = captureSensitiveTextRedactionSnapshot();
-      const result = await prepareOwnedSessionEntryProjectionInWorker(absPath,
-        { agentId: opts.agentId, sessionId: opts.sessionId, storePath: opts.storePath, sessionKey,
-          parseYieldEveryLines: opts.parseYieldEveryLines }, env);
-      if (result.registryRevision !== redaction.registryRevision) { continue; }
+      const result = await prepareOwnedSessionEntryProjectionInWorker(
+        absPath,
+        {
+          agentId: opts.agentId,
+          sessionId: opts.sessionId,
+          storePath: opts.storePath,
+          sessionKey,
+          parseYieldEveryLines: opts.parseYieldEveryLines,
+        },
+        env,
+      );
+      if (result.registryRevision !== redaction.registryRevision) {
+        continue;
+      }
       const entry = result.entry;
-      if (!entry) { throw new SessionEntryNoRestoreError("unprojectable"); }
+      if (!entry) {
+        throw new SessionEntryNoRestoreError("unprojectable");
+      }
       attachSessionEntryResetRecallCutoff(entry, result.resetRecallCutoff);
-      if (redaction.registryRevision === getSecretRedactionRegistryRevision()) { return entry; }
+      if (redaction.registryRevision === getSecretRedactionRegistryRevision()) {
+        return entry;
+      }
     }
     throw new SessionEntryNoRestoreError("native-read");
   } catch (error) {
-    if (error instanceof SessionEntryNoRestoreError) { throw error; }
+    if (error instanceof SessionEntryNoRestoreError) {
+      throw error;
+    }
     throw new SessionEntryNoRestoreError("native-read");
   }
 }
@@ -640,8 +719,14 @@ export async function buildSessionEntry(
 ): Promise<SessionFileEntry | null> {
   opts = captureSessionProjectionOptions(opts);
   if (opts.readPolicy === "no-restore") {
-    if (source) { throw new SessionEntryNoRestoreError("opaque-reader"); }
-    if (opts.agentId !== undefined || opts.sessionId !== undefined || opts.storePath !== undefined) {
+    if (source) {
+      throw new SessionEntryNoRestoreError("opaque-reader");
+    }
+    if (
+      opts.agentId !== undefined ||
+      opts.sessionId !== undefined ||
+      opts.storePath !== undefined
+    ) {
       return await buildOwnedNoRestoreEntry(absPath, opts);
     }
     assertNoRestoreLocalProjection(absPath, opts);
@@ -696,9 +781,14 @@ export async function buildSessionEntryInProcess(
   opts: BuildSessionEntryOptions = {},
   redactText: (text: string) => string = (text) => redactSensitiveText(text, { mode: "tools" }),
 ): Promise<SessionFileEntry | null> {
-  if (opts.readPolicy === "no-restore" && arguments.length > 2) { throw new SessionEntryNoRestoreError("opaque-reader"); }
+  if (opts.readPolicy === "no-restore" && arguments.length > 2) {
+    throw new SessionEntryNoRestoreError("opaque-reader");
+  }
   opts = captureSessionProjectionOptions(opts);
-  if (opts.readPolicy === "no-restore" && (opts.agentId !== undefined || opts.sessionId !== undefined || opts.storePath !== undefined)) {
+  if (
+    opts.readPolicy === "no-restore" &&
+    (opts.agentId !== undefined || opts.sessionId !== undefined || opts.storePath !== undefined)
+  ) {
     return await buildOwnedNoRestoreEntry(absPath, opts);
   }
   assertNoRestoreLocalProjection(absPath, opts);
@@ -717,7 +807,9 @@ export async function buildSessionEntryFromSnapshot(
   assertCurrent: () => void,
 ): Promise<SessionFileEntry | null> {
   captureSessionProjectionOptions(opts);
-  if (opts.readPolicy === "no-restore") { throw new SessionEntryNoRestoreError("opaque-reader"); }
+  if (opts.readPolicy === "no-restore") {
+    throw new SessionEntryNoRestoreError("opaque-reader");
+  }
   assertCurrent();
   const { onTranscriptMessage, ...options } = opts;
   const result = await buildSessionEntryFromSource(
@@ -744,16 +836,28 @@ export async function buildSessionEntryFromSnapshot(
 /** @internal Pure compute DATA only. Never an owner receipt; producer must admit before enqueue. */
 export async function computeSessionEntryProjectionData(
   absPath: string,
-  options: Pick<BuildSessionEntryOptions, "agentId" | "sessionId" | "storePath" | "parseYieldEveryLines">,
+  options: Pick<
+    BuildSessionEntryOptions,
+    "agentId" | "sessionId" | "storePath" | "parseYieldEveryLines"
+  >,
   snapshot: SessionEntrySnapshot,
   redaction: ReturnType<typeof captureSensitiveTextRedactionSnapshot>,
 ) {
-  const entry = await buildSessionEntryFromSource(absPath,
-    { agentId: options.agentId, sessionId: options.sessionId, storePath: options.storePath,
-      parseYieldEveryLines: options.parseYieldEveryLines, readPolicy: "no-restore" },
+  const entry = await buildSessionEntryFromSource(
+    absPath,
+    {
+      agentId: options.agentId,
+      sessionId: options.sessionId,
+      storePath: options.storePath,
+      parseYieldEveryLines: options.parseYieldEveryLines,
+      readPolicy: "no-restore",
+    },
     createSensitiveTextRedactor(redaction),
-    { ...snapshot, events: snapshot.events.map(projectSessionEntryRecord) });
-  if (!entry) { throw new SessionEntryNoRestoreError("unprojectable"); }
+    { ...snapshot, events: snapshot.events.map(projectSessionEntryRecord) },
+  );
+  if (!entry) {
+    throw new SessionEntryNoRestoreError("unprojectable");
+  }
   return { entry, resetRecallCutoff: readSessionEntryResetRecallCutoff(entry) };
 }
 
@@ -796,7 +900,9 @@ async function buildSessionEntryFromSource(
     } else {
       const regularFile = await statRegularFile(absPath);
       if (regularFile.missing) {
-        if (opts.readPolicy === "no-restore") { throw new SessionEntryNoRestoreError("missing"); }
+        if (opts.readPolicy === "no-restore") {
+          throw new SessionEntryNoRestoreError("missing");
+        }
         return null;
       }
       const stat = regularFile.stat;
@@ -880,11 +986,16 @@ async function buildSessionEntryFromSource(
         try {
           record = JSON.parse(line);
         } catch {
-          if (opts.readPolicy === "no-restore") { throw new SessionEntryNoRestoreError("unprojectable"); }
+          if (opts.readPolicy === "no-restore") {
+            throw new SessionEntryNoRestoreError("unprojectable");
+          }
           continue;
         }
       }
-      if (opts.readPolicy === "no-restore" && (!record || typeof record !== "object" || Array.isArray(record))) {
+      if (
+        opts.readPolicy === "no-restore" &&
+        (!record || typeof record !== "object" || Array.isArray(record))
+      ) {
         throw new SessionEntryNoRestoreError("unprojectable");
       }
       const identifiesDreamingNarrative =
@@ -912,7 +1023,9 @@ async function buildSessionEntryFromSource(
         | { role?: unknown; content?: unknown; provenance?: unknown }
         | undefined;
       if (!message || typeof message.role !== "string") {
-        if (opts.readPolicy === "no-restore") { throw new SessionEntryNoRestoreError("unprojectable"); }
+        if (opts.readPolicy === "no-restore") {
+          throw new SessionEntryNoRestoreError("unprojectable");
+        }
         continue;
       }
       if (message.role !== "user" && message.role !== "assistant") {
@@ -949,7 +1062,9 @@ async function buildSessionEntryFromSource(
       }
       const rawText = collectRawSessionText(message.content);
       if (rawText === null) {
-        if (opts.readPolicy === "no-restore") { throw new SessionEntryNoRestoreError("unprojectable"); }
+        if (opts.readPolicy === "no-restore") {
+          throw new SessionEntryNoRestoreError("unprojectable");
+        }
         continue;
       }
 
@@ -1000,7 +1115,9 @@ async function buildSessionEntryFromSource(
     );
   } catch (err) {
     if (opts.readPolicy === "no-restore") {
-      if (err instanceof SessionEntryNoRestoreError) { throw err; }
+      if (err instanceof SessionEntryNoRestoreError) {
+        throw err;
+      }
       throw new SessionEntryNoRestoreError("native-read");
     }
     if (sqliteIdentity) {

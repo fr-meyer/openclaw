@@ -145,14 +145,10 @@ describe("Doctor migration backup retries", () => {
           requireSnapshots: true,
           verifiedSnapshots: [fixture.shared, fixture.agent].map((sourcePath) => {
             const { dev, ino } = fs.statSync(sourcePath);
-            return {
-              sourcePath,
-              dev,
-              ino,
-              ...(sourcePath === fixture.shared
-                ? { role: "global" as const }
-                : { role: "agent" as const, agentId: "main" }),
-            };
+            if (sourcePath === fixture.shared) {
+              return { sourcePath, dev, ino, role: "global" as const };
+            }
+            return { sourcePath, dev, ino, role: "agent" as const, agentId: "main" };
           }),
         }),
       );
@@ -271,7 +267,7 @@ describe("Doctor migration backup retries", () => {
         assertOwnerCurrent: () => {},
       });
       try {
-        await maintenance.run(() =>
+        maintenance.run(() =>
           completeDoctorMigrationBackups(fixture.env, [fixture.shared, fixture.agent]),
         );
       } finally {

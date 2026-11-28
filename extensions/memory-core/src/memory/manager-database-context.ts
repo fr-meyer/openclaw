@@ -1,5 +1,3 @@
-import { runMemoryBatchSubmissionStatus } from "./manager-cpu-worker-runtime.js";
-import type { MemoryBatchSubmissionCommand } from "./manager-batch-submission-task.js";
 // Owns the published index state and the isolated lifetime of shadow reindex work.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -27,8 +25,10 @@ import {
   type StoreWriterQueue,
 } from "openclaw/plugin-sdk/sqlite-runtime";
 import { assertBoundedMemoryOperation } from "./bounded-admission.js";
+import type { MemoryBatchSubmissionCommand } from "./manager-batch-submission-task.js";
 import { readConnectionPragmas } from "./manager-connection-pragmas.js";
 import { memoryCpuProcessEntrypoints } from "./manager-cpu-entrypoints.js";
+import { runMemoryBatchSubmissionStatus } from "./manager-cpu-worker-runtime.js";
 import { runMemorySourceState } from "./manager-cpu-worker-runtime.js";
 import { MemoryIndexRevisionConflictError } from "./manager-db-kernel.js";
 import { closeMemoryDatabase, openMemoryDatabaseAtPath } from "./manager-db.js";
@@ -43,10 +43,8 @@ import {
   memoryEmbeddingCacheBatches,
   memoryPublicationBatches,
 } from "./manager-publication-transfer.js";
-import {
-  openPublishedMemoryDatabase,
-  type MemoryPublishedOpenOptions,
-} from "./manager-published-open.js";
+import type { MemoryPublishedOpenOptions } from "./manager-published-contract.js";
+import { openPublishedMemoryDatabase } from "./manager-published-open.js";
 import {
   assertMemoryShadowIdentity,
   readMemoryShadowIdentity,
@@ -392,23 +390,37 @@ export class MemoryIndexDatabase {
 
   async readBatchSubmissionStatus() {
     const assertCurrent = () => {
-      if (this.closed || !this.db.isOpen) { throw new Error("Native batch status owner closed"); }
+      if (this.closed || !this.db.isOpen) {
+        throw new Error("Native batch status owner closed");
+      }
       this.assertShadowPath();
     };
     assertCurrent();
-    if (!this.hasIndex) { return undefined; }
+    if (!this.hasIndex) {
+      return undefined;
+    }
     const target = this.writeOptions;
-    if (!target?.agentId || !target.path) { throw new Error("Native batch status requires its captured target"); }
-    const status = await runMemoryBatchSubmissionStatus({ agentId: target.agentId, databasePath: target.path });
+    if (!target?.agentId || !target.path) {
+      throw new Error("Native batch status requires its captured target");
+    }
+    const status = await runMemoryBatchSubmissionStatus({
+      agentId: target.agentId,
+      databasePath: target.path,
+    });
     assertCurrent();
     return status;
   }
 
   async runBatchSubmission(command: MemoryBatchSubmissionCommand, assertCurrent: () => void) {
-    const reply = await this.retryPublication(() => this.runPublication(
-      (scope) => scope.execute({ type: "batch.submission", input: command }), assertCurrent,
-    ));
-    if (!reply) { throw new Error("Native memory batch state unavailable"); }
+    const reply = await this.retryPublication(() =>
+      this.runPublication(
+        (scope) => scope.execute({ type: "batch.submission", input: command }),
+        assertCurrent,
+      ),
+    );
+    if (!reply) {
+      throw new Error("Native memory batch state unavailable");
+    }
     return reply;
   }
 

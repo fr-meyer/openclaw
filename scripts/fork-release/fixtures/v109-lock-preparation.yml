@@ -33,7 +33,7 @@ concurrency:
 env:
   V109_APPROVED_AT: DISARMED
   V109_EXPIRES_AT: DISARMED
-  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONDONTWRITEBYTECODE: "1"
 defaults:
   run:
     shell: bash

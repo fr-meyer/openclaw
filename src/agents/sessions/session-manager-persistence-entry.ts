@@ -1,9 +1,9 @@
-import type { TranscriptEntryAnchor } from "../../config/sessions/session-accessor.js";
 import type {
   SessionTranscriptContextVersion,
   TranscriptMessageAppendResult,
   TranscriptWriteSnapshot,
 } from "../../config/sessions/session-accessor.sqlite-contract.js";
+import type { TranscriptEntryAnchor } from "../../config/sessions/transcript-entry-anchor.js";
 import { normalizeTranscriptJsonValue } from "../../config/sessions/transcript-json.js";
 import { copyPreparedModelVisibleToolText } from "../../logging/redact-internal.js";
 import {

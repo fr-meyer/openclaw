@@ -22,6 +22,7 @@ import {
   isPluginRegistryPreparing,
 } from "./registry-lifecycle.js";
 import { createRegisteredChannelRuntimeResolver } from "./registry-runtime-channel.js";
+import { createPluginRuntimeFacades } from "./registry-runtime-facades.js";
 import { createPackagedMergeguezTaskFlowProjector } from "./registry-runtime-task-flow.js";
 import type { PluginRegistryState } from "./registry-state.js";
 import type { PluginRecord, PluginRegistry } from "./registry-types.js";
@@ -41,29 +42,6 @@ function createRuntimeRegistryRelease(held: PluginRegistry[]) {
 }
 
 /** One namespace projection belongs to its runtime source, not the invocation reading it. */
-function createRuntimeFacade<T extends { [K in keyof T]: (...args: never[]) => unknown }>(
-  invoke: <TResult>(run: () => TResult) => TResult,
-  methods: readonly (keyof T)[],
-) {
-  let cached: { source: T; value: T } | undefined;
-  return (source: T): T => {
-    if (cached && cached.source === source) {
-      return cached.value;
-    }
-    const value = { ...source };
-    for (const method of methods) {
-      Object.defineProperty(value, method, {
-        configurable: true,
-        enumerable: true,
-        writable: true,
-        value: (...args: unknown[]) => invoke(() => Reflect.apply(source[method], source, args)),
-      });
-    }
-    cached = { source, value };
-    return value;
-  };
-}
-
 export function createPluginRuntimeResolver(state: PluginRegistryState) {
   const { registry, registryParams } = state;
   const pluginRuntimes = new WeakMap<PluginRecord, PluginRuntime>();
@@ -185,59 +163,7 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
         assertRuntimeCurrent();
         return result;
       });
-    const facades = {
-      media: createRuntimeFacade<PluginRuntime["media"]>(invokeSelectedRuntime, ["loadWebMedia"]),
-      imageGeneration: createRuntimeFacade<PluginRuntime["imageGeneration"]>(
-        invokeSelectedRuntime,
-        ["generate", "listProviders"],
-      ),
-      videoGeneration: createRuntimeFacade<PluginRuntime["videoGeneration"]>(
-        invokeSelectedRuntime,
-        ["generate", "listProviders"],
-      ),
-      musicGeneration: createRuntimeFacade<PluginRuntime["musicGeneration"]>(
-        invokeSelectedRuntime,
-        ["generate", "listProviders"],
-      ),
-      webSearch: createRuntimeFacade<PluginRuntime["webSearch"]>(invokeSelectedRuntime, [
-        "listProviders",
-        "search",
-      ]),
-      tts: createRuntimeFacade<PluginRuntime["tts"]>(invokeSelectedRuntime, [
-        "prepareTtsRequest",
-        "textToSpeech",
-        "textToSpeechStream",
-        "textToSpeechTelephony",
-        "listVoices",
-      ]),
-      mediaUnderstanding: createRuntimeFacade<PluginRuntime["mediaUnderstanding"]>(
-        invokeSelectedRuntime,
-        [
-          "resolveAudioInputBudget",
-          "runFile",
-          "describeImageFile",
-          "describeImageFileWithModel",
-          "extractStructuredWithModel",
-          "describeVideoFile",
-          "transcribeAudioFile",
-        ],
-      ),
-      modelAuth: createRuntimeFacade<PluginRuntime["modelAuth"]>(invokeSelectedRuntime, [
-        "ensureAuthProfileStore",
-        "isProviderApiKeyConfigured",
-        "getApiKeyForModel",
-        "getRuntimeAuthForModel",
-        "resolveApiKeyForProvider",
-      ]),
-      modelConfig: createRuntimeFacade<PluginRuntime["modelConfig"]>(invokeSelectedRuntime, [
-        "resolveDefaultModelForAgent",
-        "resolveAllowedModelRef",
-      ]),
-      sandbox: createRuntimeFacade<PluginRuntime["sandbox"]>(invokeSelectedRuntime, [
-        "resolveWorkspaceAuthority",
-        "prepareWorkspaceAuthority",
-      ]),
-    };
+    const facades = createPluginRuntimeFacades(invokeSelectedRuntime);
     let scopedAgentRuntime:
       | { source: PluginRuntime["agent"]; value: PluginRuntime["agent"] }
       | undefined;

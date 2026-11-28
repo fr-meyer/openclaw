@@ -1,10 +1,10 @@
 import type { Command } from "commander";
-import { callGatewayVerifiedRead } from "./call.js";
 import {
   callGatewayVerifiedReadFromCli,
   resolveGatewayRpcOptionsWithLocalPort,
   type GatewayRpcOpts,
 } from "../gateway-rpc.js";
+import { callGatewayVerifiedRead } from "./call.js";
 
 const SETUP_INFERENCE_DETECT_RPC_TIMEOUT_MS = 40_000;
 

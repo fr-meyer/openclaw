@@ -21,7 +21,6 @@ import {
 } from "../../agents/prepared-model-runtime.js";
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import { resolveIngressWorkspaceOverrideForSessionRun } from "../../agents/spawned-context.js";
-import { resolveExactSubagentCompletionEvent } from "../../agents/subagents/announce/subagent-announce-handoff.js";
 import type { FollowupCompletionOwner } from "../../agents/subagents/completion/session-followup-completion.types.js";
 import { getLatestLiveSubagentRunByChildSessionKey } from "../../agents/subagents/registry/subagent-registry-read.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
@@ -42,12 +41,10 @@ import { readInProcessSubagentResume } from "../in-process-subagent-resume.js";
 import { retainGatewayOperatorRun } from "../operator-run-cancellation.js";
 import { resolveGatewayCronCreatorAuthorityAdmission } from "../server-methods/cron-creator-authority-admission.js";
 import { assertParentSubagentResumeSuccessorCurrent } from "../session-subagent-resume.js";
-import { consumeSubagentCompletionToolHandoff } from "../subagent-completion-tool-handoff.js";
 import { formatForLog } from "../ws-log.js";
 import {
   isPreRegistrationAbortedAgentDedupeEntryForSession,
   readGatewayDedupeEntry,
-  setGatewayDedupeEntries,
 } from "./agent-dedupe.js";
 import { canPrepareAgentSessionWorktree } from "./agent-handler-helpers.js";
 import { resolveAgentRunAdmissionModel } from "./agent-run-admission-model.js";
@@ -61,6 +58,11 @@ import type {
   PreparedAgentRunModelRuntime,
   PreparedAgentRunDispatch,
 } from "./agent-run-admission-types.js";
+import {
+  recordAcceptedAgentRunDedupe,
+  rejectUnavailableAgentRunContinuation,
+  resolveAgentRunCompletionToolHandoff,
+} from "./agent-run-completion-handoff.js";
 import { admitAgentRestartRecovery } from "./agent-run-recovery-admission.js";
 import {
   prepareGatewaySubagentRun,
@@ -110,20 +112,7 @@ export async function prepareAgentRunDispatch(
     });
     return undefined;
   }
-  if (
-    params.abortForLifecycleRotation({
-      sessionKey: params.resolvedSessionKey,
-      agentId: params.activeSessionAgentId,
-    })
-  ) {
-    return undefined;
-  }
-  if (params.restoredCronContinuationIdentity && !params.restoredCronContinuation) {
-    params.io.emitAcceptance([
-      false,
-      undefined,
-      errorShape(ErrorCodes.UNAVAILABLE, "cron run continuation could not be restored"),
-    ]);
+  if (rejectUnavailableAgentRunContinuation(params)) {
     return undefined;
   }
 
@@ -581,30 +570,11 @@ export async function prepareAgentRunDispatch(
   try {
     // Replay may retain another scheduling source from the same frozen cohort.
     // Bind the one-use grant only after transcript admission selects that source.
-    const completionEvent = resolveExactSubagentCompletionEvent({
-      inputProvenance: userTurn.inputProvenance,
-      internalEvents: params.request.internalEvents,
-    });
-    const trustedInternalHandoff =
-      params.providerOverride === undefined &&
-      params.modelOverride === undefined &&
-      params.restoredCronContinuation === undefined
-        ? consumeSubagentCompletionToolHandoff({
-            handoffId: params.client?.internal?.delegatedToolPolicyHandoffId,
-            sourceTool: userTurn.inputProvenance?.sourceTool,
-            sourceSessionKey:
-              userTurn.inputProvenance?.kind === "inter_session" &&
-              userTurn.inputProvenance.sourceTool === "subagent_settle"
-                ? userTurn.inputProvenance.sourceSessionKey
-                : completionEvent?.childSessionKey,
-            sourceSessionId: completionEvent?.childSessionId,
-            targetSessionKey: params.resolvedSessionKey,
-            targetSessionId: params.getAdmittedSessionId(),
-            idempotencyKey: params.request.idempotencyKey,
-            provider: resolvedRuntime.provider,
-            model: resolvedRuntime.model,
-          })
-        : undefined;
+    const trustedInternalHandoff = resolveAgentRunCompletionToolHandoff(
+      params,
+      userTurn,
+      resolvedRuntime,
+    );
     if (followupCompletion) {
       assertInputOwnerCurrent();
       params.assertGatewayWorkAdmissionAllowed();
@@ -643,21 +613,7 @@ export async function prepareAgentRunDispatch(
     followupCompletion?.markAccepted(params.runId);
     params.markAgentRunAccepted(true);
     adoptedParentResume = undefined;
-    setGatewayDedupeEntries({
-      dedupe: params.context.dedupe,
-      keys: params.agentDedupeKeys,
-      entry: {
-        ts: Date.now(),
-        ok: true,
-        payload: {
-          ...accepted,
-          controlUiVisible,
-          dedupeKeys: params.agentDedupeKeys,
-          ownerConnId: params.ownerConnId,
-          ownerDeviceId: params.ownerDeviceId,
-        },
-      },
-    });
+    recordAcceptedAgentRunDedupe(params, accepted, controlUiVisible);
     // Pending input outlives admission; only the child controller and lifecycle
     // may reject its execution after this synchronous ownership transfer.
     assertInputAdmissionCurrent = undefined;

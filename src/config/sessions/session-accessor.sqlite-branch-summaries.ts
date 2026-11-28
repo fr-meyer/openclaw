@@ -59,7 +59,9 @@ export function readSessionBranchSummaries(
         .limit(1),
   );
   const readHeadline = (seq: number) => {
-    const row = diagnostics ? diagnostics.measure("selectedQueryMs", () => readCandidate(seq).rows[0]) : readCandidate(seq).rows[0];
+    const row = diagnostics
+      ? diagnostics.measure("selectedQueryMs", () => readCandidate(seq).rows[0])
+      : readCandidate(seq).rows[0];
     if (!row) {
       throw new Error("Branch headline row is missing from the transcript snapshot");
     }
@@ -80,12 +82,16 @@ export function readSessionBranchSummaries(
       navigationQuery.where("seq", ">", previous.maxSeq),
       observeNext,
     )) {
-      const entry = diagnostics ? (() => {
-        diagnostics.add("tailRows");
-        diagnostics.add("navigationUtf16CodeUnits", row.event_json.length);
-        const decoded = diagnostics.measure("decodeMs", () => JSON.parse(row.event_json));
-        return diagnostics.measure("projectMs", () => projectSessionBranchEntry(decoded, row.seq));
-      })() : projectSessionBranchEntry(JSON.parse(row.event_json), row.seq);
+      const entry = diagnostics
+        ? (() => {
+            diagnostics.add("tailRows");
+            diagnostics.add("navigationUtf16CodeUnits", row.event_json.length);
+            const decoded = diagnostics.measure("decodeMs", () => JSON.parse(row.event_json));
+            return diagnostics.measure("projectMs", () =>
+              projectSessionBranchEntry(decoded, row.seq),
+            );
+          })()
+        : projectSessionBranchEntry(JSON.parse(row.event_json), row.seq);
       // Identity ownership rules out duplicate IDs in the certified prefix or suffix.
       if (
         !isCanonicalSessionTranscriptEntry(entry) ||
@@ -122,12 +128,16 @@ export function readSessionBranchSummaries(
   let appendSafe = true;
   function* navigationEntries() {
     for (const row of iterateSqliteQuerySync(database.db, navigationQuery, observeNext)) {
-      const entry = diagnostics ? (() => {
-        diagnostics.add("fullRows");
-        diagnostics.add("navigationUtf16CodeUnits", row.event_json.length);
-        const decoded = diagnostics.measure("decodeMs", () => JSON.parse(row.event_json));
-        return diagnostics.measure("projectMs", () => projectSessionBranchEntry(decoded, row.seq));
-      })() : projectSessionBranchEntry(JSON.parse(row.event_json), row.seq);
+      const entry = diagnostics
+        ? (() => {
+            diagnostics.add("fullRows");
+            diagnostics.add("navigationUtf16CodeUnits", row.event_json.length);
+            const decoded = diagnostics.measure("decodeMs", () => JSON.parse(row.event_json));
+            return diagnostics.measure("projectMs", () =>
+              projectSessionBranchEntry(decoded, row.seq),
+            );
+          })()
+        : projectSessionBranchEntry(JSON.parse(row.event_json), row.seq);
       appendSafe &&=
         typeof entry?.id === "string" &&
         entry.id === row.identity_id &&
@@ -136,7 +146,9 @@ export function readSessionBranchSummaries(
     }
   }
   // Finish parsing every row before accepting any headline, including malformed unused tails.
-  const tree = diagnostics ? diagnostics.measure("treeInclusiveMs", () => scanSessionTranscriptTree(navigationEntries())) : scanSessionTranscriptTree(navigationEntries());
+  const tree = diagnostics
+    ? diagnostics.measure("treeInclusiveMs", () => scanSessionTranscriptTree(navigationEntries()))
+    : scanSessionTranscriptTree(navigationEntries());
   // Missing/forward parents can change old paths when a later append supplies their ID.
   appendSafe &&=
     !tree.hasInvalidLeafControl &&

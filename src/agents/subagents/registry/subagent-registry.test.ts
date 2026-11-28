@@ -60,7 +60,10 @@ import {
   registerRestartDrainCompletionSettlementTest,
 } from "./subagent-registry.native-settlement.test-support.js";
 import { registerSupersededNativeTimingTest } from "./subagent-registry.native-termination.test-support.js";
-import { registerSubagentRegistrationCompletionTest, registerSubagentRegistrationPersistenceTests } from "./subagent-registry.persistence.test-support.js";
+import {
+  registerSubagentRegistrationCompletionTest,
+  registerSubagentRegistrationPersistenceTests,
+} from "./subagent-registry.persistence.test-support.js";
 import {
   activateSubagentRegistryWithRecoveryRuntime,
   registerRestoredRequesterWakeSettlementTests,

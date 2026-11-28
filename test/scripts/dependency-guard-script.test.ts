@@ -533,27 +533,30 @@ describe("dependency guard script", () => {
     expect(enforcement.stdout).toContain("Automatic lockfile cleanup is best effort.");
   });
 
-  it.skipIf(loadSecurityReviewPolicy().rolloutPullRequest === undefined)("does not approve or autoscrub grandfathered lockfile PRs in any mode", () => {
-    const cases = ["detect", "autoscrub", "enforce"];
-    for (const mode of cases) {
-      const result = runDependencyGuard(
-        {
-          [`GET ${pullPath}`]: { ...pullRequest, created_at: "2025-11-01T00:00:00Z" },
-          [`GET ${pullPath}/files`]: [{ filename: "pnpm-lock.yaml" }],
-          [`GET /repos/openclaw/openclaw/compare/${rolloutSha}...${headSha}`]: {
-            base_commit: { sha: rolloutSha },
-            merge_base_commit: { sha: staleSha },
-            status: "diverged",
+  it.skipIf(loadSecurityReviewPolicy().rolloutPullRequest === undefined)(
+    "does not approve or autoscrub grandfathered lockfile PRs in any mode",
+    () => {
+      const cases = ["detect", "autoscrub", "enforce"];
+      for (const mode of cases) {
+        const result = runDependencyGuard(
+          {
+            [`GET ${pullPath}`]: { ...pullRequest, created_at: "2025-11-01T00:00:00Z" },
+            [`GET ${pullPath}/files`]: [{ filename: "pnpm-lock.yaml" }],
+            [`GET /repos/openclaw/openclaw/compare/${rolloutSha}...${headSha}`]: {
+              base_commit: { sha: rolloutSha },
+              merge_base_commit: { sha: staleSha },
+              status: "diverged",
+            },
           },
-        },
-        mode,
-      );
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toContain("grandfathered");
-      expect(result.statuses).toEqual([]);
-      expect(result.calls.every((call) => call.method === "GET")).toBe(true);
-    }
-  });
+          mode,
+        );
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("grandfathered");
+        expect(result.statuses).toEqual([]);
+        expect(result.calls.every((call) => call.method === "GET")).toBe(true);
+      }
+    },
+  );
 
   it("detects dependency guard file surfaces", () => {
     expect(isDependencyFile("pnpm-lock.yaml")).toBe(true);

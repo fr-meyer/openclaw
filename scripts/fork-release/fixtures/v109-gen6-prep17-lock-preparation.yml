@@ -31,9 +31,9 @@ concurrency:
 # DISARMED preparation only. Replace these two literals together with genuine
 # approved bindings; their exact equality is independently checked by the owner.
 env:
-  V109_APPROVED_AT: '2026-10-30T03:14:21Z'
-  V109_EXPIRES_AT: '2026-11-07T03:14:21Z'
-  PYTHONDONTWRITEBYTECODE: '1'
+  V109_APPROVED_AT: "2026-10-30T03:14:21Z"
+  V109_EXPIRES_AT: "2026-11-07T03:14:21Z"
+  PYTHONDONTWRITEBYTECODE: "1"
 defaults:
   run:
     shell: bash

@@ -1,17 +1,13 @@
-import type { MemoryEmbeddingProviderAdapter } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
 import type {
   EmbeddingInput,
   EmbeddingProviderCallOptions,
 } from "openclaw/plugin-sdk/embedding-providers";
+import type { MemoryEmbeddingProviderAdapter } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
-import { resolveSessionTranscriptsDirForAgent } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import { createPluginStateKeyedStoreForTests } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import { clearEmbeddingProviders as clearRegistry } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
-import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { createOpenClawTestState, type OpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import {
@@ -19,9 +15,10 @@ import {
   resetMemoryCoreDreamingStateForTests,
 } from "../test-helpers.js";
 import { runInMemoryTestBackgroundContext } from "./background-context.test-support.js";
-import "./test-runtime-mocks.js";
+import { seedMemoryIndexSessionTranscript as seedSessionTranscript } from "./manager-index-session.test-support.js";
 import type { MemoryIndexManager } from "./manager.js";
 import { isolateMemoryManagerTestConfig } from "./test-config-helpers.js";
+import "./test-runtime-mocks.js";
 
 type GetMemorySearchManager = typeof import("./index.js").getMemorySearchManager;
 type ManagerConfig = Parameters<GetMemorySearchManager>[0]["cfg"];
@@ -194,7 +191,9 @@ vi.mock("./embeddings.js", async (importOriginal) => {
     const audio = lower.split("audio").length - 1;
     const vector = [alpha, beta, image, audio];
     const dimensions = providerState.syntheticDimensionsByModel[model ?? ""];
-    return dimensions ? Array.from({ length: dimensions }, (_, index) => vector[index] ?? 0) : vector;
+    return dimensions
+      ? Array.from({ length: dimensions }, (_, index) => vector[index] ?? 0)
+      : vector;
   };
   const resolveFallbackModel = (providerId: string, fallbackSourceModel: string) =>
     providerId === "gemini" || providerId === "fallback-provider"
@@ -236,11 +235,16 @@ vi.mock("./embeddings.js", async (importOriginal) => {
           },
     createEmbeddingProvider: async (options: ProviderCall) => {
       if (providerState.candidateAdapter && options.provider === "openai") {
-        if (!options.createProvider) { throw new Error("Synthetic candidate requires native factory ownership"); }
+        if (!options.createProvider) {
+          throw new Error("Synthetic candidate requires native factory ownership");
+        }
         const adapter = providerState.candidateAdapter;
-        const result = await options.createProvider(adapter, () => adapter.create({
-          ...options, dimensions: options.outputDimensionality,
-        } as Parameters<typeof adapter.create>[0]));
+        const result = await options.createProvider(adapter, () =>
+          adapter.create({
+            ...options,
+            dimensions: options.outputDimensionality,
+          } as Parameters<typeof adapter.create>[0]),
+        );
         return { ...result, requestedProvider: "openai" };
       }
       providerState.providerCalls.push({
@@ -575,34 +579,6 @@ export function createManagerIndexFixture(deps: {
     return manager;
   };
 
-  const seedSessionTranscript: ManagerIndexFixture["seedSessionTranscript"] = async (params) => {
-    const sessionsDir = resolveSessionTranscriptsDirForAgent("main");
-    const storePath = path.join(sessionsDir, "sessions.json");
-    const sessionKey = params.sessionKey ?? `agent:main:memory:${params.sessionId}`;
-    const updatedAt = Date.now();
-    await fs.mkdir(sessionsDir, { recursive: true });
-    await upsertSessionEntry({
-      agentId: "main",
-      sessionKey,
-      storePath,
-      entry: { sessionId: params.sessionId, updatedAt },
-    });
-    for (const message of params.messages) {
-      await appendSessionTranscriptMessageByIdentity({
-        agentId: "main",
-        sessionId: params.sessionId,
-        sessionKey,
-        storePath,
-        message: {
-          role: message.role,
-          timestamp: message.timestamp,
-          content: [{ type: "text", text: message.content }],
-          ...(message.senderIsOwner ? { __openclaw: { senderIsOwner: true } } : {}),
-        },
-      });
-    }
-  };
-
   const getFtsSessionManager: ManagerIndexFixture["getFtsSessionManager"] = async () => {
     providerState.forceNoProvider = true;
     const cfg = createConfig({
@@ -729,26 +705,4 @@ export function createManagerIndexFixture(deps: {
   };
 }
 
-export function readPublishedSessionIndex(
-  database: DatabaseSync,
-  sessionPath: string,
-  query: string,
-) {
-  return {
-    source: database
-      .prepare(
-        "SELECT path, hash, mtime, size FROM memory_index_sources WHERE path = ? AND source = 'sessions'",
-      )
-      .get(sessionPath),
-    chunks: database
-      .prepare(
-        "SELECT id, hash, text, embedding, updated_at FROM memory_index_chunks WHERE path = ? AND source = 'sessions' ORDER BY id",
-      )
-      .all(sessionPath),
-    search: database
-      .prepare(
-        "SELECT text, id, path, model, start_line, end_line FROM memory_index_chunks_fts WHERE memory_index_chunks_fts MATCH ? AND path = ? ORDER BY id",
-      )
-      .all(query, sessionPath),
-  };
-}
+export { readPublishedSessionIndex } from "./manager-index-session.test-support.js";

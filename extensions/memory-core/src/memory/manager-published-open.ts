@@ -1,28 +1,21 @@
-import type { DatabaseSync } from "node:sqlite";
+import type {
+  MemoryPublishedDatabase,
+  MemoryPublishedDatabaseConstructor,
+  MemoryPublishedOpenOptions,
+} from "./manager-published-contract.js";
+export type { MemoryPublishedOpenOptions } from "./manager-published-contract.js";
 import { MEMORY_INDEX_FTS_TABLE } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import {
   borrowOpenClawAgentDatabase,
   withOpenClawAgentDatabaseWrite,
 } from "openclaw/plugin-sdk/sqlite-runtime";
-import type { MemoryIndexDatabase } from "./manager-database-context.js";
 import { memoryDatabaseTableExists } from "./manager-db-kernel.js";
 import { openMemoryDatabaseReadOnlyAtPath } from "./manager-db.js";
-import type { MemoryPublicationOperations } from "./manager-publication-task.js";
 
-export type MemoryPublishedOpenOptions = {
-  agentId: string;
-  writeOptions: Parameters<typeof withOpenClawAgentDatabaseWrite>[0] & { path: string };
-  readOnly: boolean;
-  allowExtension: boolean;
-  maintenanceSource?: MemoryIndexDatabase;
-  beforeSchema: (db: DatabaseSync) => void;
-  schema: MemoryPublicationOperations["schema.admit"]["input"];
-};
-
-export async function openPublishedMemoryDatabase(
-  Database: typeof MemoryIndexDatabase,
+export async function openPublishedMemoryDatabase<T extends MemoryPublishedDatabase>(
+  Database: MemoryPublishedDatabaseConstructor<T>,
   params: MemoryPublishedOpenOptions,
-): Promise<MemoryIndexDatabase> {
+): Promise<T> {
   const connection = params.readOnly
     ? openMemoryDatabaseReadOnlyAtPath(
         params.writeOptions.path,

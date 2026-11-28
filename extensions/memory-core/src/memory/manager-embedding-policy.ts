@@ -1,4 +1,3 @@
-import { isMemoryAdmissionRefused } from "./bounded-admission.js";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import {
   estimateStructuredEmbeddingInputBytes,
@@ -11,6 +10,7 @@ import {
   asOptionalRecord,
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isMemoryAdmissionRefused } from "./bounded-admission.js";
 
 // Retry attempts are host control state. Provider-thrown values stay opaque so
 // they cannot override the counter or break accounting when they are immutable.
@@ -34,7 +34,10 @@ export async function runMemoryEmbeddingBatchTimeoutRetry(params: {
   while (true) {
     try {
       const value = await params.run();
-      if (value === null && (params.failureMode === "fail-closed" || params.failureMode === "error")) {
+      if (
+        value === null &&
+        (params.failureMode === "fail-closed" || params.failureMode === "error")
+      ) {
         throw new Error(
           "asynchronous embedding batch returned no result; reconcile before retrying",
         );
@@ -43,7 +46,7 @@ export async function runMemoryEmbeddingBatchTimeoutRetry(params: {
     } catch (error) {
       // Never blindly replay or replace a whole asynchronous invocation. The
       // optional partial-result capability selects its own recoverable positions.
-      if ((params.failureMode === "fail-closed" || params.failureMode === "error")) {
+      if (params.failureMode === "fail-closed" || params.failureMode === "error") {
         throw error;
       }
       if (attempts === 2 || !/timed out|timeout/i.test(formatErrorMessage(error))) {

@@ -134,7 +134,9 @@ export function createBoundedMemoryOwnerTool(
                 "memoryFiles",
               )?.memoryFiles;
               if (!memoryFiles) {
-                throw new WorkspaceAccessUnavailableError("Native workspace memory files unavailable");
+                throw new WorkspaceAccessUnavailableError(
+                  "Native workspace memory files unavailable",
+                );
               }
               memoryFiles.assertCurrent();
               manager = await MemoryIndexManager.get({ cfg, agentId, purpose: "cli", memoryFiles });

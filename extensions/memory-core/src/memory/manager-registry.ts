@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import type { EmbeddingCandidateAdmission, EmbeddingCandidateControllerIdentity, EmbeddingProviderBatchRuntime } from "openclaw/plugin-sdk/embedding-provider-runtime-contract";
+import type {
+  EmbeddingCandidateAdmission,
+  EmbeddingCandidateControllerIdentity,
+  EmbeddingProviderBatchRuntime,
+} from "openclaw/plugin-sdk/embedding-provider-runtime-contract";
 // Memory Core plugin module owns manager cache and close serialization.
 import { toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import { enqueueKeyedTask } from "openclaw/plugin-sdk/keyed-async-queue";
@@ -105,10 +109,13 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
   private readonly scopeOperations = new Map<string, Promise<void>>();
   private closePromise: Promise<void> | null = null;
   private readonly managers = new Map<T, ManagerOwnership>();
-  private readonly candidateOwners = new WeakMap<MemoryEmbeddingProvider, {
-    runtime: NonNullable<MemoryEmbeddingProviderCreateResult["runtime"]>;
-    bind: EmbeddingProviderBatchRuntime["withCandidateBatch"];
-  }>();
+  private readonly candidateOwners = new WeakMap<
+    MemoryEmbeddingProvider,
+    {
+      runtime: NonNullable<MemoryEmbeddingProviderCreateResult["runtime"]>;
+      bind: EmbeddingProviderBatchRuntime["withCandidateBatch"];
+    }
+  >();
   constructor(private readonly lifecycle: MemoryManagerLifecycle = {}) {
     lifecycle.prepare = (reload) => this.prepareManagersForReload(reload);
   }
@@ -153,7 +160,10 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
       if (result.provider) {
         owner.providers.set(result.provider, adapter);
         if (result.runtime) {
-          this.candidateOwners.set(result.provider, { runtime: result.runtime, bind: result.runtime.withCandidateBatch });
+          this.candidateOwners.set(result.provider, {
+            runtime: result.runtime,
+            bind: result.runtime.withCandidateBatch,
+          });
         }
         owner.failedAdapters.delete(adapter);
       } else {
@@ -169,41 +179,79 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
   }
 
   withCandidateBatch<R>(
-    manager: T, provider: MemoryEmbeddingProvider,
+    manager: T,
+    provider: MemoryEmbeddingProvider,
     runtime: NonNullable<MemoryEmbeddingProviderCreateResult["runtime"]>,
     admission: EmbeddingCandidateAdmission,
-    run: (batch: EmbeddingProviderBatchRuntime["batchEmbed"], identity: EmbeddingCandidateControllerIdentity) => Promise<R>,
+    run: (
+      batch: EmbeddingProviderBatchRuntime["batchEmbed"],
+      identity: EmbeddingCandidateControllerIdentity,
+    ) => Promise<R>,
   ): Promise<R> {
     const operation = (async () => {
-      const baseline = Object.freeze({ agentId: admission.agentId,
-        journal: Object.freeze({ path: admission.journal.path, migrationId: admission.journal.migrationId,
-          sourceRevision: admission.journal.sourceRevision, accountId: admission.journal.accountId,
-          route: admission.journal.route }),
-        expected: Object.freeze({ model: admission.expected.model, dimensions: admission.expected.dimensions }) });
-      const adapterAdmission = Object.freeze({ ...baseline,
-        journal: Object.freeze({ ...baseline.journal }), expected: Object.freeze({ ...baseline.expected }) });
-      const expectedIdentity = createHash("sha256").update(JSON.stringify({
-        migrationId: baseline.journal.migrationId, sourceRevision: baseline.journal.sourceRevision,
-        accountId: baseline.journal.accountId, route: baseline.journal.route,
-        agentId: baseline.agentId, model: baseline.expected.model, dimensions: baseline.expected.dimensions,
-      })).digest("hex");
+      const baseline = Object.freeze({
+        agentId: admission.agentId,
+        journal: Object.freeze({
+          path: admission.journal.path,
+          migrationId: admission.journal.migrationId,
+          sourceRevision: admission.journal.sourceRevision,
+          accountId: admission.journal.accountId,
+          route: admission.journal.route,
+        }),
+        expected: Object.freeze({
+          model: admission.expected.model,
+          dimensions: admission.expected.dimensions,
+        }),
+      });
+      const adapterAdmission = Object.freeze({
+        ...baseline,
+        journal: Object.freeze({ ...baseline.journal }),
+        expected: Object.freeze({ ...baseline.expected }),
+      });
+      const expectedIdentity = createHash("sha256")
+        .update(
+          JSON.stringify({
+            migrationId: baseline.journal.migrationId,
+            sourceRevision: baseline.journal.sourceRevision,
+            accountId: baseline.journal.accountId,
+            route: baseline.journal.route,
+            agentId: baseline.agentId,
+            model: baseline.expected.model,
+            dimensions: baseline.expected.dimensions,
+          }),
+        )
+        .digest("hex");
       const owner = this.managers.get(manager);
       const adapter = owner?.providers.get(provider);
       const owned = this.candidateOwners.get(provider);
       const assertCurrent = () => {
-        if (!owner || owner.retiring || this.reload?.retireRuntime || !adapter ||
-          this.reload?.adapters.has(adapter) || owner.providers.get(provider) !== adapter ||
-          !owned || owned.runtime !== runtime || !owned.bind || runtime.withCandidateBatch !== owned.bind) {
-          throw new Error("Candidate Batch capability is not owned by the current registered provider");
+        if (
+          !owner ||
+          owner.retiring ||
+          this.reload?.retireRuntime ||
+          !adapter ||
+          this.reload?.adapters.has(adapter) ||
+          owner.providers.get(provider) !== adapter ||
+          !owned ||
+          owned.runtime !== runtime ||
+          !owned.bind ||
+          runtime.withCandidateBatch !== owned.bind
+        ) {
+          throw new Error(
+            "Candidate Batch capability is not owned by the current registered provider",
+          );
         }
       };
       assertCurrent();
       const bind = owned!.bind!;
       return await bind(adapterAdmission, async (batch, identity) => {
         assertCurrent();
-        if (identity.agentId !== baseline.agentId || identity.identity !== expectedIdentity ||
+        if (
+          identity.agentId !== baseline.agentId ||
+          identity.identity !== expectedIdentity ||
           JSON.stringify(identity.journal) !== JSON.stringify(baseline.journal) ||
-          JSON.stringify(identity.expected) !== JSON.stringify(baseline.expected)) {
+          JSON.stringify(identity.expected) !== JSON.stringify(baseline.expected)
+        ) {
           throw new Error("Registered candidate controller changed its admitted identity");
         }
         const retainedIdentity = Object.freeze({ ...baseline, identity: expectedIdentity });
@@ -212,9 +260,17 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
         const failures: unknown[] = [];
         const track = (work: Promise<number[][] | null>) => {
           pending.add(work);
-          void work.then(() => { pending.delete(work); }, (error) => {
-            pending.delete(work); if (!failures.includes(error)) { failures.push(error); }
-          });
+          void work.then(
+            () => {
+              pending.delete(work);
+            },
+            (error) => {
+              pending.delete(work);
+              if (!failures.includes(error)) {
+                failures.push(error);
+              }
+            },
+          );
           return work;
         };
         let result: R | undefined;
@@ -222,24 +278,48 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
           result = await run((options) => {
             try {
               assertCurrent();
-              if (!active) { throw new Error("Candidate registry Batch custody retired"); }
-              const snapshot = { agentId: options.agentId, chunks: structuredClone(options.chunks),
-                wait: options.wait, concurrency: options.concurrency, pollIntervalMs: options.pollIntervalMs,
-                timeoutMs: options.timeoutMs, debug: options.debug };
+              if (!active) {
+                throw new Error("Candidate registry Batch custody retired");
+              }
+              const snapshot = {
+                agentId: options.agentId,
+                chunks: structuredClone(options.chunks),
+                wait: options.wait,
+                concurrency: options.concurrency,
+                pollIntervalMs: options.pollIntervalMs,
+                timeoutMs: options.timeoutMs,
+                debug: options.debug,
+              };
               return track(batch(snapshot));
-            } catch (error) { return track(Promise.reject(error)); }
+            } catch (error) {
+              return track(Promise.reject(error));
+            }
           }, retainedIdentity);
         } catch (error) {
-          const index = failures.indexOf(error); if (index >= 0) { failures.splice(index, 1); }
+          const index = failures.indexOf(error);
+          if (index >= 0) {
+            failures.splice(index, 1);
+          }
           failures.unshift(error);
         } finally {
           active = false;
-          while (pending.size) { await Promise.allSettled([...pending]); }
+          while (pending.size) {
+            await Promise.allSettled([...pending]);
+          }
         }
-        try { assertCurrent(); } catch (error) { failures.push(error); }
-        if (failures.length === 1) { throw failures[0]; }
-        if (failures.length > 1) { throw new AggregateError(failures,
-          "Candidate registry callback/drain/owner failed", { cause: failures[0] }); }
+        try {
+          assertCurrent();
+        } catch (error) {
+          failures.push(error);
+        }
+        if (failures.length === 1) {
+          throw failures[0];
+        }
+        if (failures.length > 1) {
+          throw new AggregateError(failures, "Candidate registry callback/drain/owner failed", {
+            cause: failures[0],
+          });
+        }
         return result as R;
       });
     })();
@@ -449,9 +529,8 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
       onCallerAbort();
     }
     const deadlineMs = params.admission?.deadlineMs;
-    const waitMs = deadlineMs !== undefined
-      ? Math.max(0, deadlineMs - Date.now())
-      : params.admission?.waitMs;
+    const waitMs =
+      deadlineMs !== undefined ? Math.max(0, deadlineMs - Date.now()) : params.admission?.waitMs;
     if (waitMs === 0) {
       admission.abort(new MemoryManagerAdmissionUnavailableError());
     } else if (waitMs !== undefined && Number.isFinite(waitMs) && waitMs > 0) {
