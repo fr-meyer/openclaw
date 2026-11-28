@@ -886,7 +886,7 @@ describe("generate-npm-package-lock", () => {
     },
   );
 
-  it.each(["valid", "wrong-child", "wrong-global"])( 
+  it.each(["valid", "wrong-child", "wrong-global"])(
     "validates the body-parser qs exception without weakening the global pin (%s)",
     (scenario) => {
       const lockfile = {

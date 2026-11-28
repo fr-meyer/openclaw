@@ -462,4 +462,3 @@ def prepare_from_build(manifest_path, inventory_path, metadata_path, resources_p
         raise
     finally:
         inputs.close()
-
