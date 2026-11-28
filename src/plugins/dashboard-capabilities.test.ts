@@ -10,6 +10,7 @@ import {
   useNoBundledPlugins,
   writePlugin,
 } from "./loader.test-fixtures.js";
+import { loadPluginManifest } from "./manifest.js";
 
 afterEach(resetPluginLoaderTestStateForTest);
 afterAll(cleanupPluginLoaderFixturesForTest);
@@ -180,6 +181,50 @@ describe("plugin dashboard declarations", () => {
       }
     },
   );
+
+  it("loads the Workboard bindings and dispatch action from its manifest", () => {
+    const result = loadPluginManifest(path.join(process.cwd(), "extensions", "workboard"));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest.dashboard).toMatchObject({
+      dataBindings: [
+        {
+          id: "cards.list",
+          method: "workboard.cards.list",
+          description: "List Workboard cards and statuses.",
+        },
+        {
+          id: "stats",
+          method: "workboard.cards.stats",
+          description: "Read Workboard card statistics.",
+        },
+        {
+          id: "boards.list",
+          method: "workboard.boards.list",
+          description: "List Workboard boards.",
+        },
+      ],
+      actionVerbs: [
+        {
+          id: "dispatch",
+          method: "workboard.cards.dispatchWithOptions",
+          description: "Dispatch ready Workboard cards, optionally targeting one exact card.",
+          paramShape: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              boardId: { type: "string", minLength: 1 },
+              cardId: { type: "string", minLength: 1 },
+              maxStarts: { type: "integer", minimum: 1 },
+            },
+          },
+        },
+      ],
+    });
+  });
 
   it("rejects gateway methods owned outside the declaring plugin", () => {
     useNoBundledPlugins();

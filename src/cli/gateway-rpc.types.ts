@@ -1,6 +1,7 @@
 export type GatewayRpcOpts = {
   url?: string;
   expectUrl?: string;
+  verifiedRead?: string;
   port?: string;
   token?: string;
   password?: string;

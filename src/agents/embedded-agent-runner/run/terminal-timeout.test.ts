@@ -159,6 +159,7 @@ describe("tool timeout terminal bookkeeping", () => {
     expect(result.meta).toMatchObject({
       modelFallbackStopReason: "agent_run_terminal_timeout",
       livenessState: "blocked",
+      timeoutPhase: "tool_execution",
       error: { kind: "incomplete_turn", fallbackSafe: false },
     });
     expect(result.meta.executionTrace?.attempts ?? []).not.toContainEqual(

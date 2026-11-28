@@ -7,27 +7,14 @@ import {
   type MemoryIndexIdentityState as HostMemoryIndexIdentityState,
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+import type { MemoryIndexMeta } from "./manager-index-meta.js";
+export type { MemoryIndexMeta } from "./manager-index-meta.js";
 
 export type MemoryIndexIdentityState =
   | Exclude<HostMemoryIndexIdentityState, { status: "mismatched"; owner: "openclaw" }>
   | (Extract<HostMemoryIndexIdentityState, { status: "mismatched"; owner: "openclaw" }> & {
       versionOrder: "older" | "newer";
     });
-
-export type MemoryIndexMeta = {
-  model: string;
-  provider: string;
-  providerKey?: string;
-  sources?: MemorySource[];
-  scopeHash?: string;
-  chunkTokens: number;
-  chunkOverlap: number;
-  chunkingVersion?: number;
-  embeddingInputFormatVersion?: number;
-  vectorDims?: number;
-  ftsTokenizer?: string;
-  provenanceVersion?: number;
-};
 
 export const MEMORY_INDEX_PROVENANCE_VERSION = 1;
 

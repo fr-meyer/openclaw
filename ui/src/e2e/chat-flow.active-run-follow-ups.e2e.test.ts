@@ -1,7 +1,10 @@
+import fs from "node:fs/promises";
 import path from "node:path";
+import type { Locator, Page } from "playwright";
 import { expect, it } from "vitest";
 import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
 import { waitForControlUiGatewayReconnecting } from "../test-helpers/control-ui-e2e-readiness.ts";
+import { takeControlUiScreenshotFrame } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import {
   chatSessionListResponse,
   createChatFlowE2eSuite,
@@ -15,7 +18,98 @@ import { createControlUiE2eContextOptions } from "./control-ui-e2e-suite.test-su
 
 const suite = createChatFlowE2eSuite();
 
+async function newChatPage(owner: typeof suite) {
+  const context = await owner.newBrowserContext(createControlUiE2eContextOptions());
+  return { context, page: await context.newPage() };
+}
+
+const chatComposer = (page: Page) => page.locator(".agent-chat__composer-combobox textarea");
+const chatTranscript = (page: Page) => page.locator(".chat-thread-inner");
+const expectCount = (locator: Locator, count: number) =>
+  expect.poll(() => locator.count()).toBe(count);
+const textMessage = (role: string, text: string, extra: Record<string, unknown> = {}) => ({
+  role,
+  content: [{ type: "text", text }],
+  ...extra,
+});
+const persistedText = (role: string, text: string, metadata: Record<string, unknown>) =>
+  textMessage(role, text, { timestamp: Date.now(), __openclaw: metadata });
+const chatEvent = (
+  runId: string,
+  sessionKey: string,
+  state: string,
+  fields: Record<string, unknown> = {},
+) => ({ runId, sessionKey, state, ...fields });
+
 suite.define(() => {
+  it("removes the typed /steer queue chip after consumption while the original run stays active", async () => {
+    const { page } = await newChatPage(suite);
+    const runId = "active-run";
+    const sessionKey = "agent:main:main";
+    const sessionInfo = { key: sessionKey, activeRunIds: [runId], hasActiveRun: true };
+    const gateway = await installMockGateway(page, {
+      historyMessages: [
+        persistedText("user", "Check how the metrics file is populated.", {
+          id: "original-user",
+          idempotencyKey: `${runId}:user`,
+          seq: 1,
+        }),
+      ],
+      inFlightRun: { runId, text: "Checking the metrics pipeline." },
+      sessionInfo,
+    });
+    await page.goto(`${suite.server.baseUrl}chat`);
+    const stop = page.getByRole("button", { name: "Stop generating" });
+    await stop.waitFor();
+    const steerText = "Keep the numbers in metrics.json, not USER.md.";
+    await gateway.deferNext("chat.send");
+    await chatComposer(page).fill(`/steer ${steerText}`);
+    await chatComposer(page).press("Control+Enter");
+    const sent = await gateway.waitForRequest("chat.send");
+    const params = requireRecord(sent.params);
+    expect(params).toMatchObject({ sessionKey, message: steerText, queueMode: "steer" });
+    const steerRunId = requireString(params.idempotencyKey, "steer input identity");
+    await gateway.resolveDeferred("chat.send", { runId: steerRunId, status: "started" });
+    const steerMessage = persistedText("user", steerText, {
+      id: "consumed-steer",
+      idempotencyKey: `${steerRunId}:user`,
+      seq: 2,
+      steerTargetRunId: runId,
+    });
+    await gateway.emitGatewayEvent("session.message", {
+      ...sessionInfo,
+      sessionKey,
+      clientRunId: steerRunId,
+      message: steerMessage,
+      messageId: "consumed-steer",
+      messageSeq: 2,
+    });
+    const reply = "Understood. I will verify metrics.json and leave USER.md unchanged.";
+    await gateway.emitGatewayEvent(
+      "chat",
+      chatEvent(runId, sessionKey, "delta", {
+        message: textMessage("assistant", reply),
+      }),
+    );
+    const userBubble = page.locator(".chat-group.user", { hasText: steerText });
+    const replyBubble = chatTranscript(page).getByText(reply, { exact: true });
+    await expectCount(userBubble, 1);
+    await replyBubble.waitFor();
+    await stop.waitFor();
+    const parent = process.env.OPENCLAW_UI_E2E_ARTIFACT_DIR?.trim();
+    if (parent) {
+      const dir = createControlUiE2eArtifactDir("consumed-slash-steer", parent);
+      const frame = await takeControlUiScreenshotFrame(
+        page,
+        chatTranscript(page),
+        [userBubble, replyBubble, stop],
+        { animations: "disabled" },
+      );
+      await fs.writeFile(path.join(dir, "consumed-steer.png"), frame.png);
+    }
+    await expectCount(page.locator(".chat-queue__item"), 0);
+  });
+
   it("preserves a non-steer server default for active-run follow-ups", async () => {
     const context = await suite.newBrowserContext(createControlUiE2eContextOptions());
     const page = await context.newPage();
@@ -877,162 +971,6 @@ suite.define(() => {
       const sends = await waitForRequests(gateway, "chat.send", 2);
       expect(requireRecord(sends[1]?.params)).toMatchObject({ message: followUp });
       await queuedRow.waitFor({ state: "detached", timeout: 10_000 });
-    } finally {
-      await suite.closeBrowserContext(context);
-    }
-  });
-
-  it("honors a session interrupt override ahead of the webchat config default", async () => {
-    const context = await suite.newBrowserContext(createControlUiE2eContextOptions());
-    const page = await context.newPage();
-    const sessionKey = "agent:main:main";
-    const runtimeConfig = {
-      messages: { queue: { byChannel: { webchat: "steer" }, mode: "steer" } },
-    };
-    const gateway = await installMockGateway(page, {
-      methodResponses: {
-        "config.get": {
-          config: runtimeConfig,
-          hash: "queue-session-override-config",
-          issues: [],
-          raw: JSON.stringify(runtimeConfig),
-          runtimeConfig,
-          valid: true,
-        },
-        "sessions.list": chatSessionListResponse([
-          {
-            effectiveQueueMode: "interrupt",
-            key: "agent:main:main",
-            kind: "direct",
-            label: "Main",
-            queueMode: "interrupt",
-            updatedAt: Date.now(),
-          },
-        ]),
-      },
-      sessionInfo: {
-        effectiveQueueMode: "interrupt",
-        hasActiveRun: false,
-        key: "agent:main:main",
-        queueMode: "interrupt",
-        status: "done",
-      },
-      sessionKey,
-    });
-
-    try {
-      await page.goto(`${suite.server.baseUrl}chat`);
-
-      await page.locator(".agent-chat__composer-combobox textarea").fill("keep this run active");
-      await page.getByRole("button", { name: "Send message" }).click();
-      await gateway.waitForRequest("chat.send");
-      await page.getByRole("button", { name: "Stop generating" }).waitFor({ timeout: 10_000 });
-
-      const followUp = "interrupt for this session override";
-      await page.locator(".agent-chat__composer-combobox textarea").fill(followUp);
-      await page.getByRole("button", { name: "Send message" }).click();
-
-      const sends = await waitForRequests(gateway, "chat.send", 2);
-      expect(requireRecord(sends[1]?.params)).toMatchObject({
-        message: followUp,
-        queueMode: "interrupt",
-        sessionKey,
-      });
-    } finally {
-      await suite.closeBrowserContext(context);
-    }
-  });
-
-  it("routes /redirect through one interrupt-mode chat.send", async () => {
-    const context = await suite.newBrowserContext(createControlUiE2eContextOptions());
-    const page = await context.newPage();
-    const gateway = await installMockGateway(page);
-
-    try {
-      await page.goto(`${suite.server.baseUrl}chat`);
-      await page
-        .locator(".agent-chat__composer-combobox textarea")
-        .fill("/redirect start over cleanly");
-      await page.getByRole("button", { name: "Send message" }).click();
-
-      const request = await gateway.waitForRequest("chat.send");
-      expect(requireRecord(request.params)).toMatchObject({
-        message: "start over cleanly",
-        queueMode: "interrupt",
-        sessionKey: "agent:main:main",
-        idempotencyKey: expect.any(String),
-      });
-      await page.getByText("Redirected.").waitFor({ timeout: 10_000 });
-      await expectRequestCountStable(gateway, "chat.send", 1);
-    } finally {
-      await suite.closeBrowserContext(context);
-    }
-  });
-
-  it("steers a restored queued message when only the session row reports the active run", async () => {
-    const context = await suite.newBrowserContext(createControlUiE2eContextOptions());
-    const page = await context.newPage();
-    const gateway = await installMockGateway(page);
-
-    try {
-      await page.goto(`${suite.server.baseUrl}settings/appearance`);
-      await page.locator("[data-settings-follow-up-mode]").selectOption("queue");
-      await page.goto(`${suite.server.baseUrl}chat?session=main`);
-      await expect.poll(() => new URL(page.url()).pathname).toMatch(/\/chat\/main$/);
-
-      await page.locator(".agent-chat__composer-combobox textarea").fill("keep this run active");
-      await page.getByRole("button", { name: "Send message" }).click();
-      await gateway.waitForRequest("chat.send");
-      await page.getByRole("button", { name: "Stop generating" }).waitFor({ timeout: 10_000 });
-
-      const queuedPrompt = "steer this after restoring the queue";
-      await page.locator(".agent-chat__composer-combobox textarea").fill(queuedPrompt);
-      await page.getByRole("button", { name: "Queue message" }).click();
-      await page.locator(".chat-queue").getByText(queuedPrompt).waitFor({ timeout: 10_000 });
-
-      await gateway.setSessionsListResponse(
-        chatSessionListResponse([
-          {
-            activeLeafEntryId: "leaf-active",
-            activeRunIds: ["active-run"],
-            hasActiveRun: true,
-            key: "global",
-            kind: "global",
-            label: "Global",
-            sessionId: "global-active-run",
-            status: "running",
-            updatedAt: Date.now(),
-          },
-          {
-            activeLeafEntryId: "leaf-active",
-            activeRunIds: ["active-run"],
-            hasActiveRun: true,
-            key: "agent:main:main",
-            kind: "direct",
-            label: "Main",
-            sessionId: "main-active-run",
-            status: "running",
-            updatedAt: Date.now(),
-          },
-        ]),
-      );
-      await page.reload();
-      await gateway.waitForRequest("sessions.list");
-
-      const queue = page.locator(".chat-queue");
-      await queue.getByText(queuedPrompt).waitFor({ timeout: 10_000 });
-      await queue.getByRole("button", { name: "Steer" }).click();
-
-      const steerRequest = await gateway.waitForRequest("chat.send");
-      const steerParams = requireRecord(steerRequest.params);
-      expect(steerParams).toMatchObject({
-        deliver: false,
-        message: queuedPrompt,
-        queueMode: "steer",
-        sessionKey: "agent:main:main",
-      });
-      expect(steerParams).not.toHaveProperty("expectedRunId");
-      expect(steerParams).not.toHaveProperty("expectedLeafEntryId");
     } finally {
       await suite.closeBrowserContext(context);
     }

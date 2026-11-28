@@ -4,6 +4,7 @@ import { refreshCodexAppServerAuthTokens } from "./auth-bridge.js";
 import { fingerprintTokenAuthProfileCacheKey } from "./auth-cache-key.js";
 import type { CodexAppServerAuthRuntimeContext as ClientRuntimeContext } from "./auth-profile.js";
 import type { CodexAppServerAuthHandoff } from "./auth-types.js";
+import * as threadClosure from "./client-thread-closure.js";
 import {
   createThreadOwnerToken,
   isThreadBackgroundOnly,
@@ -137,6 +138,7 @@ export function ensureCodexAppServerClientRuntime(
     workspaceReferences: new Map(),
   };
   configuredClients.set(client, runtime);
+  threadClosure.ensureCodexAppServerThreadClosureTracking(client);
   client.addCloseHandler(() => {
     // Pending releases may settle after close; their continuations must never
     // resurrect subscriptions or eviction timers on a dead physical client.
@@ -405,6 +407,7 @@ export async function retainCodexAppServerLiveThread(
     return false;
   }
   const previousOwner = runtime.retainedThreads.get(threadId)?.ownerToken;
+  threadClosure.clearCodexAppServerThreadClosed(client, threadId);
   runtime.retainedThreads.delete(threadId);
   const retained: RetainedLiveThread = {
     ownerToken,

@@ -1,6 +1,22 @@
 // Real workspace contract for memory embedding providers and batch helpers.
 
 export {
+  getMemoryEmbeddingProvider,
+  listMemoryEmbeddingProviders,
+  listRegisteredMemoryEmbeddingProviderAdapters,
+} from "./host/openclaw-runtime-memory.js";
+export type {
+  MemoryEmbeddingBatchChunk,
+  MemoryEmbeddingBatchOptions,
+  MemoryEmbeddingBatchSubmissionLifecycle,
+  MemoryEmbeddingProvider,
+  MemoryEmbeddingProviderAdapter,
+  MemoryEmbeddingProviderCallOptions,
+  MemoryEmbeddingProviderCreateOptions,
+  MemoryEmbeddingProviderCreateResult,
+  MemoryEmbeddingProviderRuntime,
+} from "./host/openclaw-runtime-memory.js";
+export {
   EmbeddingBatchUnavailableError,
   extractBatchErrorMessage,
   formatBatchErrorDetail,
@@ -32,7 +48,7 @@ export {
   mapBatchEmbeddingsByIndex,
   sanitizeEmbeddingCacheHeaders,
 } from "./host/embedding-provider-adapter-utils.js";
-export { sanitizeAndNormalizeEmbedding } from "./host/embedding-vectors.js";
+export { readEmbeddingVectors, sanitizeAndNormalizeEmbedding } from "./host/embedding-vectors.js";
 export { debugEmbeddingsLog } from "./host/embeddings-debug.js";
 export { normalizeEmbeddingModelWithPrefixes } from "./host/embeddings-model-normalize.js";
 export {

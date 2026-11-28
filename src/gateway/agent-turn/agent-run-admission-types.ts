@@ -17,6 +17,7 @@ import type { GatewayCronCreatorAuthorityAdmission } from "../server-methods/cro
 import type { AgentDeliveryPhaseResult } from "./agent-delivery-phase.js";
 import type { RestoredCronContinuation } from "./agent-handler-helpers.js";
 import type { PreparedAgentRunUserTurn, prepareAgentRunUserTurn } from "./agent-run-user-turn.js";
+import type { AgentTurnExecutionSettlement } from "./execution-settlement.types.js";
 import type { AgentTurnIo } from "./types.js";
 
 export type PreparedAgentRunModelRuntime =
@@ -33,6 +34,7 @@ export type PreparedAgentRunModelRuntime =
     };
 
 export type PreparedAgentRunDispatch = PreparedAgentRunModelRuntime & {
+  executionSettlement?: AgentTurnExecutionSettlement;
   activeGatewayWorkAdmission: SessionWorkAdmissionLease;
   activeRunAbort: ReturnType<typeof registerChatAbortController>;
   cronCreatorAuthority?: GatewayCronCreatorAuthorityAdmission;

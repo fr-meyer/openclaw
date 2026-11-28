@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +16,7 @@ import {
 } from "../../scripts/docker-release-artifacts.mjs";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 import { candidatePublicationFixture } from "./candidate-publication.test-support.js";
+import { createDockerReleaseLayout, writeJson } from "./docker-release-artifacts.test-support.js";
 
 const sourceSha = "a".repeat(40);
 const toolingSha = "b".repeat(40);
@@ -30,84 +31,17 @@ function temporaryDirectory() {
   return tempDirs.make("openclaw-docker-artifacts-");
 }
 
-function writeJson(file: string, value: unknown) {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(value));
-}
-
 function createLayout(
   directory: string,
   architecture: string,
   options: { labelSha?: string; provenance?: boolean; version?: string; builtAt?: string } = {},
 ) {
-  function blob(value: unknown) {
-    const bytes = Buffer.from(JSON.stringify(value));
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    const file = path.join(directory, "blobs", "sha256", digest);
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, bytes);
-    return { digest: `sha256:${digest}`, size: bytes.length };
-  }
-  const config = blob({
+  return createDockerReleaseLayout(
+    { sourceSha, repository, mediaType, indexMediaType },
+    directory,
     architecture,
-    os: "linux",
-    rootfs: { type: "layers", diff_ids: [] },
-    config: {
-      Labels: {
-        "org.opencontainers.image.revision": options.labelSha ?? sourceSha,
-        "org.opencontainers.image.version": options.version ?? "2026.8.1-beta.2",
-        "org.opencontainers.image.created": options.builtAt ?? "2026-09-01T00:00:00.000Z",
-      },
-    },
-  });
-  const image = blob({
-    schemaVersion: 2,
-    mediaType,
-    config: { mediaType: "application/vnd.oci.image.config.v1+json", ...config },
-    layers: [],
-  });
-  const predicates = [
-    "https://spdx.dev/Document",
-    ...(options.provenance === false ? [] : ["https://slsa.dev/provenance/v1"]),
-  ];
-  const attestation = blob({
-    schemaVersion: 2,
-    mediaType,
-    config: { mediaType: "application/vnd.oci.image.config.v1+json", ...blob({}) },
-    layers: predicates.map((predicateType) =>
-      Object.assign(
-        blob({ predicateType, subject: [{ digest: { sha256: image.digest.slice(7) } }] }),
-        {
-          mediaType: "application/vnd.in-toto+json",
-          annotations: { "in-toto.io/predicate-type": predicateType },
-        },
-      ),
-    ),
-  });
-  const manifests = [
-    { mediaType, ...image, platform: { os: "linux", architecture } },
-    {
-      mediaType,
-      ...attestation,
-      platform: { os: "unknown", architecture: "unknown" },
-      annotations: {
-        "vnd.docker.reference.type": "attestation-manifest",
-        "vnd.docker.reference.digest": image.digest,
-      },
-    },
-  ];
-  const index = blob({ schemaVersion: 2, mediaType: indexMediaType, manifests });
-  writeJson(path.join(directory, "oci-layout"), { imageLayoutVersion: "1.0.0" });
-  writeJson(path.join(directory, "index.json"), {
-    schemaVersion: 2,
-    manifests: [{ mediaType: indexMediaType, ...index }],
-  });
-  return {
-    indexDigest: index.digest,
-    imageDigest: image.digest,
-    configDigest: config.digest,
-    manifests,
-  };
+    options,
+  );
 }
 
 async function createPreparedRelease(includeBrowser = true, version = "2026.8.1-beta.2") {
@@ -221,6 +155,7 @@ async function createPreparedRelease(includeBrowser = true, version = "2026.8.1-
       const image = createLayout(directory, architecture, { version });
       const verified = await verifyDockerReleaseLayout({
         ...context,
+        sourceRepository: repository,
         directory,
         architecture,
         expectedDigest: image.indexDigest,
@@ -604,6 +539,7 @@ describe("prepared Docker publication", () => {
           directory,
           architecture: "amd64",
           sourceSha,
+          sourceRepository: repository,
           version: "2026.8.1-beta.2",
           builtAt: "2026-09-01T00:00:00.000Z",
           expectedDigest: image.indexDigest,
@@ -964,5 +900,97 @@ describe("prepared Docker publication", () => {
         )
         .map(([name]) => name),
     ).toEqual(["publish"]);
+  });
+});
+
+describe("native smoke resource admission", () => {
+  const digest = "sha256:" + "a".repeat(64);
+  const ownedContainer = "c".repeat(64);
+
+  function smokeHarness(failStart = false) {
+    const text = readFileSync("scripts/docker-release-artifacts.mjs", "utf8");
+    const start = text.indexOf("function smokeImage(");
+    const end = text.indexOf("function releaseContext(", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const events: string[] = [];
+    const commands: string[][] = [];
+    const smoke = runInNewContext(text.slice(start, end) + "; smokeImage;", {
+      DIGEST: /^sha256:[0-9a-f]{64}$/u,
+      ARCHITECTURES: ["amd64", "arm64"],
+      WORKSPACE_SMOKE: "workspace smoke fixture",
+      requireValue(value: unknown, message: string) {
+        if (!value) throw new Error(message);
+      },
+      run(command: string, args: string[]) {
+        commands.push([command, ...args]);
+        events.push([command, ...args.slice(0, 2)].join(" "));
+        if (failStart && args[0] === "start") throw new Error("attached smoke failed");
+        if (args[0] === "image") return digest;
+        if (args[0] === "create") return ownedContainer;
+        if (args[0] === "inspect") return "false 0";
+        return "";
+      },
+    });
+    return { smoke, events, commands };
+  }
+
+  it.each([undefined, "secretless"])("admits immediately before native launch: %s", (isolation) => {
+    const { smoke, events } = smokeHarness();
+    smoke("/unused", "amd64", "default", digest, {
+      transport: "loaded",
+      isolation,
+      beforeNative() {
+        events.push("admission");
+      },
+    });
+    const launch = events.findIndex((event) => /^docker (create|run) /u.test(event));
+    expect(events[launch - 1]).toBe("admission");
+    expect(events.filter((event) => event === "admission")).toHaveLength(1);
+    if (isolation === "secretless") {
+      expect(events).toContain("docker rm --force");
+    }
+  });
+
+  it.each([undefined, "secretless"])(
+    "propagates refusal without any native launch: %s",
+    (isolation) => {
+      const { smoke, events } = smokeHarness();
+      const refusal = new Error("fresh resource admission refused");
+      expect(() =>
+        smoke("/unused", "amd64", "default", digest, {
+          transport: "loaded",
+          isolation,
+          beforeNative() {
+            throw refusal;
+          },
+        }),
+      ).toThrow(refusal);
+      expect(events).toEqual(["docker image inspect"]);
+    },
+  );
+
+  it("retains exact owned cleanup when native start fails after admission", () => {
+    const { smoke, events, commands } = smokeHarness(true);
+    expect(() =>
+      smoke("/unused", "amd64", "default", digest, {
+        transport: "loaded",
+        isolation: "secretless",
+        beforeNative() {
+          events.push("admission");
+        },
+      }),
+    ).toThrow("attached smoke failed");
+    expect(commands.at(-1)).toEqual(["docker", "rm", "--force", ownedContainer]);
+  });
+
+  it("rejects an invalid admission callback before preparation or inspection", () => {
+    const { smoke, events } = smokeHarness();
+    expect(() =>
+      smoke("/unused", "amd64", "default", digest, {
+        beforeNative: true,
+      }),
+    ).toThrow("Docker smoke beforeNative must be a function.");
+    expect(events).toEqual([]);
   });
 });

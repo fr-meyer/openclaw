@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { loadSecurityReviewPolicy } from "../../scripts/github/security-review-policy.mjs";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -1631,7 +1632,8 @@ describe("combined security review entry point", () => {
     },
   };
 
-  it.each([true, false])(
+  const rolloutOnly = it.skipIf(loadSecurityReviewPolicy().rolloutPullRequest === undefined);
+  rolloutOnly.each([true, false])(
     "grandfathers an old branch without reusable guard evidence (CI=%s)",
     (hasCi) => {
       const result = evaluate({
@@ -1646,7 +1648,7 @@ describe("combined security review entry point", () => {
     },
   );
 
-  it("does not autoscrub a grandfathered PR", () => {
+  rolloutOnly("does not autoscrub a grandfathered PR", () => {
     const result = evaluate(exemptRoutes, "autoscrub");
     expect(result.status, result.stderr).toBe(0);
     expect(
@@ -1671,7 +1673,7 @@ describe("combined security review entry point", () => {
     expect(result.combined).not.toContain("success");
   });
 
-  it("leaves the combined gate failed when rollout metadata cannot be read", () => {
+  rolloutOnly("leaves the combined gate failed when rollout metadata cannot be read", () => {
     const result = evaluate({ "GET /repos/openclaw/openclaw/pulls/152415": { httpError: 403 } });
     expect(result.status).toBe(1);
     expect(result.combined).toEqual(["pending", "failure"]);

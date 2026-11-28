@@ -14,6 +14,10 @@ import {
   WorkboardUploadsDisabledError,
   type GatewayMethodContext,
 } from "./gateway-helpers.js";
+import {
+  createWorkboardLiveExecutionTracker,
+  type WorkboardLiveExecutionTracker,
+} from "./live-execution.js";
 import type { WorkboardSessionsBoardService } from "./sessions-board.js";
 import { resolveWorkboardSqliteWorkerModuleUrl } from "./sqlite-store-paths.js";
 import { registerWorkboardStoreLifecycle } from "./store-lifecycle.js";
@@ -107,6 +111,7 @@ async function redactCardResult(card: Promise<WorkboardCard>) {
 }
 
 export function registerWorkboardGatewayMethods(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: OpenClawPluginApi;
   store?: WorkboardStore;
   sessionsBoard?: Pick<WorkboardSessionsBoardService, "read" | "update" | "move">;
@@ -124,8 +129,9 @@ export function registerWorkboardGatewayMethods(params: {
   const store =
     params.store ??
     WorkboardStore.openSqlite(resolveWorkboardSqliteWorkerModuleUrl(api.runtimeSource));
+  const liveExecutions = params.liveExecutions ?? createWorkboardLiveExecutionTracker();
   if (!params.store) {
-    registerWorkboardStoreLifecycle(api, store);
+    registerWorkboardStoreLifecycle(api, store, liveExecutions.stop);
   }
   const register = (
     method: string,
@@ -156,8 +162,15 @@ export function registerWorkboardGatewayMethods(params: {
     register(`workboard.cards.${method}`, WRITE_SCOPE, ({ params: input }) =>
       redactCardResult(mutate(readId(input), input)),
     );
-  const dispatchCards = createWorkboardDispatchHandler({ api, store });
+  const dispatchCards = createWorkboardDispatchHandler({ api, store, liveExecutions });
 
+  register("workboard.cards.executionSettlement", READ_SCOPE, async ({ params: input }) => {
+    const card = await store.get(readId(input));
+    if (!card) {
+      throw new Error("Workboard card not found.");
+    }
+    return liveExecutions.observe(card);
+  });
   register("workboard.cards.list", READ_SCOPE, async ({ params: input }) => {
     const result = await store.listCards(input.boardId);
     const since = input.sinceRevision;
@@ -247,7 +260,7 @@ export function registerWorkboardGatewayMethods(params: {
     dispatchCards(request, { supportsMaxStarts: false }),
   );
   register("workboard.cards.dispatchWithOptions", WRITE_SCOPE, (request) =>
-    dispatchCards(request, { supportsMaxStarts: true }),
+    dispatchCards(request, { supportsMaxStarts: true, supportsCardId: true }),
   );
   register("workboard.boards.list", READ_SCOPE, () => store.listBoards());
   register("workboard.boards.upsert", WRITE_SCOPE, async (request) => {

@@ -297,6 +297,10 @@ export class SessionStartupCatchupHarness extends MemorySyncTestHarness {
     return "test";
   }
 
+  protected async assertNoBatchSubmissionQuarantine(): Promise<void> {}
+
+  protected async commitBatchSubmissionQuarantine(): Promise<void> {}
+
   protected resolveProviderIndexIdentities() {
     return [];
   }

@@ -1,7 +1,7 @@
 import type { QueueMode } from "../../../../packages/gateway-protocol/src/schema/logs-chat.js";
 import type { AdmittedRunOperatorAuthority } from "../../../agents/admitted-run-context.js";
 import type { AutoFallbackPrimaryProbe } from "../../../agents/agent-scope.js";
-import type { ExecToolDefaults } from "../../../agents/bash-tools.js";
+import type { ExecToolDefaults } from "../../../agents/bash-tools.exec-types.js";
 import type { CliSessionBindingFacts } from "../../../agents/cli-runner/session-binding.types.js";
 import type {
   CurrentInboundPromptContext,
@@ -11,8 +11,8 @@ import type { ModelFallbackRouteResolution } from "../../../agents/model-fallbac
 import type { ReplyDeliveryObserver } from "../../../agents/reply-completion.js";
 import type { InboundEventKind } from "../../../channels/inbound-event/kind.js";
 import type { ChannelAdmissionEvidence } from "../../../channels/message-access/admission-evidence.js";
-import type { SessionEntry } from "../../../config/sessions.js";
 import type { PrepareAssistantTranscriptMessage } from "../../../config/sessions/transcript-assistant-delivery.js";
+import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { ReplyToMode } from "../../../config/types.base.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import type { QueueDropPolicy } from "../../../config/types.queue.js";

@@ -27,3 +27,5 @@ export {
   shortenHomePath,
   truncateUtf16Safe,
 } from "../../../../src/utils.js";
+
+export { createSensitiveTextRedactor } from "../../../../src/logging/redact.js";

@@ -19,35 +19,16 @@ import {
 } from "./operator-role-policy.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/types.js";
+import type {
+  GatewaySessionAccessAuthority,
+  RetainedGatewaySessionAccess,
+} from "./session-access-authority.types.js";
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
 import { resolveSessionResourceToolPolicy } from "./session-resource-tool-policy.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 import { authorizeOwnSessionMutation } from "./session-sharing-policy.js";
 import { prepareSessionSharing } from "./session-sharing-read.js";
-
-type RetainedGatewaySessionAccess = {
-  readonly signal: AbortSignal;
-  assertCurrent: () => void;
-  release: () => void;
-};
-
-export type GatewaySessionAccessAuthority = {
-  readonly target: Readonly<{
-    agentId: string;
-    sessionKey: string;
-    sessionId: string;
-    lifecycleRevision?: string;
-  }>;
-  readonly sandboxRequired: boolean;
-  /** Invocation guard, including the admitted model turn when applicable. */
-  assertCurrent: () => void;
-  /** Retain original actor, grant, sharing and tool policy for a viewer or accepted operation. */
-  retain: () => RetainedGatewaySessionAccess;
-  /** Session resource lifetime only. Revoking one collaborator must not destroy shared state. */
-  retainSession: () => RetainedGatewaySessionAccess;
-  /** Router-owned preparation hold; each service borrow has its own release. */
-  release: () => void;
-};
+export type { GatewaySessionAccessAuthority } from "./session-access-authority.types.js";
 
 function denied(message = "Session access changed; reopen the session before continuing."): never {
   throw new SessionMutationAuthorizationChangedError(

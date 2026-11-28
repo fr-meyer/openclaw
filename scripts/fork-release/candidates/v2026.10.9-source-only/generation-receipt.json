@@ -1,0 +1,333 @@
+{
+  "schema": "openclaw.v109.lock-derivation.v1",
+  "status": "derived_only",
+  "sourceSha": "bde032ffa56d04ae1f977e787c2ecde705a0ff9c",
+  "sourceTree": "e9a3fd44ee3eaf742e29a0598f35a6ae569b9e1a",
+  "pipelineHead": "42415ae020eb3b485bafde313801ff152d0b1973",
+  "runId": "42157183076",
+  "runAttempt": 1,
+  "packageSha256": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
+  "workspaceSha256": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
+  "sourceLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+  "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+  "ledgerSha256": "99f44c019143ed159dce0bfc0cf5cd56bb1e4d0c365b3ba4c991f880ec164254",
+  "nodeVersion": "24.22.1",
+  "pnpmVersion": "12.15.0",
+  "changedPaths": [],
+  "gitDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "allOtherTrackedEntriesUnchanged": true,
+  "startedAt": "2026-11-06T03:55:36Z",
+  "finishedAt": "2026-11-06T03:56:57Z",
+  "exitCode": 0,
+  "timedOut": false,
+  "cleanupSettled": null,
+  "imageBuilt": false,
+  "qualified": false,
+  "productionAuthorized": false,
+  "registryEvidence": {
+    "proofSha256": "05bcbaf5a7bf3fb19046534d239ac25db140f34054c7f2cc38c6c1f2d09f9b97",
+    "packages": [
+      {
+        "package": "@azure/msal-node",
+        "version": "7.1.1",
+        "publishedAt": "2026-10-21T19:21:33.186Z",
+        "distIntegrity": "sha512-zHXTJB38XVrsNaXrPBCMqEUjeyQysFfgmKtUHRDsEKTRjNIPckJ/w6fE5wBXrmJXBim1D3C7O7LOag0msPTrgw=="
+      },
+      {
+        "package": "@azure/msal-common",
+        "version": "16.14.3",
+        "publishedAt": "2026-10-21T19:12:59.113Z",
+        "distIntegrity": "sha512-tz3GvMrR9V/plb2lDdW8qaO8CPpfZevdExBKjltzzbAtyhK0eB2UIvji1aU+gkyHj3fxQ2ie+LNHyMXdmo8wOg=="
+      }
+    ],
+    "registry": "https://registry.npmjs.org/",
+    "checkedAt": "2026-11-06T03:55:36Z",
+    "minimumAgeMinutes": 10080,
+    "checkKind": "recheck_pinned_registry_metadata_age_and_integrity",
+    "parentDependency": {
+      "package": "@azure/msal-node",
+      "version": "7.1.1",
+      "dependency": "@azure/msal-common",
+      "dependencyVersion": "16.14.3"
+    }
+  },
+  "lockSecuritySha256": "a4986be2b97619972338ca6fe8915f426ad1f9ae717bf8ceefed9e162517e987",
+  "vendorDerivation": {
+    "schema": "openclaw.v109.npm-vendor-derivation.v1",
+    "sourceGeneration": 6,
+    "workspaceSha256": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
+    "patchSha256": "1f6eb7e7efe61639b838d0f931318b16e2309a71afd6a568017908d69763e866",
+    "proofSha256": "b757ba0b91df785d71f7816350066e8a3f0b5828aa3d58988da129f203d71e2d",
+    "producerRuntimeSha256": "4f7927a4f4c27911e82c1ce21347b47d4c7f3f7e72f66f31c0616b5e4ee29a6c"
+  },
+  "vendorQualification": {
+    "schema": "openclaw.v109.npm-vendor-qualification-evidence.v1",
+    "qualifierRuntimeSha256": "59de709cf4c4af0867f571f984de9402443848ec1bc8137a7d4ac0681ef17980",
+    "receiptSha256": "5094bc53475f0962f5ea3a293387b27c85f428799c2d5b60498c8e43aea290d0",
+    "receipt": {
+      "schema": "openclaw.npm-glob-vendor-qualification.v1",
+      "status": "passed",
+      "phase": "complete",
+      "reason": "all_52_cases_passed",
+      "packageExecuted": true,
+      "imageTested": false,
+      "actualBunRuntimeTested": false,
+      "proofSha256": "b757ba0b91df785d71f7816350066e8a3f0b5828aa3d58988da129f203d71e2d",
+      "patchSha256": "1f6eb7e7efe61639b838d0f931318b16e2309a71afd6a568017908d69763e866",
+      "originalSha256": "228bd64aaef23270dbdbd2cf3d5ef5c467602ef38c4066246cef1984adab9a67",
+      "derivedSha256": "63507a3c06ebcad7a173bdb3b3ba3476dff39c907230843629975a13f7967a5b",
+      "packageExecutionAttempted": true,
+      "testResultEvidence": {
+        "file": "npm-vendor-actual-test-result.private.json",
+        "bytes": 7954,
+        "sha256": "9327663cba175c5236b6fec98b25a75daa6aa9b4573f3140f0e31e00abdc3627",
+        "storedBytes": 7954,
+        "storedSha256": "9327663cba175c5236b6fec98b25a75daa6aa9b4573f3140f0e31e00abdc3627",
+        "truncated": false,
+        "limitBytes": 131072
+      },
+      "tests": {
+        "schema": "openclaw.npm-vendor-actual-package-tests.v1",
+        "passed": true,
+        "caseCount": 52,
+        "passedCount": 52,
+        "cases": [
+          {
+            "name": "cjs-normal.positive",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.pause.async",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.positive",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.pause.async",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.positive",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.pause.async",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.positive",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.pause.async",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "original-regression-positive-control",
+            "passed": true
+          },
+          {
+            "name": "actual-npm-consumers",
+            "passed": true
+          },
+          {
+            "name": "actual-public-pack-delivery",
+            "passed": true
+          },
+          {
+            "name": "actual-offline-global-delivery",
+            "passed": true
+          }
+        ],
+        "packageExecutionHost": "ci-only",
+        "imageTested": false,
+        "publicPackTested": true,
+        "actualBunRuntimeTested": false
+      }
+    },
+    "controls": [
+      {
+        "path": "scripts/test-npm-glob-vendor-controls.mjs",
+        "runtimeSha256": "82bde211d75548a431d7c9746e17800236ee48be9222e9fccc2f6083825ff798",
+        "receiptSha256": "fbd71b9d2bab1d748464f3acb3a685d42d4c7975a05a6748994ef0836bef55fa",
+        "caseCount": 30,
+        "passedCount": 30,
+        "exitCode": 0,
+        "timedOut": false,
+        "cleanupSettled": null
+      },
+      {
+        "path": "scripts/test-npm-glob-vendor-qualification.mjs",
+        "runtimeSha256": "78d9faedcd9f96dfafbbebe4ab8051de1451767160b98df809b37d72e6a503d1",
+        "receiptSha256": "fe78ebbd08666ebd988251c4ed7f61b71030e280ace4e1630bd774b618161d42",
+        "caseCount": 26,
+        "passedCount": 26,
+        "exitCode": 0,
+        "timedOut": false,
+        "cleanupSettled": null
+      }
+    ]
+  }
+}

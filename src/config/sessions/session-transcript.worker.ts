@@ -38,11 +38,39 @@ serveOwnedWorkerTasks(
   ): Promise<
     SessionTranscriptWorkerReply<keyof SessionTranscriptWorkerValues> | UsageCostWorkerReply
   > => {
+    // Pure data projection is outside ALL database admission/open/inspection branches.
+    // SAFETY: The paired runtime constructs this closed request union; kind selects its pure-data branch.
+    if ((input as SessionTranscriptWorkerRequest).kind === "session-entry-projection") {
+      // SAFETY: The kind check selects the paired projection request containing captured snapshot/redaction.
+      const request = input as Extract<
+        SessionTranscriptWorkerRequest,
+        { kind: "session-entry-projection" }
+      >;
+      const { computeSessionEntryProjectionData } =
+        await import("../../../packages/memory-host-sdk/src/host/session-files.js");
+      const data = await computeSessionEntryProjectionData(
+        request.absPath,
+        request.options,
+        request.snapshot,
+        request.redaction,
+      );
+      return {
+        ok: true,
+        value: {
+          kind: "session-entry-projection",
+          binding: request.binding,
+          registryRevision: request.redaction.registryRevision,
+          ...data,
+        },
+      };
+    }
     // Install cleanup before this worker can acquire either a cached or explicit reader.
     releaseReadValidation ??= (await import("../../state/openclaw-agent-db-validation-cache.js"))
       .releaseOpenClawAgentDatabaseReadValidation;
     // SAFETY: The paired runtime constructs this request; the SQLite snapshot validates admission.
-    const request = input as SessionTranscriptWorkerRequest | UsageCostWorkerInput;
+    const request = input as
+      | Exclude<SessionTranscriptWorkerRequest, { kind: "session-entry-projection" }>
+      | UsageCostWorkerInput;
     if (request.kind === "cli-process-history") {
       if (!channel) {
         throw new Error("Process-held history requires its host reader channel");

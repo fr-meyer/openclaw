@@ -236,6 +236,21 @@ describe("applyPatch", () => {
     expect(result.summary.added).toEqual(["notes.txt"]);
   });
 
+  it("preflights every update before an earlier delete mutates the workspace", async () => {
+    const memory = createMemoryPatchSandbox({ "important.txt": "irreplaceable\n" });
+    const patch = `*** Begin Patch
+*** Delete File: important.txt
+*** Update File: missing.txt
+@@
+-old
++new
+*** End Patch`;
+
+    await expect(applyPatch(patch, memory.options)).rejects.toThrow(/missing\.txt/);
+    expect(memory.files.get("/sandbox/important.txt")).toBe("irreplaceable\n");
+    expect(memory.remove).not.toHaveBeenCalled();
+  });
+
   it("fails closed on sandbox adds when atomic create is unavailable", async () => {
     const memory = createMemoryPatchSandbox({}, { supportsExclusiveCreate: false });
     const patch = `*** Begin Patch

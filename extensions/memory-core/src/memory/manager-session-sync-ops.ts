@@ -70,8 +70,9 @@ export abstract class MemoryManagerSessionSyncOps extends MemoryManagerWatchOps 
     }
   }
 
-  protected async listSessionCorpusEntries(): Promise<SessionTranscriptCorpusEntry[]> {
-    const readOnly = this.database.readOnly;
+  protected async listSessionCorpusEntries(
+    readOnly = this.database.readOnly,
+  ): Promise<SessionTranscriptCorpusEntry[]> {
     const entries = await listSessionTranscriptCorpusEntriesForAgent(this.agentId, {
       includeContentRevision: false,
       readOnly,

@@ -31,7 +31,10 @@ export type EmbeddingProviderRuntime = {
   }>;
   inlineQueryTimeoutMs?: number;
   inlineBatchTimeoutMs?: number;
-} & Partial<EmbeddingProviderBatchRuntime>;
+} & Partial<Omit<EmbeddingProviderBatchRuntime, "batchFailureMode">> & {
+    /** Legacy per-file providers may request fallback or error; candidate admission stays fail-closed. */
+    batchFailureMode?: "fallback" | "error" | "fail-closed";
+  };
 
 /** Provider-owned canonical identity and exact aliases for persisted indexes. */
 export type EmbeddingProviderIndexIdentity = {

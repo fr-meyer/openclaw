@@ -1,5 +1,30 @@
-import type { WorkboardCard } from "@openclaw/workboard-contract";
+import type {
+  WorkboardCard,
+  WorkboardClaim,
+  WorkboardLaunchState,
+} from "@openclaw/workboard-contract";
 import { cardBoardId, cardRunId, cardSessionKey } from "./store-card-helpers.js";
+
+export function claimMatchesLaunch(
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+): boolean {
+  if (!claim || !launch) {
+    return false;
+  }
+  if (launch.claimGeneration !== undefined) {
+    return claim.ownerId === launch.claimOwnerId && claim.claimedAt === launch.claimGeneration;
+  }
+  // Preserve launches written before the claim snapshot was introduced.
+  return claim.claimedAt <= launch.preparedAt;
+}
+
+export function claimConflictsWithLaunch(
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+): boolean {
+  return Boolean(claim && launch && !claimMatchesLaunch(claim, launch));
+}
 
 function sanitizeSessionSegment(value: string | undefined, fallback: string): string {
   const sanitized = (value ?? fallback)
@@ -37,8 +62,19 @@ export function workboardCardMatchesLifecycleLink(
   );
   const linkedRunId = cardRunId(card);
   if (linkedRunId && source.runId) {
-    if (source.runId !== linkedRunId && !linkedRunId.startsWith(`workboard:${card.id}:`)) {
-      return false;
+    if (source.runId !== linkedRunId) {
+      const launch = card.metadata?.automation?.launch;
+      const sourceBelongsToPriorAttempt = card.metadata?.attempts?.some(
+        (attempt) => attempt.runId === source.runId && attempt.runId !== linkedRunId,
+      );
+      const mayBackfillProvisionalRun =
+        !sourceBelongsToPriorAttempt &&
+        launch?.provisionalRunId === linkedRunId &&
+        (launch.phase === "prepared" ||
+          (launch.phase === "accepted" && launch.acceptedRunId === undefined));
+      if (!mayBackfillProvisionalRun) {
+        return false;
+      }
     }
     return linkedSessionKey && source.sessionKey ? sessionMatches : true;
   }

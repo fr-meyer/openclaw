@@ -125,6 +125,10 @@ import { finalizeCliContextEngineTurn } from "./cli-run-transcript.js";
 import { executePluginOwnedProcess } from "./execute-plugin.js";
 import { prepareCliHistoryBoundary } from "./history-boundary.js";
 import {
+  createArgBackendConfig,
+  createJsonlStdinBackendConfig,
+} from "./prepare-backend-config.test-support.js";
+import {
   registerCliMcpPreparationTests,
   setRawCliBackendForPrepareTest,
 } from "./prepare-mcp.test-support.js";
@@ -288,24 +292,6 @@ function setCliBackendForPrepareTest(
       },
     ],
   });
-}
-
-function createArgBackendConfig(
-  command: string,
-  args = ["--print"],
-  output: "text" | "json" = "text",
-): CliBackendPlugin["config"] {
-  return { command, args, output, input: "arg", sessionMode: "existing" };
-}
-
-function createJsonlStdinBackendConfig(command: string): CliBackendPlugin["config"] {
-  return {
-    command,
-    args: ["--print"],
-    output: "jsonl",
-    input: "stdin",
-    sessionMode: "existing",
-  };
 }
 
 type CliContextBudgetTestCase = {
@@ -2435,9 +2421,8 @@ describe("prepareCliRunContext", () => {
     );
     expect(second.promptToolNamesHash).not.toBe(first.promptToolNamesHash);
     expect(second.reusableCliSession).toEqual({
-      mode: "reuse-with-drift",
-      sessionId: "cli-session",
-      drift: { reasons: ["prompt-tools"] },
+      mode: "invalidate",
+      invalidatedReason: "prompt-tools",
     });
   });
 
@@ -2662,9 +2647,8 @@ describe("prepareCliRunContext", () => {
       hashCliSessionText(JSON.stringify(["fake_web_tool", "memory_search"])),
     );
     expect(context.reusableCliSession).toEqual({
-      mode: "reuse-with-drift",
-      sessionId: "cli-session",
-      drift: { reasons: ["prompt-tools"] },
+      mode: "invalidate",
+      invalidatedReason: "prompt-tools",
     });
   });
 
@@ -3403,6 +3387,10 @@ describe("prepareCliRunContext", () => {
       setCliRunnerPrepareTestDeps({
         getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
         mintMcpLoopbackClientGrant,
+        resolveMcpLoopbackPolicyTools: vi.fn(() => ({
+          agentId: "main",
+          tools: projectedToolNames.map((name) => ({ name })),
+        })),
         resolveMcpLoopbackScopedTools: vi.fn(() => ({
           agentId: "main",
           tools: projectedToolNames.map((name) => ({ name })),

@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import type { Dirent, Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -13,6 +14,7 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import {
   openNodeSqliteDatabase,
+  readOpenClawAgentDatabaseIdentity,
   runSqliteImmediateTransactionSync,
 } from "openclaw/plugin-sdk/sqlite-runtime";
 import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
@@ -219,10 +221,14 @@ export function openMemoryDatabaseAtPath(
   }
 }
 
-function openUninitializedMemoryDatabase(allowExtension: boolean) {
+function openUninitializedMemoryDatabase(
+  allowExtension: boolean,
+  beforeSchema: (db: DatabaseSync) => void = () => undefined,
+) {
   const database = openNodeSqliteDatabase(":memory:", { allowExtension });
   try {
     database.exec("PRAGMA query_only = ON");
+    beforeSchema(database);
     return { db: database, release: () => database.close(), hasIndex: false };
   } catch (error) {
     database.close();
@@ -235,15 +241,31 @@ export function openMemoryDatabaseReadOnlyAtPath(
   dbPath: string,
   allowExtension: boolean,
   agentId: string,
+  beforeSchema: (db: DatabaseSync) => void = () => undefined,
+  env?: NodeJS.ProcessEnv,
 ) {
-  const opened = openOpenClawAgentDatabaseReadOnly({ agentId, path: dbPath }, { allowExtension });
+  const opened = openOpenClawAgentDatabaseReadOnly(
+    { agentId, path: dbPath, env },
+    { allowExtension },
+  );
   if (!opened.found) {
     if (opened.reason === "database-missing") {
-      return openUninitializedMemoryDatabase(allowExtension);
+      return openUninitializedMemoryDatabase(allowExtension, beforeSchema);
     }
     throw new Error(`Memory index database schema is missing: ${dbPath}`);
   }
   const { database } = opened;
+  try {
+    const identity = readOpenClawAgentDatabaseIdentity(database);
+    const current = statSync(dbPath, { bigint: true });
+    if (identity.identity !== `${current.dev}:${current.ino}`) {
+      throw new Error("Memory status database identity changed before read admission");
+    }
+    beforeSchema(database.db);
+  } catch (error) {
+    database.close();
+    throw error;
+  }
   if (!tableExists(database.db, "main", MEMORY_INDEX_STATE_TABLE)) {
     database.close();
     return openUninitializedMemoryDatabase(allowExtension);

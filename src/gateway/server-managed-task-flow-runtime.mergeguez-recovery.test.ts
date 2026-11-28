@@ -173,6 +173,14 @@ function registeredApi(
   return { tools, routes, subscriptions, services, schedules, unschedules, launches };
 }
 
+function requiredTool(registration: ReturnType<typeof registeredApi>) {
+  const [tool] = registration.tools;
+  if (!tool) {
+    throw new Error("Expected the controller tool to be registered");
+  }
+  return tool;
+}
+
 it("keeps production routes disabled while owned status, report and recovery work", async () => {
   await withOpenClawTestState(
     { label: "mergeguez-parity-no-route-secrets", layout: "state-only" },
@@ -257,7 +265,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
       try {
         const statusClient = clientFor("status", statusKey, new AbortController().signal);
         await runInScope(statusClient, async () => {
-          const result = await registered.tools[0]
+          const result = await requiredTool(registered)
             .factory({
               sessionKey: statusKey,
               agentId: "status",
@@ -275,7 +283,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
           nativeRun.runId,
         );
         await runInScope(workerClient, async () => {
-          const report = await registered.tools[0]
+          const report = await requiredTool(registered)
             .factory({
               sessionKey: workerKey,
               agentId: "reviewer",
@@ -536,7 +544,7 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
           },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      const tool = requiredTool(registered).factory({ sessionKey: ownerKey, agentId: "franck" });
       let abortCalls = 0;
       const handle = createEmbeddedRunHandle({
         runId: rootRunId,
@@ -616,7 +624,7 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
             },
           },
         };
-        const racedTool = registeredApi(config, raceTasks).tools[0].factory({
+        const racedTool = requiredTool(registeredApi(config, raceTasks)).factory({
           sessionKey: ownerKey,
           agentId: "franck",
         });

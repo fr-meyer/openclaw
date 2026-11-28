@@ -112,6 +112,10 @@ import { readMcpOAuthStateCommand } from "./openclaw-state-read-mcp-oauth.js";
 import { stateReadRegistry } from "./openclaw-state-read-operation-registry.js";
 import { readStateRegistryCommand } from "./openclaw-state-read-registry.js";
 import { readSessionRowsSharedFacts } from "./openclaw-state-read-session-rows.worker.js";
+import {
+  loadNodeWorkerTurnSnapshotReaderIfNeeded,
+  readNodeWorkerTurnSnapshotReply,
+} from "./openclaw-state-read-snapshot-loader.js";
 import { readStateStream } from "./openclaw-state-read-stream.js";
 import type {
   OpenClawStateReadReply,
@@ -126,6 +130,12 @@ import { readUserProfileCommand } from "./user-profile-read.worker.js";
 
 serveOwnedWorkerTasks(
   async function read(input, channel, control): Promise<OpenClawStateReadReply> {
+    const pending = loadNodeWorkerTurnSnapshotReaderIfNeeded(input, () =>
+      read(input, channel, control),
+    );
+    if (pending) {
+      return pending;
+    }
     let sourceAdmitted: true | undefined;
     let nativeCleanupFailure: OpenClawStateReadReply["nativeCleanupFailure"];
     try {
@@ -293,6 +303,10 @@ serveOwnedWorkerTasks(
                   command.purpose,
                 ),
               };
+            }
+            if (command.type === "nodeWorker.turnJournalSnapshot") {
+              const reply = readNodeWorkerTurnSnapshotReply(db, command);
+              return { type: reply.type, snapshot: reply.snapshot };
             }
             if (command.type === "deliveryQueue.outbound") {
               // Custody reads retain queue ownership admission even on a read-only connection.

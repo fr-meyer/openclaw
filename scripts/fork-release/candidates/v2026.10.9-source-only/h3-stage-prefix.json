@@ -1,0 +1,5225 @@
+{
+  "allSpentFailedCancelledRecordsAndArtifactByteFloorsPreserved": true,
+  "artifacts": [
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T03:31:49Z",
+        "digest": "sha256:025347d436e6c77d2ed018f34058c922a3db52efb9fb70e5b2cfb15276bd5fd2",
+        "expired": false,
+        "expires_at": "2026-11-13T03:31:48Z",
+        "id": 12951552986,
+        "name": "fork-pr-28-84b825aca15a58191e718a958a356dcc305d4e47-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40997868144-1",
+        "size_in_bytes": 643,
+        "updated_at": "2026-10-30T03:31:49Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "84b825aca15a58191e718a958a356dcc305d4e47",
+          "id": 40997868144,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "7cc630080ea5bb8ffeca89190616d1088077d45198133c1438e172d9bc9575ea",
+      "producerHead": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "producerRunId": "40997868144",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T03:31:38Z",
+        "digest": "sha256:ea47247f29799b6fb915587ee87fd3704f2d62d75d65bb3db17ebfab2c52c019",
+        "expired": false,
+        "expires_at": "2026-11-13T03:31:37Z",
+        "id": 12952321484,
+        "name": "fork-pr-28-37400d942839bee0b92852037d6f8bf99e60358c-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40997862688-1",
+        "size_in_bytes": 642,
+        "updated_at": "2026-10-30T03:31:38Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "id": 40997862688,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "30c7d73a6aa22de627aa2d652982a5de8b213dd9d64f1b0d8a9f45251710881a",
+      "producerHead": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "producerRunId": "40997862688",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T04:34:40Z",
+        "digest": "sha256:40f0cf3a4b902807cd2a3bc0ae16fd3fe20eda19f02a64c9c0dceab17e3c340d",
+        "expired": false,
+        "expires_at": "2026-11-13T04:34:39Z",
+        "id": 12954034779,
+        "name": "fork-pr-28-84b825aca15a58191e718a958a356dcc305d4e47-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41003655563-1",
+        "size_in_bytes": 643,
+        "updated_at": "2026-10-30T04:34:40Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "84b825aca15a58191e718a958a356dcc305d4e47",
+          "id": 41003655563,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "23948da0e9982e55983065ccd5e9d926a903280eb88b799a4171bc5270c13ada",
+      "producerHead": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "producerRunId": "41003655563",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T04:34:50Z",
+        "digest": "sha256:b7ee19b9589673b01afba63d437afd3bf8d56b7d3eeaccd83eb0571ef2609cd8",
+        "expired": false,
+        "expires_at": "2026-11-13T04:34:49Z",
+        "id": 12954447193,
+        "name": "fork-pr-28-409704dd078c83d2f41ed709660633c619b172be-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41003660969-1",
+        "size_in_bytes": 643,
+        "updated_at": "2026-10-30T04:34:50Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "409704dd078c83d2f41ed709660633c619b172be",
+          "id": 41003660969,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "10792dd366d63672e39d66d3b9decb687291c73f8fb3aac2666287b5cde3b533",
+      "producerHead": "409704dd078c83d2f41ed709660633c619b172be",
+      "producerRunId": "41003660969",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T07:18:11Z",
+        "digest": "sha256:11ea3074102102d8b9a2991e7cc4aa9c6ce2bb30f8d4bb96c4d687f601c4e3d2",
+        "expired": false,
+        "expires_at": "2026-11-13T07:18:10Z",
+        "id": 12961046712,
+        "name": "fork-pr-28-73841cd5ee7ba21b49f12514dce685e4bfd383a6-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41019231510-1",
+        "size_in_bytes": 641,
+        "updated_at": "2026-10-30T07:18:11Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+          "id": 41019231510,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "32fe54cd3aecd09719dd22fe1d4fa42a2c1c2426672b77523a6a49be912c34a0",
+      "producerHead": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "producerRunId": "41019231510",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T08:28:53Z",
+        "digest": "sha256:839fc74e65360c9add99ce55b564deffaaf0ac282ddb1743b1b76b18722135b9",
+        "expired": false,
+        "expires_at": "2026-11-13T08:28:52Z",
+        "id": 12963658298,
+        "name": "fork-pr-28-574758720cb4e239c480880df5d76b324918d181-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41026693759-1",
+        "size_in_bytes": 643,
+        "updated_at": "2026-10-30T08:28:53Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "574758720cb4e239c480880df5d76b324918d181",
+          "id": 41026693759,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "2b78bad7df77dd299968d71f106eda66f5eb9dd95c8b74fd191b862ab0adcc3f",
+      "producerHead": "574758720cb4e239c480880df5d76b324918d181",
+      "producerRunId": "41026693759",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T08:45:15Z",
+        "digest": "sha256:4aea550963b6cc4876e921df4226eb397713b7ed5066805ea6c71ee6cd0d0531",
+        "expired": false,
+        "expires_at": "2026-11-02T08:45:14Z",
+        "id": 12964538047,
+        "name": "v109-lock-diagnostic-41026693844-attempt1",
+        "size_in_bytes": 186891,
+        "updated_at": "2026-10-30T08:45:15Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "574758720cb4e239c480880df5d76b324918d181",
+          "id": 41026693844,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "9f00eeea284f71480df6f2cb459b971649d7220edd5b73b0d246ed278c45bf62",
+      "producerHead": "574758720cb4e239c480880df5d76b324918d181",
+      "producerRunId": "41026693844",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T09:38:56Z",
+        "digest": "sha256:c96346868fdcec33cc66c51cb407be09cf7e9275109905be30749a4e480111e8",
+        "expired": false,
+        "expires_at": "2026-11-13T09:38:56Z",
+        "id": 12967726665,
+        "name": "fork-pr-28-0f69f9a53ff999412f6bfba3d3dfffc5fa41f977-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41034937637-1",
+        "size_in_bytes": 641,
+        "updated_at": "2026-10-30T09:38:56Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+          "id": 41034937637,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "1865474e3a308808c30411b7b418ea4140b1d82287f6781653e3c44881bd9204",
+      "producerHead": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "producerRunId": "41034937637",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T10:48:56Z",
+        "digest": "sha256:d4c601757283473da165c60e84355d3c3e02cb6cdebda6bbb43eae683677a239",
+        "expired": false,
+        "expires_at": "2026-11-13T10:48:55Z",
+        "id": 12971372184,
+        "name": "fork-pr-28-b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41043478952-1",
+        "size_in_bytes": 643,
+        "updated_at": "2026-10-30T10:48:56Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+          "id": 41043478952,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "8bddd1b15110debcaff2aff24ac8de7a6306f4a583b2868e8e312e6e3b06a6c1",
+      "producerHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "producerRunId": "41043478952",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T11:05:59Z",
+        "digest": "sha256:4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
+        "expired": false,
+        "expires_at": "2026-11-02T11:05:58Z",
+        "id": 12972087389,
+        "name": "v109-lock-preparation-41043479025-attempt1",
+        "size_in_bytes": 187532,
+        "updated_at": "2026-10-30T11:05:59Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+          "id": 41043479025,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "9bd5c273527d759de91c952f437eabe14084fe158fabfdf5c876bdc9431704ba",
+      "producerHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "producerRunId": "41043479025",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T12:00:19Z",
+        "digest": "sha256:9bbdd8fbac8de1da73a9a8d3778de618d28db2f639f8caeb2f316240f2972e2d",
+        "expired": false,
+        "expires_at": "2026-11-13T12:00:19Z",
+        "id": 12973914908,
+        "name": "fork-pr-28-3722c8935ded3b3e249054fe6db2f3a50def8b8c-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41052090922-1",
+        "size_in_bytes": 641,
+        "updated_at": "2026-10-30T12:00:19Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+          "id": 41052090922,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "bb4bfb143fa76c7879d5d21868bae42a6943bb168ef14410e9323340753e4cce",
+      "producerHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "producerRunId": "41052090922",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T14:37:27Z",
+        "digest": "sha256:87665f1109b7f54cde8477c006ac7010dc1ca9d0942be56640f095a91beb564d",
+        "expired": false,
+        "expires_at": "2026-11-02T14:37:26Z",
+        "id": 12986371362,
+        "name": "v109-source-validation-41052090949-attempt1",
+        "size_in_bytes": 868,
+        "updated_at": "2026-10-30T14:37:27Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+          "id": 41052090949,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "e8d7181f8f3d28b356e32d59cf43488299988f5c7e07bbbffdfb6f646b970839",
+      "producerHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "producerRunId": "41052090949",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T15:21:17Z",
+        "digest": "sha256:94dd25728f9d2c267061517d42e9e30b15d39016a7bfbb0d91abcbc43cffbe4b",
+        "expired": false,
+        "expires_at": "2026-11-13T15:21:16Z",
+        "id": 12987669496,
+        "name": "fork-pr-28-3722c8935ded3b3e249054fe6db2f3a50def8b8c-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41079896528-1",
+        "size_in_bytes": 642,
+        "updated_at": "2026-10-30T15:21:17Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+          "id": 41079896528,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "96b37fbebfde68bccd388f7de885ab87b4cf4e350a46f616c3288ef8016b70f1",
+      "producerHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "producerRunId": "41079896528",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T15:21:29Z",
+        "digest": "sha256:a170b9f7ce81f81de5bcde33c5cc75b3b9722719f6b85c4476f8ec605c9adb56",
+        "expired": false,
+        "expires_at": "2026-11-13T15:21:28Z",
+        "id": 12988767322,
+        "name": "fork-pr-28-4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41079925114-1",
+        "size_in_bytes": 641,
+        "updated_at": "2026-10-30T15:21:29Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+          "id": 41079925114,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "ea66568c20aadaf6f694969ac0fd1e35d768dbec055127d52c86a0cfc4cdf047",
+      "producerHead": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "producerRunId": "41079925114",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T16:06:48Z",
+        "digest": "sha256:7e004e887abab74ae128d125974fd4f10b39304e01454040a3d13001959f9dbe",
+        "expired": false,
+        "expires_at": "2026-11-02T16:06:47Z",
+        "id": 12992780797,
+        "name": "v109-model-diagnostic-41079925426-attempt1",
+        "size_in_bytes": 549,
+        "updated_at": "2026-10-30T16:06:48Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+          "id": 41079925426,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "f3ddee91c3fe832370592a234a2710555f5da737a40684ead2862ae28a2270dc",
+      "producerHead": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "producerRunId": "41079925426",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T16:45:18Z",
+        "digest": "sha256:9643bc6fbb9444922d4e088254e6489001feff0464427e8daf8c23c0a57747b0",
+        "expired": false,
+        "expires_at": "2026-11-13T16:45:18Z",
+        "id": 12993888907,
+        "name": "fork-pr-28-592fe2f59d6781baeee99d73323b145e38f9462c-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41092698229-1",
+        "size_in_bytes": 642,
+        "updated_at": "2026-10-30T16:45:18Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "592fe2f59d6781baeee99d73323b145e38f9462c",
+          "id": 41092698229,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "b35cb3b158aca028617bbae91fb42203d686bcea5e3b5344b54e9f31f368b3b8",
+      "producerHead": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "producerRunId": "41092698229",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T16:45:07Z",
+        "digest": "sha256:f65895b24b3746e0b6691313bc49c613ca8b9a7ae37b491b6a9ce39aa2d320d8",
+        "expired": false,
+        "expires_at": "2026-11-13T16:45:06Z",
+        "id": 12994936566,
+        "name": "fork-pr-28-4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-41092680300-1",
+        "size_in_bytes": 640,
+        "updated_at": "2026-10-30T16:45:07Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+          "id": 41092680300,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "05d8ab7c1f9721ced68d9d88a8352aca17f3ba7dc06b2f399db591d77a2bb0ef",
+      "producerHead": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "producerRunId": "41092680300",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T17:28:12Z",
+        "digest": "sha256:91b8fd4a069f41795089c66d7d9d2ce808c003e36b164929f3057c99f31af3fa",
+        "expired": false,
+        "expires_at": "2026-11-02T17:28:11Z",
+        "id": 12995924896,
+        "name": "v109-model-diagnostic-41092698155-attempt1",
+        "size_in_bytes": 552,
+        "updated_at": "2026-10-30T17:28:12Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "592fe2f59d6781baeee99d73323b145e38f9462c",
+          "id": 41092698155,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "8cc2968b8205eed4ea0d7346e96bd171f1ffd1f98e635fb44f350bc79c420d5d",
+      "producerHead": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "producerRunId": "41092698155",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T17:15:04Z",
+        "digest": "sha256:91bfaa1de622aaa9a63bd790c070edebd0136a67a943ab883a376c23be05e688",
+        "expired": false,
+        "expires_at": "2026-11-02T17:15:03Z",
+        "id": 12996607746,
+        "name": "v109-model-public-manifests-41092698155-models-1-attempt1",
+        "size_in_bytes": 2993,
+        "updated_at": "2026-10-30T17:15:04Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "592fe2f59d6781baeee99d73323b145e38f9462c",
+          "id": 41092698155,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "8cc2968b8205eed4ea0d7346e96bd171f1ffd1f98e635fb44f350bc79c420d5d",
+      "producerHead": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "producerRunId": "41092698155",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T17:23:03Z",
+        "digest": "sha256:c966e8c5a3b99aaa358f1398703c2198849f66e56c90919f1c2433335684dded",
+        "expired": false,
+        "expires_at": "2026-11-02T17:23:03Z",
+        "id": 12997895087,
+        "name": "v109-model-public-manifests-41092698155-models-2-attempt1",
+        "size_in_bytes": 2993,
+        "updated_at": "2026-10-30T17:23:03Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "592fe2f59d6781baeee99d73323b145e38f9462c",
+          "id": 41092698155,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "8cc2968b8205eed4ea0d7346e96bd171f1ffd1f98e635fb44f350bc79c420d5d",
+      "producerHead": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "producerRunId": "41092698155",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T18:01:03Z",
+        "digest": "sha256:715d50be5a292dee9fa1fe1c67d1d5605ae9f52ec7d99cacf6ef31ee492d9ad6",
+        "expired": false,
+        "expires_at": "2026-11-02T18:01:02Z",
+        "id": 13000255413,
+        "name": "v109-source-validation-41101636804-attempt1",
+        "size_in_bytes": 872,
+        "updated_at": "2026-10-30T18:01:03Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+          "id": 41101636804,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "7df3c53626386e3a384f868cc4a7a7902d30d7b559e79ba68f9d1b56df4253bc",
+      "producerHead": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "producerRunId": "41101636804",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T19:04:16Z",
+        "digest": "sha256:39cc6ac99ff3d8defd72d4dd357f29c9a17ec11f89b86e2157e4c1dbfb7ec61a",
+        "expired": false,
+        "expires_at": "2026-11-02T19:04:15Z",
+        "id": 13002254421,
+        "name": "v109-source-validation-41110346597-attempt1",
+        "size_in_bytes": 869,
+        "updated_at": "2026-10-30T19:04:16Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+          "id": 41110346597,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "fb9ef7d4969fd0d0ac98d094c94cb09074cdb4330a3400aad07a2035bd3c7d58",
+      "producerHead": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "producerRunId": "41110346597",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T18:43:27Z",
+        "digest": "sha256:a8e26a8b6a7bb7e86fc662843283031bfe7f2f77a18196502a5267f03b3e3580",
+        "expired": false,
+        "expires_at": "2026-11-02T18:43:26Z",
+        "id": 13003770199,
+        "name": "v109-source-validation-41107784263-attempt1",
+        "size_in_bytes": 866,
+        "updated_at": "2026-10-30T18:43:27Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+          "id": 41107784263,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "bfc0d11c7a4c601861248e6302f00005a1ad9db870206e65ff5fdad05d72261a",
+      "producerHead": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "producerRunId": "41107784263",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-30T22:13:16Z",
+        "digest": "sha256:f1dd079fe1500337bf81513e58e1dfc46c1baccbcbdc88be074aa163d1bdc7a7",
+        "expired": false,
+        "expires_at": "2026-11-02T22:13:15Z",
+        "id": 13017122317,
+        "name": "v109-source-validation-41115387068-attempt1",
+        "size_in_bytes": 874,
+        "updated_at": "2026-10-30T22:13:16Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+          "id": 41115387068,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "19ad6b95d8f50f407d81f6255f9283572cf2ceb9ba225c8e2eb24f741eb022e2",
+      "producerHead": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "producerRunId": "41115387068",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-31T01:09:20Z",
+        "digest": "sha256:e7b8dc32804aea23a4436730e9713dde3161f49fde32c30df8a8f6bd37c45ba8",
+        "expired": false,
+        "expires_at": "2026-11-03T01:09:19Z",
+        "id": 13023719573,
+        "name": "v109-source-validation-41137985357-attempt1",
+        "size_in_bytes": 874,
+        "updated_at": "2026-10-31T01:09:20Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+          "id": 41137985357,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "1475bfbfeb3c2983a94d90a30a749729649deec4b8c2d845afecf1c1dde083c6",
+      "producerHead": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "producerRunId": "41137985357",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    },
+    {
+      "fieldPresence": {
+        "created_at": true,
+        "digest": true,
+        "expired": true,
+        "expires_at": true,
+        "id": true,
+        "name": true,
+        "size_in_bytes": true,
+        "updated_at": true,
+        "workflow_run": true
+      },
+      "metadata": {
+        "created_at": "2026-10-31T04:18:36Z",
+        "digest": "sha256:b5a1d6683c94777f745c72a002d4baafaa565dc2efc9a9b58373ac44bfc7a7c6",
+        "expired": false,
+        "expires_at": "2026-11-03T04:18:35Z",
+        "id": 13030176015,
+        "name": "v109-source-validation-41154711378-attempt1",
+        "size_in_bytes": 873,
+        "updated_at": "2026-10-31T04:18:36Z",
+        "workflow_run": {
+          "head_branch": "task/v107-source-binding",
+          "head_repository_id": 1309456040,
+          "head_sha": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+          "id": 41154711378,
+          "repository_id": 1309456040
+        }
+      },
+      "nativeResponseSha256": "92ce8a9903bb3eac569dcbcefb3c088ecde8ed6ddd200bb969aa59167449f6ea",
+      "producerHead": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "producerRunId": "41154711378",
+      "workflowRunFieldPresence": {
+        "head_branch": true,
+        "head_repository_id": true,
+        "head_sha": true,
+        "id": true,
+        "repository_id": true
+      }
+    }
+  ],
+  "conservativeBookedArtifactBytes": 783765,
+  "createdAt": "2026-10-31T06:06:41Z",
+  "expiryObservations": [
+    {
+      "artifactId": 12781571279,
+      "bookedBytes": 623,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40607329185",
+      "recordedExpiresAt": "2026-11-11T00:13:12Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12782140460,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40607227490",
+      "recordedExpiresAt": "2026-11-11T00:12:15Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12782516442,
+      "bookedBytes": 621,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40609889488",
+      "recordedExpiresAt": "2026-11-11T00:37:12Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12784774801,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40616416899",
+      "recordedExpiresAt": "2026-11-11T01:40:21Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12790189565,
+      "bookedBytes": 623,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40629994037",
+      "recordedExpiresAt": "2026-11-11T04:02:04Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12794683085,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40639374361",
+      "recordedExpiresAt": "2026-11-11T05:40:45Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12795355063,
+      "bookedBytes": 623,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40639753248",
+      "recordedExpiresAt": "2026-11-11T05:44:49Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12797429328,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40648233265",
+      "recordedExpiresAt": "2026-11-11T07:09:16Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12797489583,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40647629130",
+      "recordedExpiresAt": "2026-11-11T07:03:33Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12812379098,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40681376321",
+      "recordedExpiresAt": "2026-11-11T11:37:25Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12813580098,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40681714842",
+      "recordedExpiresAt": "2026-11-11T11:40:07Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12815079319,
+      "bookedBytes": 623,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40688502329",
+      "recordedExpiresAt": "2026-11-11T12:31:35Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12815443591,
+      "bookedBytes": 623,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40688279438",
+      "recordedExpiresAt": "2026-11-11T12:30:02Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12825190028,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40706982700",
+      "recordedExpiresAt": "2026-11-11T14:32:51Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12826845957,
+      "bookedBytes": 623,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40711359495",
+      "recordedExpiresAt": "2026-11-11T14:59:22Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12866999455,
+      "bookedBytes": 623,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40804517220",
+      "recordedExpiresAt": "2026-11-12T02:07:56Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12867024791,
+      "bookedBytes": 187076,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40804517284",
+      "recordedExpiresAt": "2026-10-30T02:09:22Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12868614734,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40808361981",
+      "recordedExpiresAt": "2026-11-12T02:46:53Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12872273295,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40816927208",
+      "recordedExpiresAt": "2026-11-12T04:17:47Z",
+      "sourceOwnedBaselineExpiryPresent": true
+    },
+    {
+      "artifactId": 12886339736,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40851844704",
+      "recordedExpiresAt": "2026-11-12T09:43:25Z",
+      "sourceOwnedBaselineExpiryPresent": false
+    },
+    {
+      "artifactId": 12887657070,
+      "bookedBytes": 187670,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40851844749",
+      "recordedExpiresAt": "2026-10-30T09:44:47Z",
+      "sourceOwnedBaselineExpiryPresent": false
+    },
+    {
+      "artifactId": 12889013039,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40856125339",
+      "recordedExpiresAt": "2026-11-12T10:15:39Z",
+      "sourceOwnedBaselineExpiryPresent": false
+    },
+    {
+      "artifactId": 12909741139,
+      "bookedBytes": 622,
+      "nativeEvidenceBasis": "historical_native_expiry_record",
+      "producerRunId": "40901336024",
+      "recordedExpiresAt": "2026-11-12T15:25:12Z",
+      "sourceOwnedBaselineExpiryPresent": false
+    },
+    {
+      "artifactId": 12951552986,
+      "bookedBytes": 643,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "40997868144",
+      "recordedExpiresAt": "2026-11-13T03:31:48Z"
+    },
+    {
+      "artifactId": 12952321484,
+      "bookedBytes": 642,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "40997862688",
+      "recordedExpiresAt": "2026-11-13T03:31:37Z"
+    },
+    {
+      "artifactId": 12954034779,
+      "bookedBytes": 643,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41003655563",
+      "recordedExpiresAt": "2026-11-13T04:34:39Z"
+    },
+    {
+      "artifactId": 12954447193,
+      "bookedBytes": 643,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41003660969",
+      "recordedExpiresAt": "2026-11-13T04:34:49Z"
+    },
+    {
+      "artifactId": 12961046712,
+      "bookedBytes": 641,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41019231510",
+      "recordedExpiresAt": "2026-11-13T07:18:10Z"
+    },
+    {
+      "artifactId": 12963658298,
+      "bookedBytes": 643,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41026693759",
+      "recordedExpiresAt": "2026-11-13T08:28:52Z"
+    },
+    {
+      "artifactId": 12964538047,
+      "bookedBytes": 186891,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41026693844",
+      "recordedExpiresAt": "2026-11-02T08:45:14Z"
+    },
+    {
+      "artifactId": 12967726665,
+      "bookedBytes": 641,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41034937637",
+      "recordedExpiresAt": "2026-11-13T09:38:56Z"
+    },
+    {
+      "artifactId": 12971372184,
+      "bookedBytes": 643,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41043478952",
+      "recordedExpiresAt": "2026-11-13T10:48:55Z"
+    },
+    {
+      "artifactId": 12972087389,
+      "bookedBytes": 187532,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41043479025",
+      "recordedExpiresAt": "2026-11-02T11:05:58Z"
+    },
+    {
+      "artifactId": 12973914908,
+      "bookedBytes": 641,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41052090922",
+      "recordedExpiresAt": "2026-11-13T12:00:19Z"
+    },
+    {
+      "artifactId": 12986371362,
+      "bookedBytes": 868,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41052090949",
+      "recordedExpiresAt": "2026-11-02T14:37:26Z"
+    },
+    {
+      "artifactId": 12987669496,
+      "bookedBytes": 642,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41079896528",
+      "recordedExpiresAt": "2026-11-13T15:21:16Z"
+    },
+    {
+      "artifactId": 12988767322,
+      "bookedBytes": 641,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41079925114",
+      "recordedExpiresAt": "2026-11-13T15:21:28Z"
+    },
+    {
+      "artifactId": 12992780797,
+      "bookedBytes": 549,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41079925426",
+      "recordedExpiresAt": "2026-11-02T16:06:47Z"
+    },
+    {
+      "artifactId": 12993888907,
+      "bookedBytes": 642,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41092698229",
+      "recordedExpiresAt": "2026-11-13T16:45:18Z"
+    },
+    {
+      "artifactId": 12994936566,
+      "bookedBytes": 640,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41092680300",
+      "recordedExpiresAt": "2026-11-13T16:45:06Z"
+    },
+    {
+      "artifactId": 12995924896,
+      "bookedBytes": 552,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41092698155",
+      "recordedExpiresAt": "2026-11-02T17:28:11Z"
+    },
+    {
+      "artifactId": 12996607746,
+      "bookedBytes": 2993,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41092698155",
+      "recordedExpiresAt": "2026-11-02T17:15:03Z"
+    },
+    {
+      "artifactId": 12997895087,
+      "bookedBytes": 2993,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41092698155",
+      "recordedExpiresAt": "2026-11-02T17:23:03Z"
+    },
+    {
+      "artifactId": 13000255413,
+      "bookedBytes": 872,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41101636804",
+      "recordedExpiresAt": "2026-11-02T18:01:02Z"
+    },
+    {
+      "artifactId": 13002254421,
+      "bookedBytes": 869,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41110346597",
+      "recordedExpiresAt": "2026-11-02T19:04:15Z"
+    },
+    {
+      "artifactId": 13003770199,
+      "bookedBytes": 866,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41107784263",
+      "recordedExpiresAt": "2026-11-02T18:43:26Z"
+    },
+    {
+      "artifactId": 13017122317,
+      "bookedBytes": 874,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41115387068",
+      "recordedExpiresAt": "2026-11-02T22:13:15Z"
+    },
+    {
+      "artifactId": 13023719573,
+      "bookedBytes": 874,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41137985357",
+      "recordedExpiresAt": "2026-11-03T01:09:19Z"
+    },
+    {
+      "artifactId": 13030176015,
+      "bookedBytes": 873,
+      "nativeEvidenceBasis": "q11_terminal_native_inventory",
+      "producerRunId": "41154711378",
+      "recordedExpiresAt": "2026-11-03T04:18:35Z"
+    }
+  ],
+  "historicalOther21CurrentPresenceNotAsserted": true,
+  "incidentalRunnerMinutes": 171,
+  "lastSourceExecutionSequence": 11,
+  "nativeJobCount": 1150,
+  "newExecutionOrCostReservation": false,
+  "newRunnerMinutes": 2215,
+  "originalHistoricalArtifactBooking": {
+    "bytes": 387814,
+    "count": 23,
+    "preservedWithoutRefund": true
+  },
+  "payloadCustodyClaim": false,
+  "postBaselineArtifactBytes": 395951,
+  "postBaselineArtifactCount": 26,
+  "recordCount": 293,
+  "records": [
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        123893557735
+      ],
+      "runId": "41003661223",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        123893556558
+      ],
+      "runId": "41003660972",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123893585324,
+        123893586450,
+        123893586601,
+        123893632552
+      ],
+      "runId": "41003660969",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        123893555647
+      ],
+      "runId": "41003661031",
+      "runnerMinutes": 7
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        123893556241
+      ],
+      "runId": "41003660906",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "CI",
+      "nativeJobIds": [
+        123893558448,
+        123893559082,
+        123893559124,
+        123893559133,
+        123893559151,
+        123893559190,
+        123893559196,
+        123893559198,
+        123893559209,
+        123893559212,
+        123893559218,
+        123893559234,
+        123893559254,
+        123893559296,
+        123893559322,
+        123893559328,
+        123893559346,
+        123893559360,
+        123893559368,
+        123893559415,
+        123893559422,
+        123893559445,
+        123893559448,
+        123893559530,
+        123893559787,
+        123893559847,
+        123893559869,
+        123893560101,
+        123893560106,
+        123893560259,
+        123893560273,
+        123893560361,
+        123893560444,
+        123893560622,
+        123893560936,
+        123893561159
+      ],
+      "runId": "41003660952",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123893555162,
+        123893590083
+      ],
+      "runId": "41003660893",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123893555332,
+        123893592442
+      ],
+      "runId": "41003660895",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        123893554684,
+        123893582148,
+        123893582189,
+        123893582221
+      ],
+      "runId": "41003660898",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        123893554948,
+        123893556108
+      ],
+      "runId": "41003660902",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123893599611
+      ],
+      "runId": "41003658923",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123893551159
+      ],
+      "runId": "41003659018",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123893550973,
+        123893551931,
+        123893591293
+      ],
+      "runId": "41003659182",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123893549787
+      ],
+      "runId": "41003658958",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123893550305,
+        123893713286
+      ],
+      "runId": "41003659256",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123893578610
+      ],
+      "runId": "41003655675",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123893540430,
+        123893584955
+      ],
+      "runId": "41003655733",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123893541097
+      ],
+      "runId": "41003655723",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123893540265,
+        123893540666,
+        123893579112
+      ],
+      "runId": "41003655715",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123893539047
+      ],
+      "runId": "41003655688",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123893537753,
+        123893538903,
+        123893539134,
+        123893585142
+      ],
+      "runId": "41003655563",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        123875130961,
+        123875132392
+      ],
+      "runId": "40997868053",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "failure",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        123875131632
+      ],
+      "runId": "40997868140",
+      "runnerMinutes": 9
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        123875132552
+      ],
+      "runId": "40997868003",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        123875132381
+      ],
+      "runId": "40997868031",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123875131528,
+        123875164030
+      ],
+      "runId": "40997868160",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123875165867,
+        123875166955,
+        123875166959,
+        123875220534
+      ],
+      "runId": "40997868144",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        123875132340
+      ],
+      "runId": "40997868027",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123875131700,
+        123875161865
+      ],
+      "runId": "40997868135",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "CI",
+      "nativeJobIds": [
+        123875134872,
+        123875135099,
+        123875135439,
+        123875135574,
+        123875135580,
+        123875135642,
+        123875135703,
+        123875135727,
+        123875135766,
+        123875135780,
+        123875135788,
+        123875135808,
+        123875136115,
+        123875136119,
+        123875136286,
+        123875136393,
+        123875136450,
+        123875163174,
+        123875164454,
+        123875168346,
+        123875171252,
+        123875171277,
+        123875171352,
+        123875172090,
+        123875175106,
+        123875175627,
+        123875179199,
+        123875179420,
+        123875179888,
+        123875180179,
+        123875180667,
+        123875181857,
+        123875182639,
+        123875183106,
+        123875183749,
+        123875183780
+      ],
+      "runId": "40997868069",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        123875130660,
+        123875154134,
+        123875154376,
+        123875154858
+      ],
+      "runId": "40997868050",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123875126310,
+        123875127042,
+        123875127506
+      ],
+      "runId": "40997866196",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123875127567
+      ],
+      "runId": "40997866229",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123875127555
+      ],
+      "runId": "40997866357",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123875126471,
+        123875196931
+      ],
+      "runId": "40997866390",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123875126670
+      ],
+      "runId": "40997866323",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123875114819
+      ],
+      "runId": "40997862875",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123875114938,
+        123875115838,
+        123875116370
+      ],
+      "runId": "40997863063",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123875162276
+      ],
+      "runId": "40997862991",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123875115308
+      ],
+      "runId": "40997862829",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123875112885,
+        123875114150,
+        123875114514,
+        123875165395
+      ],
+      "runId": "40997862688",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123875115287,
+        123875115782
+      ],
+      "runId": "40997862939",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123942469913,
+        123942470996,
+        123942471519,
+        123942512731
+      ],
+      "runId": "41019222766",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123942473784,
+        123942521007
+      ],
+      "runId": "41019222867",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123942471238
+      ],
+      "runId": "41019222870",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123942473040,
+        123942473744,
+        123942524943
+      ],
+      "runId": "41019222915",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123942473105
+      ],
+      "runId": "41019222926",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "409704dd078c83d2f41ed709660633c619b172be",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123942473510
+      ],
+      "runId": "41019223073",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123942487317
+      ],
+      "runId": "41019227755",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123942486063,
+        123942487431,
+        123942487688
+      ],
+      "runId": "41019227757",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123942486025,
+        123942578294
+      ],
+      "runId": "41019227758",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123942536438
+      ],
+      "runId": "41019227867",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123942486574
+      ],
+      "runId": "41019227904",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        123942495578,
+        123942541245,
+        123942541980,
+        123942542055
+      ],
+      "runId": "41019231323",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123942496244,
+        123942534515
+      ],
+      "runId": "41019231335",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        123942496220
+      ],
+      "runId": "41019231411",
+      "runnerMinutes": 18
+    },
+    {
+      "conclusion": "success",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123942496739,
+        123942541075
+      ],
+      "runId": "41019231423",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        123942498820
+      ],
+      "runId": "41019231438",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        123942495996,
+        123942497848
+      ],
+      "runId": "41019231465",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        123942548760
+      ],
+      "runId": "41019231486",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123942514057,
+        123942514929,
+        123942563850,
+        123942577306
+      ],
+      "runId": "41019231510",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        123942499117
+      ],
+      "runId": "41019231519",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "CI",
+      "nativeJobIds": [
+        123942501324,
+        123942501903,
+        123942502131,
+        123942502178,
+        123942502207,
+        123942502213,
+        123942502255,
+        123942502256,
+        123942502366,
+        123942502387,
+        123942502854,
+        123942502982,
+        123942503070,
+        123942503106,
+        123942503122,
+        123942503352,
+        123942503439,
+        123942504966,
+        123942535055,
+        123942536355,
+        123942536570,
+        123942536574,
+        123942539909,
+        123942539992,
+        123942540944,
+        123942544447,
+        123942545235,
+        123942545307,
+        123942545953,
+        123942547678,
+        123942548296,
+        123942554702,
+        123942554921,
+        123942556765,
+        123942559593,
+        123942559764
+      ],
+      "runId": "41019231580",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123966359604,
+        123966361560,
+        123966361672,
+        123966408477
+      ],
+      "runId": "41026683372",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123966362503
+      ],
+      "runId": "41026683762",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123966364525
+      ],
+      "runId": "41026683808",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123966363499,
+        123966411899,
+        123966417748
+      ],
+      "runId": "41026683809",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123966364424,
+        123966364883
+      ],
+      "runId": "41026683852",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123966409379
+      ],
+      "runId": "41026683914",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123966386158
+      ],
+      "runId": "41026690227",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123966384452,
+        123966385648,
+        123966386018
+      ],
+      "runId": "41026690247",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123966384195
+      ],
+      "runId": "41026690282",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123966385834
+      ],
+      "runId": "41026690360",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123966384779,
+        123966479818
+      ],
+      "runId": "41026690452",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123966408845,
+        123966410157,
+        123966449236,
+        123966469436
+      ],
+      "runId": "41026693759",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123966395060,
+        123966434976
+      ],
+      "runId": "41026693763",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        123966396423
+      ],
+      "runId": "41026693769",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        123966395903
+      ],
+      "runId": "41026693776",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        123966394886,
+        123966436958,
+        123966437213,
+        123966438023
+      ],
+      "runId": "41026693778",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123966395849,
+        123966440844
+      ],
+      "runId": "41026693798",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        123966394980,
+        123966396957
+      ],
+      "runId": "41026693830",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "failure",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        123966395325
+      ],
+      "runId": "41026693844",
+      "runnerMinutes": 17
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "CI",
+      "nativeJobIds": [
+        123966401223,
+        123966401472,
+        123966401778,
+        123966402088,
+        123966402090,
+        123966402242,
+        123966402272,
+        123966402303,
+        123966402330,
+        123966402432,
+        123966402442,
+        123966402445,
+        123966402574,
+        123966402759,
+        123966403104,
+        123966403192,
+        123966403482,
+        123966403817,
+        123966434789,
+        123966438608,
+        123966438931,
+        123966441943,
+        123966445743,
+        123966446275,
+        123966447706,
+        123966449184,
+        123966450449,
+        123966450689,
+        123966450989,
+        123966451355,
+        123966451374,
+        123966452898,
+        123966454777,
+        123966454886,
+        123966456614,
+        123966457974
+      ],
+      "runId": "41026693912",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        123966450298
+      ],
+      "runId": "41026693943",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123993320733,
+        123993322703,
+        123993322992,
+        123993370941
+      ],
+      "runId": "41034927657",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123993323414
+      ],
+      "runId": "41034928083",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123993326004
+      ],
+      "runId": "41034928084",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123993325083,
+        123993326472
+      ],
+      "runId": "41034928102",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123993326055
+      ],
+      "runId": "41034928168",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "574758720cb4e239c480880df5d76b324918d181",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123993325760,
+        123993326094,
+        123993371840
+      ],
+      "runId": "41034928174",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Security Review",
+      "nativeJobIds": [
+        123993347440,
+        123993439834
+      ],
+      "runId": "41034935067",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Labeler",
+      "nativeJobIds": [
+        123993348436,
+        123993349321,
+        123993349902
+      ],
+      "runId": "41034935105",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Auto response",
+      "nativeJobIds": [
+        123993349956
+      ],
+      "runId": "41034935124",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        123993347797
+      ],
+      "runId": "41034935130",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        123993350517
+      ],
+      "runId": "41034935318",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        123993353624,
+        123993354992
+      ],
+      "runId": "41034937488",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        123993355089
+      ],
+      "runId": "41034937548",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        123993355190
+      ],
+      "runId": "41034937551",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        123993354084
+      ],
+      "runId": "41034937553",
+      "runnerMinutes": 9
+    },
+    {
+      "conclusion": "success",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123993353867,
+        123993400532
+      ],
+      "runId": "41034937557",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        123993354527,
+        123993404297
+      ],
+      "runId": "41034937590",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        123993355928
+      ],
+      "runId": "41034937617",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        123993371748,
+        123993373098,
+        123993373951,
+        123993435752
+      ],
+      "runId": "41034937637",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        123993353461,
+        123993405845,
+        123993406505,
+        123993407626
+      ],
+      "runId": "41034937644",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "CI",
+      "nativeJobIds": [
+        123993359946,
+        123993360237,
+        123993360593,
+        123993360788,
+        123993360865,
+        123993360954,
+        123993361236,
+        123993362410,
+        123993362467,
+        123993362542,
+        123993362562,
+        123993362875,
+        123993363169,
+        123993363254,
+        123993363872,
+        123993363877,
+        123993393902,
+        123993394089,
+        123993395444,
+        123993397680,
+        123993398555,
+        123993401679,
+        123993406029,
+        123993406819,
+        123993407161,
+        123993407205,
+        123993407734,
+        123993409023,
+        123993412881,
+        123993413726,
+        123993417828,
+        123993418594,
+        123993419999,
+        123993421056,
+        123993421855,
+        123993423086
+      ],
+      "runId": "41034937668",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124021662676,
+        124021664898,
+        124021665251,
+        124021724735
+      ],
+      "runId": "41043466837",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124021665939
+      ],
+      "runId": "41043467094",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124021666879,
+        124021667141,
+        124021719331
+      ],
+      "runId": "41043467097",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124021667153
+      ],
+      "runId": "41043467117",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124021666910,
+        124021720690
+      ],
+      "runId": "41043467129",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "0f69f9a53ff999412f6bfba3d3dfffc5fa41f977",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124021664762
+      ],
+      "runId": "41043467136",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124021694357
+      ],
+      "runId": "41043475484",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124021692533,
+        124021785046
+      ],
+      "runId": "41043475538",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124021693196
+      ],
+      "runId": "41043475547",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124021693248,
+        124021694806,
+        124021695300
+      ],
+      "runId": "41043475635",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124021741461
+      ],
+      "runId": "41043475779",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124021725410,
+        124021726892,
+        124021763610,
+        124021797281
+      ],
+      "runId": "41043478952",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124021703171
+      ],
+      "runId": "41043479025",
+      "runnerMinutes": 18
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124021702693,
+        124021705148
+      ],
+      "runId": "41043479202",
+      "runnerMinutes": 3
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124021704812
+      ],
+      "runId": "41043479251",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124021703784,
+        124021752696
+      ],
+      "runId": "41043479278",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124021706839
+      ],
+      "runId": "41043479314",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124021704046,
+        124021750941
+      ],
+      "runId": "41043479336",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124021761102
+      ],
+      "runId": "41043479355",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "CI",
+      "nativeJobIds": [
+        124021709702,
+        124021710018,
+        124021710389,
+        124021710449,
+        124021710563,
+        124021710778,
+        124021710838,
+        124021710890,
+        124021711172,
+        124021711416,
+        124021711440,
+        124021711527,
+        124021711578,
+        124021711617,
+        124021711793,
+        124021712396,
+        124021750959,
+        124021752300,
+        124021753823,
+        124021755330,
+        124021755624,
+        124021756727,
+        124021757422,
+        124021757774,
+        124021760353,
+        124021760926,
+        124021765375,
+        124021766357,
+        124021766576,
+        124021769989,
+        124021770571,
+        124021771394,
+        124021771439,
+        124021772259,
+        124021772803,
+        124021777366
+      ],
+      "runId": "41043479374",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124021704033,
+        124021747047,
+        124021747686,
+        124021747859
+      ],
+      "runId": "41043479426",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124050355039,
+        124050356243,
+        124050416998,
+        124050433645
+      ],
+      "runId": "41052072101",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124050358204
+      ],
+      "runId": "41052072112",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124050358607,
+        124050407985
+      ],
+      "runId": "41052072171",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124050357393,
+        124050358656,
+        124050358774
+      ],
+      "runId": "41052072217",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124050357878
+      ],
+      "runId": "41052072224",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124050359031
+      ],
+      "runId": "41052072349",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124050403162
+      ],
+      "runId": "41052088075",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124050403071
+      ],
+      "runId": "41052088140",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124050402700,
+        124050522742
+      ],
+      "runId": "41052088173",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124050404358
+      ],
+      "runId": "41052088231",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124050403313,
+        124050404333,
+        124050404972
+      ],
+      "runId": "41052088309",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124050410850
+      ],
+      "runId": "41052090696",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124050407838,
+        124050457240,
+        124050458176,
+        124050458450
+      ],
+      "runId": "41052090723",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124050410757
+      ],
+      "runId": "41052090817",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124050433779,
+        124050435783,
+        124050435801,
+        124050508753
+      ],
+      "runId": "41052090922",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124050409350,
+        124050465777
+      ],
+      "runId": "41052090936",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124050409436,
+        124054843590,
+        124054843591,
+        124054843616,
+        124054843631,
+        124054843658,
+        124054843660,
+        124054843680,
+        124054843700,
+        124054843715,
+        124054843753,
+        124054843759,
+        124054843814,
+        124054843859,
+        124054845658,
+        124054845665,
+        124119190644
+      ],
+      "runId": "41052090949",
+      "runnerMinutes": 426
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124050411165
+      ],
+      "runId": "41052090981",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124050409756,
+        124050456081
+      ],
+      "runId": "41052090991",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124050409537,
+        124050411614
+      ],
+      "runId": "41052091074",
+      "runnerMinutes": 3
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "CI",
+      "nativeJobIds": [
+        124050415623,
+        124050415973,
+        124050416150,
+        124050416307,
+        124050416315,
+        124050416629,
+        124050416637,
+        124050416735,
+        124050416786,
+        124050416793,
+        124050416798,
+        124050416810,
+        124050416818,
+        124050416912,
+        124050416980,
+        124050417053,
+        124050417067,
+        124050417107,
+        124050417124,
+        124050417274,
+        124050417966,
+        124050417974,
+        124050418007,
+        124050418078,
+        124050418125,
+        124050418387,
+        124050418731,
+        124050419003,
+        124050458589,
+        124050467286,
+        124050472365,
+        124050474065,
+        124050475767,
+        124050481327,
+        124050482382,
+        124050483692
+      ],
+      "runId": "41052091105",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124145895104,
+        124145898085,
+        124145964103,
+        124146018894
+      ],
+      "runId": "41079896528",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124145899173,
+        124145900938
+      ],
+      "runId": "41079896574",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124145899170
+      ],
+      "runId": "41079896613",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124145900026,
+        124145901249,
+        124145901684
+      ],
+      "runId": "41079896799",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124145901253
+      ],
+      "runId": "41079896819",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124145899833
+      ],
+      "runId": "41079897120",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124145978058
+      ],
+      "runId": "41079918272",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124145978516
+      ],
+      "runId": "41079918283",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124145975903,
+        124146135018
+      ],
+      "runId": "41079918435",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124145976332,
+        124145979042,
+        124145979056
+      ],
+      "runId": "41079918661",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124145977189
+      ],
+      "runId": "41079918804",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124145996677
+      ],
+      "runId": "41079925031",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124146021786,
+        124146023057,
+        124146023941,
+        124146121114
+      ],
+      "runId": "41079925114",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124145997416,
+        124145997884,
+        124145999244
+      ],
+      "runId": "41079925118",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124145995111,
+        124146059923
+      ],
+      "runId": "41079925135",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124145997258
+      ],
+      "runId": "41079925136",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124145994632,
+        124145997783
+      ],
+      "runId": "41079925140",
+      "runnerMinutes": 3
+    },
+    {
+      "conclusion": "success",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124145995366,
+        124146057156
+      ],
+      "runId": "41079925183",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124145994865,
+        124146072369,
+        124146072731,
+        124146072794
+      ],
+      "runId": "41079925204",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "CI",
+      "nativeJobIds": [
+        124146003006,
+        124146003804,
+        124146004043,
+        124146004544,
+        124146004630,
+        124146004842,
+        124146004999,
+        124146005012,
+        124146005072,
+        124146005091,
+        124146005132,
+        124146005693,
+        124146005709,
+        124146005944,
+        124146006316,
+        124146006451,
+        124146006622,
+        124146007042,
+        124146007155,
+        124146050621,
+        124146054955,
+        124146056635,
+        124146056885,
+        124146058658,
+        124146063207,
+        124146065845,
+        124146070700,
+        124146071070,
+        124146071152,
+        124146077566,
+        124146079304,
+        124146079381,
+        124146083154,
+        124146083186,
+        124146089156,
+        124146090185
+      ],
+      "runId": "41079925249",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124145997166
+      ],
+      "runId": "41079925410",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124145995905,
+        124151959072,
+        124151959088,
+        124167587220
+      ],
+      "runId": "41079925426",
+      "runnerMinutes": 70
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124190355727,
+        124190357179
+      ],
+      "runId": "41092680256",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124190424872
+      ],
+      "runId": "41092680268",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124190353596,
+        124190355579,
+        124190430027,
+        124190472035
+      ],
+      "runId": "41092680300",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124190355544
+      ],
+      "runId": "41092680466",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124190364978
+      ],
+      "runId": "41092680588",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124190359181,
+        124190360501,
+        124190402881
+      ],
+      "runId": "41092681030",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124190406032
+      ],
+      "runId": "41092694666",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124190404805
+      ],
+      "runId": "41092694681",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124190403402,
+        124190405376,
+        124190405483
+      ],
+      "runId": "41092694704",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124190403045,
+        124190542594
+      ],
+      "runId": "41092694846",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124190403982
+      ],
+      "runId": "41092695065",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124190412414,
+        124190486092
+      ],
+      "runId": "41092698129",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124190413284,
+        124195522237,
+        124195522281,
+        124209869549
+      ],
+      "runId": "41092698155",
+      "runnerMinutes": 64
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124190413974
+      ],
+      "runId": "41092698192",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124190474083,
+        124190475805,
+        124190522809,
+        124190563755
+      ],
+      "runId": "41092698229",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124190415347,
+        124190416902,
+        124190417684
+      ],
+      "runId": "41092698243",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "CI",
+      "nativeJobIds": [
+        124190420935,
+        124190421508,
+        124190422199,
+        124190422533,
+        124190422567,
+        124190422654,
+        124190422726,
+        124190422798,
+        124190422922,
+        124190423212,
+        124190423656,
+        124190423714,
+        124190423973,
+        124190423998,
+        124190424334,
+        124190424508,
+        124190425425,
+        124190426089,
+        124190472227,
+        124190472699,
+        124190475823,
+        124190476555,
+        124190480520,
+        124190480675,
+        124190480696,
+        124190484280,
+        124190491026,
+        124190491631,
+        124190492571,
+        124190494002,
+        124190501998,
+        124190503023,
+        124190503378,
+        124190506104,
+        124190506720,
+        124190511293
+      ],
+      "runId": "41092698300",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124190415489
+      ],
+      "runId": "41092698306",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124190413480,
+        124190416604
+      ],
+      "runId": "41092698380",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "success",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124190412096,
+        124190486554,
+        124190486624,
+        124190487697
+      ],
+      "runId": "41092698397",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124190501402
+      ],
+      "runId": "41092698452",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124190414339,
+        124190477682
+      ],
+      "runId": "41092698498",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124219688331,
+        124223133642,
+        124223380811,
+        124223623887
+      ],
+      "runId": "41101620150",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "cancelled",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124219689966
+      ],
+      "runId": "41101620249",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124223181103
+      ],
+      "runId": "41101620255",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124223108751,
+        124223420417
+      ],
+      "runId": "41101620534",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124223459868
+      ],
+      "runId": "41101622203",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "592fe2f59d6781baeee99d73323b145e38f9462c",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124223553087,
+        124223666548,
+        124223666795
+      ],
+      "runId": "41101625553",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124219727828
+      ],
+      "runId": "41101634569",
+      "runnerMinutes": 3
+    },
+    {
+      "conclusion": "success",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124219728629,
+        124224131806
+      ],
+      "runId": "41101634587",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124223334091
+      ],
+      "runId": "41101634723",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124219729679,
+        124223157980,
+        124223624892
+      ],
+      "runId": "41101634878",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124224037356
+      ],
+      "runId": "41101634910",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124219733247,
+        124223940691
+      ],
+      "runId": "41101636619",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124219732700,
+        124223114379
+      ],
+      "runId": "41101636656",
+      "runnerMinutes": 7
+    },
+    {
+      "conclusion": "failure",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124220018832,
+        124223328993,
+        124223360361,
+        124224257060
+      ],
+      "runId": "41101636676",
+      "runnerMinutes": 4
+    },
+    {
+      "conclusion": "success",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124219732578,
+        124223229117,
+        124223586671,
+        124223635421
+      ],
+      "runId": "41101636703",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124223521044
+      ],
+      "runId": "41101636739",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124223853703
+      ],
+      "runId": "41101636749",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "CI",
+      "nativeJobIds": [
+        124223102273,
+        124223112680,
+        124223148242,
+        124223164125,
+        124223164796,
+        124223178026,
+        124223265560,
+        124223369846,
+        124223386791,
+        124223387362,
+        124223387365,
+        124223452293,
+        124223486472,
+        124223495735,
+        124223495962,
+        124223524480,
+        124223547527,
+        124223604681,
+        124223619713,
+        124223621812,
+        124223624953,
+        124223629561,
+        124223696844,
+        124223764548,
+        124223781091,
+        124223781467,
+        124223845547,
+        124223856406,
+        124223900105,
+        124223900489,
+        124223941601,
+        124224042880,
+        124224043112,
+        124224043338,
+        124224043405,
+        124224043710
+      ],
+      "runId": "41101636785",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124223470297,
+        124223600740,
+        124223939474
+      ],
+      "runId": "41101636793",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124219733642,
+        124221846632,
+        124225020845
+      ],
+      "runId": "41101636804",
+      "runnerMinutes": 14
+    },
+    {
+      "conclusion": "skipped",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124223494524
+      ],
+      "runId": "41101636921",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "b2cb41a42142f677fd2e18a89633755e77c2cfc8",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124219734069,
+        124224014745
+      ],
+      "runId": "41101637062",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124242028696
+      ],
+      "runId": "41107778312",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124242029837,
+        124242031130,
+        124242078535
+      ],
+      "runId": "41107778357",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124242028275,
+        124242147226
+      ],
+      "runId": "41107778443",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124242088119
+      ],
+      "runId": "41107778533",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124242030581
+      ],
+      "runId": "41107778598",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124242101204
+      ],
+      "runId": "41107783948",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124242048403,
+        124242048499,
+        124242049464
+      ],
+      "runId": "41107783951",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124242128030
+      ],
+      "runId": "41107783974",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "CI",
+      "nativeJobIds": [
+        124242054695,
+        124242055730,
+        124242055787,
+        124242055904,
+        124242055937,
+        124242055945,
+        124242055965,
+        124242056042,
+        124242056055,
+        124242056064,
+        124242056163,
+        124242056183,
+        124242056211,
+        124242056243,
+        124242056388,
+        124242056391,
+        124242056456,
+        124242056478,
+        124242056514,
+        124242056874,
+        124242057179,
+        124242057262,
+        124242057764,
+        124242057790,
+        124242058359,
+        124242099525,
+        124242101079,
+        124242102393,
+        124242104195,
+        124242108622,
+        124242113552,
+        124242124135,
+        124242127507,
+        124242133604,
+        124242134127,
+        124242135129
+      ],
+      "runId": "41107784007",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124242096973
+      ],
+      "runId": "41107784020",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124242046588,
+        124242098992,
+        124242099104,
+        124242100367
+      ],
+      "runId": "41107784043",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124242046922,
+        124242048646
+      ],
+      "runId": "41107784072",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "success",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124242046900,
+        124242116507
+      ],
+      "runId": "41107784075",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124242047116,
+        124242117986
+      ],
+      "runId": "41107784086",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124242046587,
+        124242048922,
+        124242049396,
+        124242125844
+      ],
+      "runId": "41107784105",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124242048143,
+        124244395936,
+        124244511307
+      ],
+      "runId": "41107784263",
+      "runnerMinutes": 12
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124250826606
+      ],
+      "runId": "41110341833",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124250823831
+      ],
+      "runId": "41110341847",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124250826024,
+        124250826095,
+        124250827455
+      ],
+      "runId": "41110341957",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124250827041
+      ],
+      "runId": "41110342045",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124250825256,
+        124250942539
+      ],
+      "runId": "41110342531",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124250836597,
+        124250904767
+      ],
+      "runId": "41110346159",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124250837290,
+        124250899975
+      ],
+      "runId": "41110346251",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124250836872,
+        124250839276,
+        124250839318,
+        124250912763
+      ],
+      "runId": "41110346313",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124250840786
+      ],
+      "runId": "41110346337",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124250839866
+      ],
+      "runId": "41110346408",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124250837323,
+        124250839626
+      ],
+      "runId": "41110346446",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124250840927
+      ],
+      "runId": "41110346539",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124250841727,
+        124250842872,
+        124250914222
+      ],
+      "runId": "41110346547",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124250838468,
+        124253904947,
+        124255235421
+      ],
+      "runId": "41110346597",
+      "runnerMinutes": 14
+    },
+    {
+      "conclusion": "skipped",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "CI",
+      "nativeJobIds": [
+        124250845298,
+        124250846614,
+        124250846707,
+        124250846733,
+        124250846799,
+        124250846843,
+        124250846907,
+        124250846925,
+        124250846938,
+        124250847015,
+        124250847134,
+        124250847151,
+        124250847197,
+        124250847208,
+        124250847248,
+        124250847264,
+        124250847384,
+        124250847390,
+        124250847578,
+        124250847596,
+        124250847654,
+        124250847666,
+        124250847761,
+        124250847845,
+        124250847980,
+        124250848208,
+        124250848258,
+        124250848265,
+        124250848300,
+        124250848673,
+        124250848701,
+        124250849024,
+        124250849226,
+        124250849524,
+        124250850828,
+        124250851107
+      ],
+      "runId": "41110346873",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124250843121,
+        124250907429,
+        124250907457,
+        124250907683
+      ],
+      "runId": "41110348364",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124268136638
+      ],
+      "runId": "41115382365",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124268134857
+      ],
+      "runId": "41115382398",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124268135106,
+        124268136411,
+        124268180182
+      ],
+      "runId": "41115382453",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124268136705
+      ],
+      "runId": "41115382585",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124268135404,
+        124268269812
+      ],
+      "runId": "41115382629",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124268215683
+      ],
+      "runId": "41115386540",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124268149613,
+        124268150530,
+        124268151046
+      ],
+      "runId": "41115386670",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124268148015,
+        124268150664,
+        124268150858,
+        124268241780
+      ],
+      "runId": "41115386750",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124268154465,
+        124268218908
+      ],
+      "runId": "41115386841",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124268147763,
+        124268149394
+      ],
+      "runId": "41115386852",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124268150202
+      ],
+      "runId": "41115386992",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124268152618,
+        124273928692,
+        124273928713,
+        124273928731,
+        124273928749,
+        124273928768,
+        124273928809,
+        124273928815,
+        124273928844,
+        124273928899,
+        124273928926,
+        124273928961,
+        124273928972,
+        124273928999,
+        124273931447,
+        124273931484,
+        124337793641
+      ],
+      "runId": "41115387068",
+      "runnerMinutes": 443
+    },
+    {
+      "conclusion": "success",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124268148965,
+        124268203673
+      ],
+      "runId": "41115387082",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124268150755
+      ],
+      "runId": "41115387085",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "CI",
+      "nativeJobIds": [
+        124268155722,
+        124268156729,
+        124268156763,
+        124268156836,
+        124268157057,
+        124268157100,
+        124268157101,
+        124268157195,
+        124268157219,
+        124268157378,
+        124268157391,
+        124268157394,
+        124268157425,
+        124268157443,
+        124268158074,
+        124268158279,
+        124268158899,
+        124268159026,
+        124268159034,
+        124268159151,
+        124268160109,
+        124268196614,
+        124268204209,
+        124268204880,
+        124268205188,
+        124268219075,
+        124268222695,
+        124268223843,
+        124268227034,
+        124268228040,
+        124268228771,
+        124268230217,
+        124268230581,
+        124268230743,
+        124268232640,
+        124268233661
+      ],
+      "runId": "41115387094",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124268150520,
+        124268213295,
+        124268214710,
+        124268214868
+      ],
+      "runId": "41115387375",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124345043758,
+        124345045060,
+        124345045126
+      ],
+      "runId": "41137979452",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124345046219
+      ],
+      "runId": "41137979464",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124345108271
+      ],
+      "runId": "41137979468",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124345044029
+      ],
+      "runId": "41137979473",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124345043227,
+        124345144708
+      ],
+      "runId": "41137979489",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124345061525,
+        124345062307,
+        124345062610
+      ],
+      "runId": "41137985265",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124345059574,
+        124345098848
+      ],
+      "runId": "41137985312",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124345059714,
+        124348640165,
+        124348640192,
+        124348640206,
+        124348640214,
+        124348640221,
+        124348640239,
+        124348640253,
+        124348640291,
+        124348640293,
+        124348640298,
+        124348640299,
+        124348640356,
+        124348640467,
+        124348642056,
+        124348642217,
+        124394550597
+      ],
+      "runId": "41137985357",
+      "runnerMinutes": 452
+    },
+    {
+      "conclusion": "success",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124345059604,
+        124345099406,
+        124345099549,
+        124345100045
+      ],
+      "runId": "41137985367",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124345061842
+      ],
+      "runId": "41137985370",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124345059959,
+        124345101557
+      ],
+      "runId": "41137985396",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124345059705,
+        124345061086
+      ],
+      "runId": "41137985405",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "skipped",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124345100281
+      ],
+      "runId": "41137985418",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124345062792
+      ],
+      "runId": "41137985439",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "CI",
+      "nativeJobIds": [
+        124345065380,
+        124345065850,
+        124345066346,
+        124345066391,
+        124345066426,
+        124345066501,
+        124345066670,
+        124345066713,
+        124345066778,
+        124345067056,
+        124345067071,
+        124345067568,
+        124345067617,
+        124345067758,
+        124345067773,
+        124345067774,
+        124345068680,
+        124345070496,
+        124345101151,
+        124345103055,
+        124345103493,
+        124345104819,
+        124345108018,
+        124345108099,
+        124345108721,
+        124345110265,
+        124345110392,
+        124345116226,
+        124345116893,
+        124345119419,
+        124345121305,
+        124345122874,
+        124345123470,
+        124345125487,
+        124345125755,
+        124345126618
+      ],
+      "runId": "41137985466",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124345060871,
+        124345062790,
+        124345063070,
+        124345120209
+      ],
+      "runId": "41137985559",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "PR context and evidence",
+      "nativeJobIds": [
+        124398839050
+      ],
+      "runId": "41154708327",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "Security Review",
+      "nativeJobIds": [
+        124398837880,
+        124398894932
+      ],
+      "runId": "41154708328",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "Auto response",
+      "nativeJobIds": [
+        124398839824
+      ],
+      "runId": "41154708329",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "ClawSweeper Dispatch",
+      "nativeJobIds": [
+        124398838195
+      ],
+      "runId": "41154708354",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "failure",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "Labeler",
+      "nativeJobIds": [
+        124398839045,
+        124398840381,
+        124398840495
+      ],
+      "runId": "41154708548",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "Workflow Sanity",
+      "nativeJobIds": [
+        124398846389,
+        124398847850
+      ],
+      "runId": "41154711124",
+      "runnerMinutes": 2
+    },
+    {
+      "conclusion": "success",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "macOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124398846899,
+        124398874062
+      ],
+      "runId": "41154711156",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "Blacksmith Build Artifacts Testbox",
+      "nativeJobIds": [
+        124398847786
+      ],
+      "runId": "41154711159",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "future-v109-model-cleanliness-diagnostic-20261030",
+      "nativeJobIds": [
+        124398848044,
+        124398848547,
+        124398887133
+      ],
+      "runId": "41154711170",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "skipped",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "CodeQL",
+      "nativeJobIds": [
+        124398848699
+      ],
+      "runId": "41154711186",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "Fork PR and release qualification",
+      "nativeJobIds": [
+        124398847519,
+        124398849200,
+        124398849237,
+        124398890378
+      ],
+      "runId": "41154711192",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "success",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "iOS Periphery Dead Code [passive]",
+      "nativeJobIds": [
+        124398847201,
+        124398876982
+      ],
+      "runId": "41154711204",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "OpenGrep \u2014 PR Diff",
+      "nativeJobIds": [
+        124398847916
+      ],
+      "runId": "41154711247",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "success",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "Shared OpenClawKit Periphery",
+      "nativeJobIds": [
+        124398846989,
+        124398879190,
+        124398879691,
+        124398879794
+      ],
+      "runId": "41154711255",
+      "runnerMinutes": 1
+    },
+    {
+      "conclusion": "skipped",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "CI",
+      "nativeJobIds": [
+        124398852548,
+        124398852573,
+        124398852967,
+        124398853053,
+        124398853145,
+        124398853222,
+        124398853277,
+        124398853298,
+        124398853467,
+        124398853483,
+        124398853501,
+        124398853542,
+        124398853589,
+        124398853624,
+        124398853652,
+        124398853785,
+        124398853869,
+        124398854764,
+        124398854786,
+        124398877417,
+        124398878475,
+        124398880123,
+        124398881062,
+        124398882121,
+        124398883051,
+        124398885767,
+        124398886287,
+        124398886417,
+        124398888249,
+        124398888383,
+        124398888944,
+        124398889365,
+        124398889797,
+        124398891763,
+        124398893277,
+        124398893989
+      ],
+      "runId": "41154711276",
+      "runnerMinutes": 0
+    },
+    {
+      "conclusion": "failure",
+      "head": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+      "name": "future-v109-grouped-validation-20261030",
+      "nativeJobIds": [
+        124398848054,
+        124401877532,
+        124401877537,
+        124401877545,
+        124401877546,
+        124401877560,
+        124401877565,
+        124401877567,
+        124401877581,
+        124401877645,
+        124401877647,
+        124401877653,
+        124401877657,
+        124401877663,
+        124401878619,
+        124401878623,
+        124438427155
+      ],
+      "runId": "41154711378",
+      "runnerMinutes": 471
+    }
+  ],
+  "retentionChange": false,
+  "schema": "openclaw.v109.h3-stage-prefix.v1",
+  "sourceExpiryInventorySha256": "9bcb10acbaf0192cdae5010ca5ce7a071b2d7c312244360caa151828c03ae7e8",
+  "sourceLedgerSha256": "56f29f04c138fd06ea1ecfbd38ab27acfd24e99a48269066f7e2f57ad7a1043b",
+  "sourceRunnerMinutes": 2044,
+  "unknownAbsenceWaiver": false
+}

@@ -444,6 +444,56 @@ In an agent's `exec` subprocess (`OPENCLAW_SHELL=exec`), message RPCs are
 refused before connecting so worker reports cannot appear as fresh human input.
 Ordinary operator terminals and non-message Gateway diagnostics are unchanged.
 
+#### Verified reads
+
+Use `--verified-read <boot-id>` with a mandatory `--expect-url <url>` to bind
+one read RPC to an expected Gateway service incarnation. Obtain the boot ID
+from a previously trusted `hello-ok.server.bootId` or the service owner's
+incarnation record. This command does not discover a boot ID to approve.
+
+```bash
+openclaw gateway call status --verified-read "<trusted-boot-id>" --expect-url wss://gateway.example/ws --json
+```
+
+The call preserves configured authentication and existing device fallback.
+It requests only `operator.read` and keeps local device identity/token state
+read-only. Before sending the RPC, it requires the expected boot, an operator
+role, exactly the read scope, and an accepted authentication method:
+`token`, `password`, `device-token`, `tailscale`, or `trusted-proxy`.
+Missing metadata, authentication mode `none`, bootstrap authentication,
+overbroad scopes, and repeated dispatch admission fail the call.
+
+Successful output has this shape:
+
+```json
+{
+  "kind": "gateway-verified-read",
+  "method": "status",
+  "connection": {
+    "protocol": 4,
+    "server": { "bootId": "<trusted-boot-id>", "connId": "<connection-id>" },
+    "auth": { "method": "token", "role": "operator", "scopes": ["operator.read"] },
+    "endpointMatch": true,
+    "bootMatch": true
+  },
+  "result": {}
+}
+```
+
+The proof metadata excludes credentials, the full hello, URLs, and request
+parameters. `result` is the unchanged method payload and may contain sensitive
+method-specific fields. Consumers must trust the installed CLI and its selected
+transport; arbitrary process output is not verification.
+
+`bootId` identifies the Gateway incarnation, and `connId` identifies this
+connection. Neither authenticates a stable Gateway namespace, binds a physical
+worker or resource, proves execution settlement or resource fencing, or
+authorizes release. Calls without `--verified-read` retain their existing
+behavior and output.
+
+<ParamField path="--verified-read <boot-id>" type="string">
+  Require an authenticated read-only connection to this expected Gateway boot. Requires `--expect-url`.
+</ParamField>
 <a id="param-params"></a>
 
 <ParamField path="--params <json>" type="string" default="{}">
@@ -451,9 +501,6 @@ Ordinary operator terminals and non-message Gateway diagnostics are unchanged.
 </ParamField>
 <ParamField path="--expect-url <url>" type="string">
   Refuse if the resolved Gateway URL differs from this exact endpoint. Required for `--verified-read`.
-</ParamField>
-<ParamField path="--verified-read <boot-id>" type="string">
-  Require this Gateway boot ID and a verified read-scoped connection for `gateway.workerNamespace.get`.
 </ParamField>
 <a id="param-url-2"></a>
 
@@ -497,6 +544,32 @@ bounded AI-access scan. An explicit `--timeout` still takes precedence.
 <Note>
 `--params` must be valid JSON, and each method validates its own param shape (extra/misnamed fields are rejected). Use `--port` for a custom-port local Gateway; explicit `--url` targets still require explicit credentials.
 </Note>
+
+#### Worker namespace association
+
+`gateway.workerNamespace.get` accepts empty params and returns only
+`{ "bootId": "...", "namespace": "gateway-..." }`. It requires an admitted
+operator connection with read permission and token, password, device-token,
+Tailscale, or trusted-proxy authentication. Unauthenticated, bootstrap, and
+unrecognized authentication methods are refused.
+
+```bash
+openclaw gateway call gateway.workerNamespace.get --verified-read "<trusted-boot-id>" --expect-url wss://gateway.example/ws --json
+```
+
+The namespace is the existing worker-runtime namespace prepared at Gateway
+startup. The read does not create a namespace or read the process device identity
+again, and it does not expose the raw device ID. When the worker runtime is
+unavailable, or the original Gateway lifecycle has closed or been replaced, the
+method returns an unavailable error.
+
+`bootId` identifies this Gateway service incarnation; `namespace` persists across
+boots only while the underlying process device identity remains the same.
+Consumers using a verified connection must compare the response `bootId` with
+that connection's admitted server boot. An arbitrary successful JSON response
+does not establish authenticated provenance. This association does not prove
+physical worker ownership, environment settlement, resource fencing, or authority
+to release a reservation.
 
 ### `gateway suspend`
 

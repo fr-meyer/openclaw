@@ -69,16 +69,79 @@ export type RegisteredCompactionProvider = {
 
 export type MemoryEmbeddingBatchChunk = EmbeddingBatchChunk & {
   embeddingInput?: EmbeddingInput;
+  /** Stable content identity used to recover paid provider output after a restart. */
+  hash?: string;
+};
+
+export type MemoryEmbeddingBatchManifestEntry = {
+  customId: string;
+  chunkHash: string;
+};
+
+export type MemoryEmbeddingBatchRecoveredEntry = {
+  customId: string;
+  embedding: number[];
+};
+
+export type MemoryEmbeddingBatchAcceptedSubmission = {
+  submissionId: string;
+  batchName: string;
+  requestFingerprint: string;
+  manifest: MemoryEmbeddingBatchManifestEntry[];
+};
+
+export type MemoryEmbeddingBatchSubmissionLifecycle = {
+  /** Adopt an acknowledged provider job only when its exact request fingerprint matches. */
+  resumeAccepted?: (params: { requestFingerprint: string }) => Promise<{
+    submissionId: string;
+    batchName: string;
+  } | null>;
+  /** List restart-safe provider jobs so completed output can be recovered across source drift. */
+  listAccepted?: () => Promise<MemoryEmbeddingBatchAcceptedSubmission[]>;
+  /**
+   * Durably publish recovered output into the embedding cache, then release its reservation.
+   * Returns the recovered chunk identities so the caller can avoid resubmitting them this run.
+   */
+  publishRecovered?: (params: {
+    submissionId: string;
+    entries: MemoryEmbeddingBatchRecoveredEntry[];
+  }) => Promise<Array<{ chunkHash: string; embedding: number[] }>>;
+  /** Persist identity and the full recovery manifest before a non-idempotent provider create. */
+  started: (params: {
+    submissionId: string;
+    requestFingerprint?: string;
+    manifest?: MemoryEmbeddingBatchManifestEntry[];
+  }) => Promise<void>;
+  /** Attach the provider resource name after a successful create response. */
+  accepted: (params: { submissionId: string; batchName: string }) => Promise<void>;
+  /** Remove a pre-submit record after a definitive create rejection. */
+  rejected: (params: { submissionId: string }) => Promise<void>;
 };
 
 export type MemoryEmbeddingBatchOptions = Omit<EmbeddingBatchOptions, "chunks"> & {
   chunks: MemoryEmbeddingBatchChunk[];
+  wait: boolean;
+  concurrency: number;
+  pollIntervalMs: number;
+  timeoutMs: number;
+  /** Cancels local batch work; a submitted remote job may continue running. */
+  signal?: AbortSignal;
+  /** Durable ownership callbacks for non-idempotent provider submissions. */
+  submissionLifecycle?: MemoryEmbeddingBatchSubmissionLifecycle;
+  debug: (message: string, data?: Record<string, unknown>) => void;
 };
 
 export type MemoryEmbeddingProviderCallOptions = Pick<EmbeddingProviderCallOptions, "signal">;
 
-export type MemoryEmbeddingProviderRuntime = Omit<EmbeddingProviderRuntime, "batchEmbed"> & {
+export type MemoryEmbeddingProviderRuntime = Omit<
+  EmbeddingProviderRuntime,
+  "batchEmbed" | "batchEmbedPartial" | "batchFailureMode"
+> & {
+  batchFailureMode?: "fallback" | "error" | "fail-closed";
   batchEmbed?: (options: MemoryEmbeddingBatchOptions) => Promise<number[][] | null>;
+  batchEmbedPartial?: (
+    options: MemoryEmbeddingBatchOptions,
+  ) => Promise<import("./embedding-provider-runtime-types.js").EmbeddingBatchResult | null>;
 };
 
 export type MemoryEmbeddingProviderIndexIdentity = EmbeddingProviderIndexIdentity;
@@ -271,6 +334,8 @@ export type MemoryPluginRuntime = {
     cfg: OpenClawConfig;
     agentId: string;
     purpose?: "default" | "status" | "cli";
+    /** Bounds only waiting to enter memory manager work, not work after admission. */
+    admission?: { signal?: AbortSignal; waitMs?: number; deadlineMs?: number };
     /** Request a read-only source freshness scan; runtimes may ignore unsupported diagnostics. */
     inspectSources?: boolean;
   }): Promise<{

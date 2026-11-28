@@ -20,6 +20,11 @@ import type {
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import { redactSensitiveText } from "openclaw/plugin-sdk/security-runtime";
 import {
+  assertBoundedMemoryOperation,
+  boundedMemoryAdmissionActive,
+  MemoryAdmissionRefused,
+} from "./bounded-admission.js";
+import {
   resolveEmbeddingProviderAdapterTransport,
   type EmbeddingProvider,
   type EmbeddingProviderResult,
@@ -401,6 +406,10 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
   }
 
   protected async ensureProviderInitialized(): Promise<void> {
+    assertBoundedMemoryOperation(this.agentId);
+    if (boundedMemoryAdmissionActive(this.agentId)) {
+      throw new MemoryAdmissionRefused();
+    }
     if (this.providerInitialized) {
       const bootstrapRetryDue =
         this.embeddingBootstrapFailure !== undefined &&
@@ -633,6 +642,7 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
   }
 
   async probeVectorAvailability(): Promise<boolean> {
+    assertBoundedMemoryOperation(this.agentId, true);
     return await this.withManagerOperation(async () => {
       if (!this.vector.enabled) {
         this.vector.semanticAvailable = false;
@@ -651,6 +661,7 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
   }
 
   async probeVectorStoreAvailability(): Promise<boolean> {
+    assertBoundedMemoryOperation(this.agentId, true);
     return await this.withManagerOperation(() => this.probeVectorStoreAvailabilityAdmitted());
   }
 
@@ -696,6 +707,7 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
   }
 
   async probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult> {
+    assertBoundedMemoryOperation(this.agentId, true);
     return await this.withManagerOperation(async () => {
       const cached = this.getCachedEmbeddingAvailability();
       if (cached) {

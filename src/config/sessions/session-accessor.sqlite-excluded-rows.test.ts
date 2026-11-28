@@ -97,7 +97,7 @@ describe("SQLite cap candidate exclusions", () => {
   const read = (database: OpenClawAgentDatabase, excludedKeys: ReadonlySet<string>) =>
     Object.values(capCandidates(database, excludedKeys)).map((entry) => entry.sessionId);
 
-  it.each(["UTF-8", "UTF-16le"] as const)(
+  it.each(["UTF-8", "UTF-16le", "UTF-16be"] as const)(
     "preserves exact exclusions across %s text conversion",
     (encoding) => {
       const database = openDatabase(encoding);
@@ -107,10 +107,28 @@ describe("SQLite cap candidate exclusions", () => {
       }
       expect(database.db.prepare("PRAGMA encoding").get()?.encoding).toBe(encoding);
       const excluded = new Set(["agent:main:\uFFFE", "agent:main:\uFFFF", ...keys.slice(1)]);
-      expect(read(database, excluded).toSorted()).toEqual(
-        encoding === "UTF-8" ? ["id-0"] : ["id-0", "id-1", "id-2"],
-      );
-      const storedKeys = database.db.prepare("SELECT session_key FROM session_nodes").all();
+      // Use the binding's returned keys, not a version-specific UTF-16 conversion.
+      const storedKeys = database.db
+        .prepare("SELECT session_key, current_session_id FROM session_nodes")
+        .all();
+      const expected = storedKeys
+        .filter((row) => !excluded.has(String(row.session_key)))
+        .map((row) => String(row.current_session_id))
+        .toSorted();
+      expect(expected).toContain("id-0");
+      expect(expected).not.toContain("id-3");
+      for (const row of storedKeys) {
+        if (row.current_session_id === "id-1" || row.current_session_id === "id-2") {
+          const original = row.current_session_id === "id-1" ? keys[1] : keys[2];
+          if (original === undefined) {
+            throw new Error("Missing original session key for SQLite exclusion comparison");
+          }
+          const returned = String(row.session_key);
+          expect([original, original.slice(0, -1) + "\uFFFD"]).toContain(returned);
+          expect(excluded.has(returned)).toBe(returned === original);
+        }
+      }
+      expect(read(database, excluded).toSorted()).toEqual(expected);
       expect(read(database, new Set(storedKeys.map((row) => String(row.session_key))))).toEqual([]);
     },
   );

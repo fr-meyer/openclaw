@@ -398,6 +398,7 @@ export async function attachAuthenticatedGatewayConnect(
   const nextClient: GatewayWsClient = {
     socket,
     connect: connectParams,
+    authenticationMethod: authMethod,
     connId,
     authenticatedMethod: authMethod,
     gatewayBootId: context.handler.bootId,

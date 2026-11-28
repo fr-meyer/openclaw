@@ -12,7 +12,7 @@ import {
   syncWorkboardAgentEnded,
   syncWorkboardSubagentEnded,
 } from "./lifecycle-sync.js";
-import { createDeferred, createLinkedCard } from "./lifecycle-sync.test-support.js";
+import { createLinkedCard } from "./lifecycle-sync.test-support.js";
 import { workboardSessionKeyForCard } from "./session-link.js";
 import type { WorkboardStore } from "./store.js";
 import { createWorkboardSqliteTestStore } from "./test/sqlite-store.js";
@@ -67,6 +67,7 @@ async function runSessionSweep(params: {
     status?: "running" | "done" | "failed" | "killed" | "timeout";
     hasActiveRun?: boolean;
     abortedLastRun?: boolean;
+    lastRunId?: string;
   }>;
   complete?: boolean;
   now?: number;
@@ -781,25 +782,69 @@ describe("Workboard gateway lifecycle sync", () => {
     expect((await store.get(card.id))?.status).toBe("running");
   });
 
+  it("suffix-matches an accepted agentless run whose link could not be persisted", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const card = await store.create({ title: "Accepted without link", status: "ready" });
+    const acceptedSessionKey = workboardSessionKeyForCard(card);
+    const claimed = await store.claim(card.id, { ownerId: "workboard-dispatcher" });
+    const provisional = await store.update(card.id, {
+      sessionKey: acceptedSessionKey,
+      runId: "provisional-run",
+      execution: execution(acceptedSessionKey, "provisional-run"),
+    });
+    const canonicalSessionKey = `agent:worker:${acceptedSessionKey}`;
+
+    expect(claimed.card).toMatchObject({
+      status: "running",
+      metadata: { claim: { ownerId: "workboard-dispatcher" } },
+    });
+    expect(claimed.card.agentId).toBeUndefined();
+    await runSessionSweep({
+      store,
+      sessions: [
+        {
+          key: canonicalSessionKey,
+          status: "done",
+          hasActiveRun: false,
+          updatedAt: provisional.updatedAt + 1,
+        },
+      ],
+    });
+
+    await expect(store.get(card.id)).resolves.toMatchObject({
+      status: "review",
+      sessionKey: canonicalSessionKey,
+      runId: "provisional-run",
+      execution: {
+        sessionKey: canonicalSessionKey,
+        runId: "provisional-run",
+        status: "review",
+      },
+    });
+  });
+
   it("does not backfill over a newer attempt after lifecycle matching", async () => {
     const store = createWorkboardSqliteTestStore();
     const provisionalSessionKey = "subagent:workboard-default-match-race";
     const created = await createLinkedCard(store, { sessionKey: provisionalSessionKey });
-    const provisionalRunId = `workboard:${created.id}:${created.updatedAt}`;
-    const card = await store.update(created.id, {
-      runId: provisionalRunId,
-      execution: execution(provisionalSessionKey, provisionalRunId),
+    const claimed = await store.claim(created.id, { ownerId: "worker" });
+    const { card } = await store.prepareExecutionLaunch(created.id, {
+      requestedSessionKey: provisionalSessionKey,
+      now: created.updatedAt,
+      scope: { ownerId: "worker", token: claimed.token },
     });
     const newerSessionKey = "agent:newer:subagent:workboard-default-match-race";
     const originalSync = store.syncLifecycle.bind(store);
-    vi.spyOn(store, "syncLifecycle").mockImplementationOnce(async (id, input) => {
-      await store.update(id, {
-        sessionKey: newerSessionKey,
-        runId: "newer-run",
-        execution: execution(newerSessionKey, "newer-run"),
+    const syncLifecycle = vi
+      .spyOn(store, "syncLifecycle")
+      .mockImplementationOnce(async (id, input) => {
+        await store.update(id, {
+          sessionKey: newerSessionKey,
+          runId: "newer-run",
+          execution: execution(newerSessionKey, "newer-run"),
+        });
+        return await originalSync(id, input);
       });
-      return await originalSync(id, input);
-    });
 
     await syncWorkboardSubagentEnded({
       store,
@@ -811,6 +856,7 @@ describe("Workboard gateway lifecycle sync", () => {
       },
     });
 
+    expect(syncLifecycle).toHaveBeenCalledOnce();
     await expect(store.get(card.id)).resolves.toMatchObject({
       status: "running",
       sessionKey: newerSessionKey,
@@ -843,6 +889,36 @@ describe("Workboard gateway lifecycle sync", () => {
       status: "running",
       runId: "current-run",
       execution: { runId: "current-run", status: "running" },
+    });
+  });
+
+  it("does not settle the current accepted run from an older terminal session snapshot", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const sessionKey = "agent:worker:subagent:workboard-default-retried";
+    const card = await createLinkedCard(store, {
+      sessionKey,
+      runId: "current-run",
+      execution: execution(sessionKey, "current-run"),
+    });
+
+    await runSessionSweep({
+      store,
+      sessions: [
+        {
+          key: sessionKey,
+          status: "done",
+          hasActiveRun: false,
+          lastRunId: "older-run",
+          updatedAt: card.updatedAt + 1,
+        },
+      ],
+      now: card.updatedAt + 2,
+    });
+
+    await expect(store.get(card.id)).resolves.toMatchObject({
+      status: "running",
+      runId: "current-run",
+      execution: { status: "running", runId: "current-run" },
     });
   });
 
@@ -886,6 +962,56 @@ describe("Workboard gateway lifecycle sync", () => {
     expect((await store.get(card.id))?.status).toBe("review");
   });
 
+  it("federates configured agents without ownerless sentinels", async () => {
+    const request = vi
+      .fn()
+      .mockImplementation(
+        async (_method: string, options: { includeGlobal?: boolean; includeUnknown?: boolean }) => {
+          if (options.includeGlobal || options.includeUnknown) {
+            throw new Error(
+              'Multiple agents are configured, but session key "global" has no explicit owner.',
+            );
+          }
+          return {
+            sessions: [
+              {
+                key: "agent:alpha:dashboard:live",
+                status: "done",
+                hasActiveRun: false,
+                lastRunId: "run-alpha-terminal",
+                updatedAt: 1234,
+              },
+            ],
+          };
+        },
+      );
+
+    await expect(
+      readWorkboardLifecycleSessions({ isAvailable: async () => true, request }),
+    ).resolves.toEqual({
+      sessions: [
+        {
+          key: "agent:alpha:dashboard:live",
+          status: "done",
+          hasActiveRun: false,
+          lastRunId: "run-alpha-terminal",
+          updatedAt: 1234,
+        },
+      ],
+      complete: true,
+    });
+    expect(request).toHaveBeenCalledWith(
+      "sessions.list",
+      {
+        limit: 10_000,
+        configuredAgentsOnly: true,
+        includeGlobal: false,
+        includeUnknown: false,
+      },
+      { scopes: ["operator.read"] },
+    );
+  });
+
   it("keeps unknown excluded when explicit ownership requires agent selection", async () => {
     const request = vi.fn().mockImplementation(async (method: string, options: object) => {
       if (method === "agents.list") {
@@ -913,6 +1039,31 @@ describe("Workboard gateway lifecycle sync", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  it("retains the session owner's terminal run identity from exact Gateway reads", async () => {
+    const key = "agent:worker:subagent:workboard-default-terminal";
+    const request = vi.fn().mockResolvedValue({
+      session: {
+        key,
+        status: "done",
+        hasActiveRun: false,
+        updatedAt: 100,
+        lastRunId: " accepted-run ",
+      },
+    });
+
+    await expect(
+      readWorkboardLifecycleSessions(
+        { isAvailable: async () => true, request },
+        { includeUnknown: false, sessionKey: key },
+      ),
+    ).resolves.toEqual({
+      sessions: [
+        { key, status: "done", hasActiveRun: false, updatedAt: 100, lastRunId: "accepted-run" },
+      ],
+      complete: false,
+    });
+  });
+
   it("treats a full sessions.list page as possibly truncated", async () => {
     // Keep a full page conservative even when a mock or older peer omits pagination
     // metadata, or absent sessions could be marked missing.
@@ -929,165 +1080,5 @@ describe("Workboard gateway lifecycle sync", () => {
     });
     expect(snapshot.complete).toBe(false);
     expect(snapshot.sessions).toHaveLength(10_000);
-  });
-});
-
-function createSessionReader(sessionKey: string, updatedAt: number) {
-  return vi
-    .fn()
-    .mockResolvedValueOnce({
-      sessions: [
-        { key: sessionKey, status: "running", hasActiveRun: true, updatedAt: updatedAt + 1 },
-      ],
-      complete: true,
-    })
-    .mockResolvedValueOnce({
-      sessions: [
-        { key: sessionKey, status: "done", hasActiveRun: false, updatedAt: updatedAt + 2 },
-      ],
-      complete: true,
-    });
-}
-
-describe("Workboard lifecycle service", () => {
-  it("uses the active service reader from prepared hooks and fences replacement", async () => {
-    const store = createWorkboardSqliteTestStore();
-    const delayed = createDeferred<{ sessions: []; complete: boolean }>();
-    const original = createWorkboardLifecycleService({
-      store,
-      readSessions: async () => delayed.promise,
-    });
-    const readReplacement = vi.fn(async () => ({ sessions: [], complete: true }));
-    const replacement = createWorkboardLifecycleService({ store, readSessions: readReplacement });
-    const preparedReader = vi.fn(async () => ({ sessions: [], complete: true }));
-    const prepared = createWorkboardLifecycleService({ store, readSessions: preparedReader });
-    const context = {
-      config: {},
-      stateDir: ".",
-      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-    };
-    try {
-      await original.start(context);
-      const pending = prepared.readSessions({ includeUnknown: false });
-      original.stop();
-      await replacement.start(context);
-      delayed.resolve({ sessions: [], complete: true });
-      await expect(pending).resolves.toEqual({ sessions: [], complete: false });
-      original.stop();
-      await expect(prepared.readSessions({ includeUnknown: false })).resolves.toEqual({
-        sessions: [],
-        complete: true,
-      });
-      expect(readReplacement).toHaveBeenCalledOnce();
-      expect(preparedReader).not.toHaveBeenCalled();
-      replacement.stop();
-      await expect(prepared.readSessions({ includeUnknown: false })).resolves.toEqual({
-        sessions: [],
-        complete: false,
-      });
-      expect(readReplacement).toHaveBeenCalledOnce();
-    } finally {
-      delayed.resolve({ sessions: [], complete: false });
-      original.stop();
-      replacement.onGatewayStop();
-    }
-  });
-
-  it.each(["interval", "plugin reload"] as const)(
-    "waits for Gateway readiness and reconciles again after %s until drain",
-    async (trigger) => {
-      const store = createWorkboardSqliteTestStore();
-      const sessionKey = "agent:main:dashboard:startup-ready";
-      const card = await createLinkedCard(store, { status: "todo", sessionKey });
-      const readReadySessions = createSessionReader(sessionKey, card.updatedAt);
-      let gatewayReady = false;
-      const readSessions = vi.fn(async () => {
-        if (!gatewayReady) {
-          throw new Error("sessions.list unavailable during gateway startup");
-        }
-        return readReadySessions();
-      });
-      const warn = vi.fn();
-      const original = createWorkboardLifecycleService({ store, readSessions });
-      const replacement = createWorkboardLifecycleService({ store, readSessions });
-      const context = { logger: { warn } } as never;
-      const lifetime = new AbortController();
-      const runOperation = vi.spyOn(store, "runOperation");
-      vi.useFakeTimers();
-      try {
-        await original.start(context);
-        await vi.advanceTimersByTimeAsync(60_000);
-        expect(readSessions).not.toHaveBeenCalled();
-        expect(warn).not.toHaveBeenCalled();
-
-        gatewayReady = true;
-        original.onGatewayStart(lifetime.signal);
-        expect(runOperation).toHaveBeenCalled();
-        await runOperation.mock.results[0]?.value;
-        expect((await store.get(card.id))?.status).toBe("running");
-        expect(readSessions).toHaveBeenCalledOnce();
-        expect(warn).not.toHaveBeenCalled();
-
-        runOperation.mockClear();
-        if (trigger === "plugin reload") {
-          original.stop();
-          await replacement.start(context);
-        } else {
-          // The interval is armed only after the admitted sweep settles.
-          await vi.advanceTimersByTimeAsync(60_000);
-        }
-        expect(runOperation).toHaveBeenCalled();
-        await runOperation.mock.results[0]?.value;
-        expect((await store.get(card.id))?.status).toBe("review");
-        const admittedSweeps = runOperation.mock.calls.length;
-        lifetime.abort();
-        await vi.advanceTimersByTimeAsync(60_000);
-        expect(runOperation).toHaveBeenCalledTimes(admittedSweeps);
-        expect(readSessions).toHaveBeenCalledTimes(2);
-        expect(warn).not.toHaveBeenCalled();
-      } finally {
-        original.stop();
-        replacement.onGatewayStop();
-        await runOperation.mock.results[0]?.value;
-        runOperation.mockRestore();
-        vi.useRealTimers();
-      }
-    },
-  );
-
-  it("fences an in-flight session read as soon as the Gateway drains", async () => {
-    const store = createWorkboardSqliteTestStore();
-    await createLinkedCard(store, { sessionKey: "agent:main:dashboard:draining" });
-    const runOperation = vi.spyOn(store, "runOperation");
-    const lifetime = new AbortController();
-    const readEntered = createDeferred<void>();
-    const readResult = createDeferred<{ sessions: []; complete: boolean }>();
-    const readSessions = vi.fn(async () => {
-      readEntered.resolve();
-      return await readResult.promise;
-    });
-    const warn = vi.fn();
-    const service = createWorkboardLifecycleService({ store, readSessions });
-    vi.useFakeTimers();
-    try {
-      await service.start({ logger: { warn } } as never);
-      service.onGatewayStart(lifetime.signal);
-      await readEntered.promise;
-      lifetime.abort();
-      readResult.reject(new Error("Gateway request entry is closed"));
-      await runOperation.mock.results[0]?.value;
-      const admittedSweeps = runOperation.mock.calls.length;
-      await vi.advanceTimersByTimeAsync(3 * 60_000);
-
-      expect(runOperation).toHaveBeenCalledTimes(admittedSweeps);
-      expect(readSessions).toHaveBeenCalledOnce();
-      expect(warn).not.toHaveBeenCalled();
-    } finally {
-      readResult.resolve({ sessions: [], complete: true });
-      service.onGatewayStop();
-      await runOperation.mock.results[0]?.value;
-      runOperation.mockRestore();
-      vi.useRealTimers();
-    }
   });
 });

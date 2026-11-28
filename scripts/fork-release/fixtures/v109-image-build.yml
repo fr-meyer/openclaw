@@ -1,0 +1,200 @@
+name: future-v109-private-image-20261030
+run-name: future-v109-private-image-20261030
+on:
+  push:
+    branches: [task/v107-source-binding]
+    paths:
+      - .github/workflows/future-v109-image-build.yml
+      - .github/actions/retain-private-oci-v109/**
+      - scripts/fork-release/image_build_contract_v109.py
+      - scripts/fork-release/image_build_runner_v109.py
+      - scripts/fork-release/private_oci_producer_v109.py
+      - scripts/fork-release/test_image_build_contract_v109.py
+      - scripts/fork-release/test_private_oci_producer_v109.py
+      - scripts/fork-release/test_image_build_runner_v109.py
+      - scripts/fork-release/candidates/v2026.10.9-image-only/**
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: future-v109-private-image-20261030
+  cancel-in-progress: false
+jobs:
+  image_admission:
+    name: image-admission
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      enabled: ${{ steps.admit.outputs.enabled }}
+      source_sha: ${{ steps.admit.outputs.source_sha }}
+      source_tree: ${{ steps.admit.outputs.source_tree }}
+      built_at: ${{ steps.admit.outputs.built_at }}
+      request_sha256: ${{ steps.admit.outputs.request_sha256 }}
+      upload_deadline_epoch: ${{ steps.admit.outputs.upload_deadline_epoch }}
+    steps:
+      - name: Checkout immutable image tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Check prepared image owner without image execution
+        working-directory: tooling
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts/fork-release -p 'test_image_build_*_v109.py'
+          python3 -m unittest discover -s scripts/fork-release -p 'test_private_oci_producer_v109.py'
+      - name: Admit only a current independently approved image request
+        id: admit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTUAL_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          OCI_UPLOAD_ENVELOPE: ${{ secrets.OPENCLAW_PRIVATE_OCI_CAPABILITY_V109 }}
+        working-directory: tooling
+        run: python3 scripts/fork-release/image_build_runner_v109.py admission
+  build_private_image:
+    name: build-private-image
+    needs: image_admission
+    if: needs.image_admission.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    env:
+      ACTUAL_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      APPROVED_IMAGE_REQUEST_SHA256: ${{ needs.image_admission.outputs.request_sha256 }}
+    steps:
+      - name: Checkout immutable image tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact validated source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.image_admission.outputs.source_sha }}
+          path: source
+          fetch-depth: 66
+          persist-credentials: false
+      - name: Verify generated source and unchanged source controls
+        id: source
+        working-directory: tooling
+        run: python3 scripts/fork-release/image_build_runner_v109.py verify-source
+      - name: Set up bounded hosted Docker Buildx
+        id: builder
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.38.0
+          driver: docker-container
+          cache-binary: false
+          driver-opts: |
+            image=moby/buildkit@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+            memory=8589934592
+            memory-swap=8589934592
+            cpu-period=100000
+            cpu-quota=400000
+      - name: Begin unchanged hosted resource observation
+        id: resources
+        env:
+          BUILDER_NAME: ${{ steps.builder.outputs.name }}
+          BUILDER_DRIVER: ${{ steps.builder.outputs.driver }}
+          BUILDER_NODES: ${{ steps.builder.outputs.nodes }}
+          SOURCE_SHA: ${{ needs.image_admission.outputs.source_sha }}
+          TOOLING_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$RUNNER_TEMP/v109-image"
+          mkdir -p "$RUNNER_TEMP/v109-image/oci"
+          python3 -c 'import os,pathlib; p=pathlib.Path(os.environ["RUNNER_TEMP"],"v109-image/nodes.json"); p.write_text(os.environ["BUILDER_NODES"]); p.chmod(0o600)'
+          python3 tooling/scripts/fork-release/hosted_resources.py start \
+            --builder "$BUILDER_NAME" --driver "$BUILDER_DRIVER" --nodes-json "$RUNNER_TEMP/v109-image/nodes.json" \
+            --state-dir "$RUNNER_TEMP/v109-image/observation" --source-sha "$SOURCE_SHA" --tooling-sha "$TOOLING_SHA"
+      - name: Reserve the sole build and enforce remaining upload time
+        id: deadline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_UPLOAD_DEADLINE_EPOCH: ${{ needs.image_admission.outputs.upload_deadline_epoch }}
+        working-directory: tooling
+        run: python3 scripts/fork-release/image_build_runner_v109.py deadline
+      - name: Build exact source once to private OCI
+        id: build
+        timeout-minutes: ${{ fromJSON(steps.deadline.outputs.build_timeout_minutes) }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+          DOCKER_BUILD_SUMMARY: "false"
+        with:
+          context: ${{ format('https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum={0}#{0}', needs.image_admission.outputs.source_sha) }}
+          github-token: ""
+          platforms: linux/amd64
+          tags: ${{ format('openclaw-source:{0}', needs.image_admission.outputs.source_sha) }}
+          outputs: type=oci,dest=${{ runner.temp }}/v109-image/oci/default,tar=false,compression=gzip,compression-level=1
+          build-args: |
+            GITHUB_ACTIONS=true
+            GIT_COMMIT=${{ needs.image_admission.outputs.source_sha }}
+            OPENCLAW_BUILD_TIMESTAMP=${{ needs.image_admission.outputs.built_at }}
+            OPENCLAW_DOCKER_BUILD_VERSION=2026.10.9
+            OPENCLAW_EXTENSIONS=codex,workboard
+            OPENCLAW_PARITY_IMAGE=1
+            OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB=6144
+          labels: |
+            org.opencontainers.image.revision=${{ needs.image_admission.outputs.source_sha }}
+            org.opencontainers.image.version=2026.10.9
+            org.opencontainers.image.created=${{ needs.image_admission.outputs.built_at }}
+          sbom: true
+          provenance: mode=max,version=v1
+          push: false
+      - name: Finish resource observation after build and export
+        id: resource_finish
+        if: always() && steps.resources.outcome == 'success'
+        env:
+          OCI_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          python3 tooling/scripts/fork-release/hosted_resources.py finish \
+            --state-dir "$RUNNER_TEMP/v109-image/observation" --index-digest "$OCI_DIGEST" \
+            --output "$RUNNER_TEMP/v109-image/resources.json"
+      - name: Preserve original successful BuildKit metadata
+        id: original_metadata
+        if: always() && !cancelled() && steps.build.outcome == 'success'
+        env:
+          ORIGINAL_BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+          OCI_DIGEST: ${{ steps.build.outputs.digest }}
+        working-directory: tooling
+        run: python3 scripts/fork-release/image_build_runner_v109.py record-build
+      - name: Retain and attest exact private opaque bytes
+        id: retain
+        if: >-
+          always() && !cancelled() && steps.build.outcome == 'success' &&
+          steps.original_metadata.outcome == 'success' &&
+          (steps.resource_finish.outcome == 'success' || steps.resource_finish.outcome == 'failure')
+        uses: ./tooling/.github/actions/retain-private-oci-v109
+        with:
+          upload-capability: ${{ secrets.OPENCLAW_PRIVATE_OCI_CAPABILITY_V109 }}
+      - name: Record unqualified private retention outcome
+        id: result
+        if: always() && !cancelled() && steps.build.outcome == 'success'
+        env:
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          RESOURCE_OUTCOME: ${{ steps.resource_finish.outcome }}
+          ATTEST_OUTCOME: ${{ steps.retain.outputs.attestation-outcome }}
+          TRANSFER_OUTCOME: ${{ steps.retain.outputs.transfer-outcome }}
+        working-directory: tooling
+        run: python3 scripts/fork-release/image_build_runner_v109.py complete
+      - name: Retain only closed public-safe image metadata
+        if: always() && !cancelled() && steps.result.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: v109-private-image-metadata-${{ github.run_id }}-attempt1
+          path: ${{ runner.temp }}/v109-image-result.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 9

@@ -13,7 +13,7 @@ function normalizePartialComparableVersion(version: string): {
 }
 
 function normalizePluginApiVersionForComparator(version: string, target: string): string {
-  const normalizedCorrection = OPENCLAW_NUMERIC_CORRECTION_PATTERN.exec(version.trim())?.[1];
+  const normalizedCorrection = NUMERIC_CORRECTION_PATTERN.exec(version.trim())?.[1];
   if (normalizedCorrection) {
     return normalizedCorrection;
   }
@@ -58,7 +58,7 @@ function satisfiesSemverRange(version: string, range: string): boolean {
 
 const OPENCLAW_RELEASE_SUFFIX_PATTERN =
   /^[vV]?(\d{4}\.[1-9]\d?\.[1-9]\d*)(?:-\d+|-(?:alpha|beta|rc)\.\d+)$/i;
-const OPENCLAW_NUMERIC_CORRECTION_PATTERN = /^[vV]?(\d{4}\.[1-9]\d?\.[1-9]\d*)-\d+$/;
+const NUMERIC_CORRECTION_PATTERN = /^[vV]?(\d{4}\.[1-9]\d?\.[1-9]\d*)-\d+$/;
 
 /** Result of reading package.json openclaw.compat.pluginApi metadata. */
 type PackagePluginApiRangeResult = { ok: true; range?: string } | { ok: false; error: string };

@@ -3,13 +3,11 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { err, ok } from "@openclaw/normalization-core/result";
 import { resolveCronJobsStorePathFromConfig } from "../cron/store.js";
-import { isVerbose } from "../global-state.js";
 import {
   readConfigWritePendingMigrations,
   withDeferredPluginConfigRollback,
   withDeferredPluginMigrationsCurrent,
 } from "../infra/deferred-plugin-migrations.js";
-import { isVitestRuntimeEnv } from "../infra/env.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   getUpdateDoctorConfigWriteAuthority,
@@ -43,7 +41,6 @@ import {
   capConfigAuditPaths,
   createConfigWriteAuditRecordBase,
   finalizeConfigWriteAuditRecord,
-  formatConfigOverwriteLogMessage,
   type ConfigWriteAuditResult,
 } from "./io.audit.js";
 import type { ConfigIoContext } from "./io.context.js";
@@ -63,13 +60,11 @@ import {
   restoreAuthoredTildePathsForWrite,
 } from "./io.read-helpers.js";
 import { loggedConfigWarningFingerprints, setBoundedConfigIoWarningEntry } from "./io.state.js";
-import type {
-  ConfigWriteInputBasis,
-  ConfigWriteOptions,
-  InternalConfigWriteResult,
-  ReadConfigFileSnapshotInternalResult,
-} from "./io.types.js";
 import {
+  type ConfigWriteInputBasis,
+  type ConfigWriteOptions,
+  type InternalConfigWriteResult,
+  type ReadConfigFileSnapshotInternalResult,
   ConfigRuntimeRefreshError,
   configWriteCommittedSnapshot,
   configWritePostCommitRollback,
@@ -81,6 +76,7 @@ import {
   createConfigValidationFailedError,
   type ConfigWriteRollbackStatus,
 } from "./io.write-errors.js";
+import { createConfigWriteLoggers } from "./io.write-logging.js";
 import { injectExplicitlySetPaths, resolvePersistCandidateForWrite } from "./io.write-prepare.js";
 import {
   assertBaseSnapshotStillCurrent,
@@ -362,46 +358,16 @@ export async function writeConfigFileFromContext(
     gatewayModeAfter,
   });
 
-  const readTestLogFlag = (name: string) => isVitestRuntimeEnv(deps.env) && deps.env[name] === "1";
-  const logConfigOverwrite = () => {
-    if (
-      !snapshot.exists ||
-      options.skipOutputLogs ||
-      (isVitestRuntimeEnv(deps.env) && !readTestLogFlag("OPENCLAW_TEST_CONFIG_WRITE_LOG"))
-    ) {
-      return;
-    }
-    const testLog = readTestLogFlag("OPENCLAW_TEST_CONFIG_WRITE_LOG");
-    if (!isVerbose() && deps.env.OPENCLAW_CONFIG_OVERWRITE_LOG !== "1" && !testLog) {
-      return;
-    }
-    deps.logger.warn(
-      formatConfigOverwriteLogMessage({
-        configPath,
-        previousHash: previousHash ?? null,
-        nextHash,
-        changedPathCount,
-      }),
-    );
-  };
-  const logConfigWriteAnomalies = () => {
-    const testLog = readTestLogFlag("OPENCLAW_TEST_CONFIG_WRITE_LOG");
-    if (
-      suspiciousReasons.length === 0 ||
-      options.skipOutputLogs ||
-      (isVitestRuntimeEnv(deps.env) && !testLog)
-    ) {
-      return;
-    }
-    const showMissingMeta =
-      isVerbose() || deps.env.OPENCLAW_CONFIG_WRITE_ANOMALY_LOG === "1" || testLog;
-    const visibleReasons = showMissingMeta
-      ? suspiciousReasons
-      : suspiciousReasons.filter((reason) => reason !== "missing-meta-before-write");
-    if (visibleReasons.length > 0) {
-      deps.logger.warn(`Config write anomaly: ${configPath} (${visibleReasons.join(", ")})`);
-    }
-  };
+  const { logConfigOverwrite, logConfigWriteAnomalies } = createConfigWriteLoggers({
+    deps,
+    configPath,
+    options,
+    snapshot,
+    previousHash,
+    nextHash,
+    changedPathCount,
+    suspiciousReasons,
+  });
 
   const auditRecordBase = createConfigWriteAuditRecordBase({
     configPath,

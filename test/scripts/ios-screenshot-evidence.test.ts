@@ -318,24 +318,57 @@ describe("iOS screenshot evidence", () => {
     const manifest = reduceAll(input, path.join(root, "reduced"));
 
     expect(manifest.runAttempt).toBe(2);
+    expect(manifest.attemptModel).toEqual(ATTEMPT_MODEL);
+    if (!Array.isArray(manifest.families)) {
+      throw new Error("Expected screenshot evidence families");
+    }
+    const families = manifest.families.map((family: unknown) => {
+      if (
+        typeof family !== "object" ||
+        family === null ||
+        !("family" in family) ||
+        typeof family.family !== "string" ||
+        !("runAttempt" in family) ||
+        typeof family.runAttempt !== "number"
+      ) {
+        throw new Error("Expected a named screenshot family with a numeric attempt");
+      }
+      return { family: family.family, runAttempt: family.runAttempt };
+    });
+    expect(families.map((family) => family.family)).toEqual(["ipad-13", "iphone", "watch"]);
     expect(
-      Object.fromEntries(
-        (manifest.families as Array<Record<string, any>>).map((family) => [
-          family.family,
-          family.runAttempt,
-        ]),
-      ),
+      Object.fromEntries(families.map((family) => [family.family, family.runAttempt])),
     ).toEqual(runAttempts);
   });
 
-  it("rejects one shard job's families from different attempts", () => {
+  it.each([
+    { "ipad-13": 2, watch: 1 },
+    { "ipad-13": 1, watch: 2 },
+  ])("rejects one shard job's families from different workflow attempts: %j", (runAttempts) => {
     const root = tempDirs.make("ios-screenshot-mixed-attempt-");
-    const input = collectAll(root, TARGET_SHA, { watch: 1 });
+    const input = collectAll(root, TARGET_SHA, runAttempts);
 
     expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow(
       `${containerName("watch")} mixes evidence from different workflow run attempts`,
     );
   });
+
+  it.each([
+    { field: "targetSha", value: "c".repeat(40), error: "cross-SHA screenshot evidence" },
+    { field: "workflowSha", value: "c".repeat(40), error: "workflow SHA" },
+    { field: "runId", value: "99999", error: "workflow run id" },
+  ])(
+    "rejects retained earlier-attempt evidence with a different $field",
+    ({ field, value, error }) => {
+      const root = tempDirs.make("ios-screenshot-retained-provenance-");
+      const input = collectAll(root, TARGET_SHA, { iphone: 1, "ipad-13": 1, watch: 1 });
+      updateAllManifests(input, (manifest) => {
+        manifest[field] = value;
+      });
+
+      expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow(error);
+    },
+  );
 
   it("rejects cross-SHA shard evidence", () => {
     const root = tempDirs.make("ios-screenshot-cross-sha-");

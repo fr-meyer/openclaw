@@ -16,6 +16,7 @@ export type EmbeddingBatchExecutionParams = {
   pollIntervalMs: number;
   timeoutMs: number;
   concurrency: number;
+  signal?: AbortSignal;
   debug?: (message: string, data?: Record<string, unknown>) => void;
 };
 
@@ -26,6 +27,7 @@ type EmbeddingBatchGroupRunArgs<TRequest> = {
   byCustomId: Map<string, number[]>;
   pollIntervalMs: number;
   timeoutMs: number;
+  signal?: AbortSignal;
 };
 
 type EmbeddingBatchSplitArgs<TRequest> = {
@@ -61,6 +63,7 @@ export async function runEmbeddingBatchGroups<TRequest>(params: {
   pollIntervalMs: EmbeddingBatchExecutionParams["pollIntervalMs"];
   timeoutMs: EmbeddingBatchExecutionParams["timeoutMs"];
   concurrency: EmbeddingBatchExecutionParams["concurrency"];
+  signal?: EmbeddingBatchExecutionParams["signal"];
   debugLabel: string;
   debug?: EmbeddingBatchExecutionParams["debug"];
   shouldSplitGroupOnError?: (error: unknown, group: TRequest[]) => boolean;
@@ -77,6 +80,7 @@ export async function runEmbeddingBatchGroups<TRequest>(params: {
   const byCustomId = new Map<string, number[]>();
   const pollIntervalMs = resolveEmbeddingBatchPollIntervalMs(params);
   const runGroup = async (group: TRequest[], groupIndex: number, depth = 0): Promise<void> => {
+    params.signal?.throwIfAborted();
     try {
       await params.runGroup({
         group,
@@ -85,8 +89,10 @@ export async function runEmbeddingBatchGroups<TRequest>(params: {
         byCustomId,
         pollIntervalMs,
         timeoutMs: params.timeoutMs,
+        ...(params.signal ? { signal: params.signal } : {}),
       });
     } catch (error) {
+      params.signal?.throwIfAborted();
       if (group.length <= 1 || !params.shouldSplitGroupOnError?.(error, group)) {
         throw error;
       }
@@ -101,6 +107,7 @@ export async function runEmbeddingBatchGroups<TRequest>(params: {
         depth,
       });
       for (const part of parts) {
+        params.signal?.throwIfAborted();
         await runGroup(part, groupIndex, depth + 1);
       }
     }
@@ -136,6 +143,7 @@ export function buildEmbeddingBatchGroupOptions<TRequest>(
     pollIntervalMs,
     timeoutMs: params.timeoutMs,
     concurrency: params.concurrency,
+    ...(params.signal ? { signal: params.signal } : {}),
     debug: params.debug,
     debugLabel: options.debugLabel,
   };

@@ -174,7 +174,7 @@ extensions/copilot/src/attempt-config.ts	10
 extensions/copilot/src/attempt-execution.ts	2
 extensions/copilot/src/attempt-finalize.ts	2
 extensions/copilot/src/attempt-prepare.ts	4
-extensions/copilot/src/attempt-transcript-journal.ts	22
+extensions/copilot/src/attempt-transcript-journal.ts	20
 extensions/copilot/src/byok-proxy.ts	1
 extensions/copilot/src/event-bridge-transcript.ts	4
 extensions/copilot/src/event-bridge.ts	1
@@ -525,7 +525,6 @@ extensions/memory-core/src/memory/manager-embedding-errors.ts	2
 extensions/memory-core/src/memory/manager-search.ts	4
 extensions/memory-core/src/memory/manager-sync-base.ts	1
 extensions/memory-core/src/memory/manager-vector-rebuild-state.ts	1
-extensions/memory-core/src/memory/manager.ts	2
 extensions/memory-core/src/memory/search-deadline.ts	1
 extensions/memory-core/src/migration/doctor-host-event-sources.ts	1
 extensions/memory-core/src/migration/doctor-memory-sidecar-import.ts	6
@@ -634,7 +633,6 @@ extensions/ollama/src/setup.runtime.ts	1
 extensions/ollama/src/stream-compat.ts	1
 extensions/ollama/src/stream.runtime.ts	6
 extensions/onepassword/index.ts	2
-extensions/openai/embedding-batch.ts	2
 extensions/openai/index.ts	2
 extensions/openai/native-web-search.ts	1
 extensions/openai/openai-chatgpt-oauth-token.runtime.ts	1
@@ -1123,7 +1121,7 @@ packages/memory-host-sdk/src/host/memory-schema-recall.ts	1
 packages/memory-host-sdk/src/host/memory-schema.ts	7
 packages/memory-host-sdk/src/host/multimodal.ts	1
 packages/memory-host-sdk/src/host/read-retry.ts	1
-packages/memory-host-sdk/src/host/session-files.ts	8
+packages/memory-host-sdk/src/host/session-files.ts	6
 packages/memory-host-sdk/src/host/session-reset-recall.ts	1
 packages/memory-host-sdk/src/host/sqlite-vec.ts	3
 packages/memory-host-sdk/src/host/sqlite.ts	1
@@ -1169,7 +1167,7 @@ src/agents/agent-bundle-mcp-runtime-shared.ts	2
 src/agents/agent-bundle-mcp-runtime.ts	3
 src/agents/agent-command-restart-recovery.ts	1
 src/agents/agent-command.ts	1
-src/agents/agent-hooks/compaction-safeguard.ts	11
+src/agents/agent-hooks/compaction-safeguard.ts	8
 src/agents/agent-project-settings-snapshot.ts	5
 src/agents/agent-run-terminal-delivery.ts	1
 src/agents/agent-run-terminal-receipt.ts	1

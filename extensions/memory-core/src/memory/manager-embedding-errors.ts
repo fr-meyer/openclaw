@@ -1,4 +1,5 @@
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import { isMemoryAdmissionRefused } from "./bounded-admission.js";
 
 const MEMORY_EMBEDDING_OPERATION_ERROR_CODE = "MEMORY_EMBEDDING_OPERATION_FAILED";
 
@@ -16,6 +17,9 @@ export function createMemoryEmbeddingOperationError(params: {
   providerId?: string;
   cause: unknown;
 }): MemoryEmbeddingOperationError {
+  if (isMemoryAdmissionRefused(params.cause)) {
+    throw params.cause;
+  }
   const message = formatErrorMessage(params.cause);
   const error = new Error(message) as MemoryEmbeddingOperationError;
   error.code = MEMORY_EMBEDDING_OPERATION_ERROR_CODE;

@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 // Memory Core plugin module owns memory and session source indexing.
 import { createSubsystemLogger } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import {
@@ -10,6 +11,13 @@ import {
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
+import {
+  assertBoundedMemoryOperation,
+  assertBoundedMemorySnapshot,
+  selectBoundedMemoryPaths,
+  boundedMemoryAdmissionActive,
+  MemoryAdmissionRefused,
+} from "./bounded-admission.js";
 import { MemoryIndexRevisionConflictError } from "./manager-db-kernel.js";
 import type { MemoryIndexEntry } from "./manager-index-preparation.js";
 import { MemoryManagerSessionSyncOps } from "./manager-session-sync-ops.js";
@@ -118,15 +126,47 @@ export abstract class MemoryManagerSourceSyncOps extends MemoryManagerSessionSyn
     progress?: MemorySyncProgressState;
     deferIndex?: boolean;
   }): Promise<MemorySourceSyncPlan | undefined> {
+    assertBoundedMemoryOperation(this.agentId);
+    if (
+      boundedMemoryAdmissionActive(this.agentId) &&
+      (params.needsFullReindex || params.deferIndex || this.batch.enabled)
+    ) {
+      throw new MemoryAdmissionRefused();
+    }
+    const selectedPaths = selectBoundedMemoryPaths(this.agentId);
     // Consume this pass's dirtiness before awaits so later edits remain queued.
     this.clearMemoryRetryState();
 
+    let selectedFiles = this.memoryFiles;
+    if (selectedPaths) {
+      if (!selectedFiles) {
+        throw new MemoryAdmissionRefused();
+      }
+      selectedFiles = {
+        ...selectedFiles,
+        assertCurrent: () => assertBoundedMemoryOperation(this.agentId),
+        listFiles: async () => selectedPaths,
+      };
+    }
     const fileEntries = await resolveMemorySourceFileEntries({
-      files: this.memoryFiles,
+      files: selectedFiles,
       workspaceDir: this.workspaceDir,
       settings: this.settings,
       concurrency: this.getIndexConcurrency(),
     });
+    if (selectedPaths) {
+      if (
+        fileEntries.length !== selectedPaths.length ||
+        fileEntries.some((entry) => entry.kind === "multimodal")
+      ) {
+        throw new MemoryAdmissionRefused();
+      }
+      for (const entry of fileEntries) {
+        const content = await fs.readFile(entry.absPath, "utf8");
+        assertBoundedMemorySnapshot(this.agentId, entry.absPath, content, entry.hash);
+        Object.assign(entry, { content });
+      }
+    }
     log.debug("memory sync: indexing memory files", {
       files: fileEntries.length,
       needsFullReindex: params.needsFullReindex,
@@ -147,7 +187,10 @@ export abstract class MemoryManagerSourceSyncOps extends MemoryManagerSessionSyn
       });
     }
 
-    const deleteStaleRows = () => this.deleteStaleSourceFiles("memory", existingRows, activePaths);
+    const deleteStaleRows = () =>
+      selectedPaths
+        ? Promise.resolve()
+        : this.deleteStaleSourceFiles("memory", existingRows, activePaths);
 
     if (this.batch.enabled) {
       const indexItems: MemoryIndexWorkItem[] = [];

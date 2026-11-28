@@ -108,6 +108,10 @@ import type {
   UpdateRunReconciliationCandidate,
 } from "../infra/update-run-reconciliation.types.js";
 import type {
+  NodeWorkerTurnJournalSnapshot,
+  NodeWorkerTurnJournalSnapshotQuery,
+} from "../node-host/node-worker-turn-snapshot.types.js";
+import type {
   PluginBlobReadCommand,
   PluginBlobReadReply,
 } from "../plugin-state/plugin-blob-worker-contract.js";
@@ -231,6 +235,7 @@ export type OpenClawStateReadCommand =
   | { type: "agentDatabaseDeletion.snapshot"; purpose: AgentDeletionJournalPurpose }
   | { type: "agentDeletionJournal.status"; agentId: string }
   | { type: "workerEnvironments.snapshot"; ids?: readonly string[] }
+  | ({ type: "nodeWorker.turnJournalSnapshot" } & NodeWorkerTurnJournalSnapshotQuery)
   | { type: "workerEnvironments.pruneCandidates"; input: WorkerEnvironmentPruneReadInput }
   | { type: "sessionGroups.snapshot" }
   | { type: "sessionGroups.members"; cfg: OpenClawConfig }
@@ -621,6 +626,10 @@ export type OpenClawStateReadResult =
   | {
       type: "workers.placementProjection";
       result: WorkerSessionPlacementReadResult;
+    }
+  | {
+      type: "nodeWorker.turnJournalSnapshot";
+      snapshot: NodeWorkerTurnJournalSnapshot | undefined;
     };
 
 export type OpenClawStateReadReply = (

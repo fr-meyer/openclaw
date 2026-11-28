@@ -157,6 +157,9 @@ export function createInternalAgentTurnFacade(
         });
       };
       const io: AgentTurnIo = {
+        ...(dispatchOptions.onExecutionOwner
+          ? { emitExecutionOwner: dispatchOptions.onExecutionOwner }
+          : {}),
         emitStartOwner: publishStartOwner,
         emitAcceptance: (frame, meta) => {
           if (!acceptance) {

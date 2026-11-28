@@ -125,6 +125,20 @@ Start agent work in the background: hook-dispatched turns for external content a
     `runTimeoutSeconds` sets the Gateway agent command's run deadline. It must be a nonnegative safe integer. It is independent of the `waitForRun` observation timeout.
 
     <Warning>
+    A fresh host-owned `run(...)` may also return an optional `execution` capability.
+    `execution.observeSettlement()` synchronously returns `"pending"`, `"settled"`,
+    or `"unknown"` for that exact admitted producer. `"settled"` means its host
+    execution promise and cleanup have completed; it does not prove a successful
+    task outcome, durable receipt, stopped background processes, or fenced resources.
+    Registration removal and lifecycle completion do not settle this observation.
+    Cleanup rejection remains `"unknown"`.
+
+    The capability belongs to the plugin service and captured Gateway lifetime.
+    Retained methods reject after plugin retirement, Gateway retirement, lifecycle
+    rotation, or while a different same-run-ID registration is active. Cached replay and custom runtimes
+    may omit it; absence is unknown. It cannot be serialized or reconstructed
+    from run/session IDs, and does not cancel a run or authorize resource release.
+
     Outside an authorized Gateway request, model overrides require operator opt-in via `plugins.entries.<id>.subagent.allowModelOverride: true` in config. Plugins without that opt-in can use the configured model, but override requests are rejected.
     </Warning>
 

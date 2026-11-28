@@ -15,7 +15,7 @@ describe("listGatewayMethods", () => {
     const descriptor = createCoreGatewayMethodDescriptors(coreGatewayHandlers).find(
       (entry) => entry.name === "gateway.workerNamespace.get",
     );
-    expect(descriptor).toMatchObject({ scope: "operator.read", since: "2026.10" });
+    expect(descriptor).toMatchObject({ scope: "operator.read", since: "2026.9" });
     expect(descriptor?.controlPlaneWrite).toBeUndefined();
   });
 
@@ -43,6 +43,20 @@ describe("listGatewayMethods", () => {
         controlPlaneWrite: true,
       });
     }
+  });
+
+  it("advertises node plugin tool catalog updates", () => {
+    expect(listGatewayMethods()).toContain("node.pluginTools.update");
+  });
+
+  it("advertises node skill catalog updates", () => {
+    expect(listGatewayMethods()).toContain("node.skills.update");
+  });
+
+  it("advertises unified approval lookup, history, and resolution", () => {
+    expect(listGatewayMethods()).toContain("approval.get");
+    expect(listGatewayMethods()).toContain("approval.history");
+    expect(listGatewayMethods()).toContain("approval.resolve");
   });
 
   it("classifies cron mutations as control-plane writes", () => {

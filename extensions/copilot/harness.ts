@@ -24,6 +24,7 @@ import type {
 } from "./src/attempt-types.js";
 import { createCopilotByokAuth, resolveCopilotAuth, tokenFingerprint } from "./src/auth-bridge.js";
 import { createCopilotByokProxy } from "./src/byok-proxy.js";
+import { failedCompaction } from "./src/compaction-result.js";
 import {
   buildCopilotCompactionHookContext,
   isStaleSdkSessionError,
@@ -423,15 +424,6 @@ function computeCompactRequestKey(params: CopilotCompactParamsLike): string {
   return computeSessionKey({ kind: "compact", params }, { includeApi: false, includeAuth: false });
 }
 
-function failedCompaction(reason: string, rawError?: string): AgentHarnessCompactResult {
-  return {
-    ok: false,
-    compacted: false,
-    reason,
-    failure: { reason, ...(rawError === undefined ? {} : { rawError }) },
-  };
-}
-
 export function createCopilotAgentHarness(
   options?: CreateCopilotAgentHarnessOptions,
 ): AgentHarnessV2 {
@@ -558,7 +550,10 @@ export function createCopilotAgentHarness(
         }
         throw error;
       }
-      const openclawSessionId = typeof params.sessionId === "string" ? params.sessionId : undefined;
+      const openclawSessionId =
+        params.sessionPersistence === "detached" || typeof params.sessionId !== "string"
+          ? undefined
+          : params.sessionId;
 
       // Reuse the SDK session across turns within the same OpenClaw session so
       // Copilot's prompt cache, tool history, and compaction state survive.

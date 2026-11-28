@@ -1,0 +1,258 @@
+{
+  "cryptoClient": "LibreSSL 3.3.6",
+  "cryptoClientPath": "/usr/bin/openssl",
+  "keyEndpoint": "https://registry.npmjs.org/-/npm/v1/keys",
+  "keyEndpointDecodedSha256": "faf23d8753d5bb79df250f10391ac89b63ecf7743e48487a544a99c847f9c8df",
+  "keyTrustBasis": "HTTPS retrieval from the public npm registry; matching endpoint keyid; no independent publisher attestation claim",
+  "limits": {
+    "credentialReads": 0,
+    "gcpSdkCalls": 0,
+    "maxCompressedBytesPerResponse": 2097152,
+    "maxDecodedBytesPerResponse": 33554432,
+    "nodeCalls": 0,
+    "packageCodeExecutions": 0,
+    "packageInstalls": 0,
+    "tarballRequests": 0
+  },
+  "observedAt": "2026-10-30T01:34:38.279496+00:00",
+  "packages": [
+    {
+      "artifactCodeReviewed": false,
+      "artifactDownloaded": false,
+      "artifactIntegrityVerified": false,
+      "dependencies": {
+        "@azure/msal-common": "16.14.3",
+        "jsonwebtoken": "^9.0.0"
+      },
+      "dist": {
+        "fileCount": 343,
+        "integrity": "sha512-zHXTJB38XVrsNaXrPBCMqEUjeyQysFfgmKtUHRDsEKTRjNIPckJ/w6fE5wBXrmJXBim1D3C7O7LOag0msPTrgw==",
+        "shasum": "fe0ee4e69e2361fdb89b9003a7e233d9ef4aa783",
+        "signatures": [
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEQCIFpXb/ntpp0cqpPO6ZfeeJ+TRBb0R4Tb5UvP5x5nQh86AiAGJPXnUvcVitY9anXwNrVHpGmgpi3UcgUSg5PU0aGSfg=="
+          },
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEUCICFwiyzXed/Cdv4wmXT6UGhCV8nvCI6RPTjPWyoRTTWXAiEA/+OOlQRQhekYg6qktwXvMHYTf27fJ6XBe34XOxRDYts="
+          }
+        ],
+        "tarball": "https://registry.npmjs.org/@azure/msal-node/-/msal-node-7.1.1.tgz",
+        "unpackedSize": 2542868
+      },
+      "engines": {
+        "node": ">=20"
+      },
+      "name": "@azure/msal-node",
+      "publicationTime": "2026-10-21T19:21:33.186Z",
+      "registrySignatureResults": [
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        },
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        }
+      ],
+      "sevenDayPolicySatisfiedAtObservation": true,
+      "sevenDayPolicyUnlockAt": "2026-10-28T19:21:33.186000Z",
+      "signedMessageSha256": "fc244efe2ea650c17e0b8d161061c3c500079c227e397723e2aa37ecbff91c44",
+      "version": "7.1.1",
+      "versionAndPackumentDistMatch": true
+    },
+    {
+      "artifactCodeReviewed": false,
+      "artifactDownloaded": false,
+      "artifactIntegrityVerified": false,
+      "dependencies": null,
+      "dist": {
+        "fileCount": 683,
+        "integrity": "sha512-tz3GvMrR9V/plb2lDdW8qaO8CPpfZevdExBKjltzzbAtyhK0eB2UIvji1aU+gkyHj3fxQ2ie+LNHyMXdmo8wOg==",
+        "shasum": "dbf1a58a8635ca5900d8f89b20a7e032f59e3f61",
+        "signatures": [
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEUCIDnUP7G5NyhU4jjcSs9Iudt8Br/TZzTIfq9PWWxuzLE5AiEAr8ryfKnPO2tE488Jk9b7+oPSLq9SP6QpSOuYd38GzF8="
+          },
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEYCIQDMvcrLVfDVQGkoTLO9Zs8G0OSyZXBPc2299x51vCtWmwIhALim/bM9dTttzRK0TBzjt1q6+x2tSZP7l12PlfjwmqOx"
+          }
+        ],
+        "tarball": "https://registry.npmjs.org/@azure/msal-common/-/msal-common-16.14.3.tgz",
+        "unpackedSize": 2959024
+      },
+      "engines": {
+        "node": ">=0.8.0"
+      },
+      "name": "@azure/msal-common",
+      "publicationTime": "2026-10-21T19:12:59.113Z",
+      "registrySignatureResults": [
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        },
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        }
+      ],
+      "sevenDayPolicySatisfiedAtObservation": true,
+      "sevenDayPolicyUnlockAt": "2026-10-28T19:12:59.113000Z",
+      "signedMessageSha256": "bd35d5b9f1ba0dcebcdbb0ddc60309a92acbfb1082028a78f7840e351e6f2391",
+      "version": "16.14.3",
+      "versionAndPackumentDistMatch": true
+    },
+    {
+      "artifactCodeReviewed": false,
+      "artifactDownloaded": false,
+      "artifactIntegrityVerified": false,
+      "dependencies": null,
+      "dist": {
+        "attestations": {
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          },
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/fast-uri@4.2.3"
+        },
+        "fileCount": 55,
+        "integrity": "sha512-I1PXwP5eAhlNlcdpjt9CgB59op2ZvZfxw+BkqGFVIUOgNpCVTcTqp3HhTX7brxj5vsip+nSY4nTvff+eIA76hg==",
+        "shasum": "4f0f696864eab654e1bd0aa2557bd68f61b3a0e0",
+        "signatures": [
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEUCIDLsr5e6Si0fo036B2SKQ7qMv6Yb4ILuYdYmi5e8ZypOAiEA7dkRaj3Mop4X0FzX4OgotavJEGxVJ6v6Ysby5PsmPqw="
+          },
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEUCIA4LEGqJz4HKoUWH5E+unlk0VufVqFiOZUOtwYGiD6+pAiEA1NphRj5qES5ZUWUQLP7fEwcmPt9bAhLRQ/Fx3mEiXrw="
+          }
+        ],
+        "tarball": "https://registry.npmjs.org/fast-uri/-/fast-uri-4.2.3.tgz",
+        "unpackedSize": 331611
+      },
+      "engines": null,
+      "name": "fast-uri",
+      "publicationTime": "2026-10-19T22:51:36.634Z",
+      "registrySignatureResults": [
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        },
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        }
+      ],
+      "sevenDayPolicySatisfiedAtObservation": true,
+      "sevenDayPolicyUnlockAt": "2026-10-26T22:51:36.634000Z",
+      "signedMessageSha256": "3517b9f49bae1022a1587f516bb7cfb4ab285d8934fff00e49edf4a00874b70f",
+      "version": "4.2.3",
+      "versionAndPackumentDistMatch": true
+    },
+    {
+      "artifactCodeReviewed": false,
+      "artifactDownloaded": false,
+      "artifactIntegrityVerified": false,
+      "dependencies": null,
+      "dist": {
+        "attestations": {
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          },
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/nodemailer@10.1.4"
+        },
+        "fileCount": 161,
+        "integrity": "sha512-EsMnOR2oRv4LGnWvHgcVYkkQ4O2j8KO4WTw6l+PHR4sOXo8SAgIraxtEnGDmotjbhv0hDsu3IuDIFZm8iXwO4A==",
+        "shasum": "66063221b29cb146c987e325ea92776f534e6524",
+        "signatures": [
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEUCIHvZprgF+YnFkXumqJbPo0Oc3FJhGZKTfMZ64tKRjf8AAiEA27lOMxDF553r7GZmCiPTOMTVGhZIpTeLj07pRpZt+Lc="
+          },
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEUCIQCSMg+7DrpIg8J4A9oSayHOlMhPMJSyAPVMgMGhh766SQIgaQuFIjLsxQpMGWzRlCtnoD6dC9XCrz8DAQqwnx5PgFc="
+          }
+        ],
+        "tarball": "https://registry.npmjs.org/nodemailer/-/nodemailer-10.1.4.tgz",
+        "unpackedSize": 1709206
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "name": "nodemailer",
+      "publicationTime": "2026-10-18T11:59:56.239Z",
+      "registrySignatureResults": [
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        },
+        {
+          "keyExpiry": null,
+          "keyIdMatchedRegistryEndpoint": true,
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "publicKeyDerSha256": "fb190a462123443500cbcdb6519623e7179e9f38d84ad4e9362b72d2b68b62c1",
+          "returncode": 0,
+          "signatureVerified": true,
+          "stderrBytes": 0,
+          "stdout": "Verified OK"
+        }
+      ],
+      "sevenDayPolicySatisfiedAtObservation": true,
+      "sevenDayPolicyUnlockAt": "2026-10-25T11:59:56.239000Z",
+      "signedMessageSha256": "068d0478fafa16f492f175128293c5ceeca6871108d3b1393edd4b93e208e22e",
+      "version": "10.1.4",
+      "versionAndPackumentDistMatch": true
+    }
+  ],
+  "schema": "openclaw.public-npm-metadata-proof.v1",
+  "scopeCaveat": "Registry signatures bind metadata name/version/integrity. Tarball bytes were not downloaded, so artifact integrity/provenance/content/security remain unverified. Publication time fields are HTTPS registry metadata and are not covered by the ECDSA message. An initial optional check incorrectly assumed npm keyid equals SHA256(SPKI DER); that local assumption failed before crypto verification and was not used as a trust claim. Exact endpoint key matching and crypto verification results are recorded separately.",
+  "signatureMessageFormula": "${package.name}@${package.version}:${package.dist.integrity}",
+  "signatureSchemeReference": "https://docs.npmjs.com/about-registry-signatures/",
+  "status": "metadata_only"
+}

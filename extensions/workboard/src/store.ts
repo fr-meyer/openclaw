@@ -1,7 +1,9 @@
+// Workboard plugin module implements store behavior.
+import { createHash } from "node:crypto";
 import type {
   WorkboardAttachment,
-  WorkboardBoardMetadata,
   WorkboardCard,
+  WorkboardClaim,
   WorkboardDiagnostic,
   WorkboardExecution,
   WorkboardExecutionStatus,
@@ -11,6 +13,7 @@ import type {
   WorkboardStatus,
 } from "@openclaw/workboard-contract";
 import { asNonArrayRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { claimConflictsWithLaunch, claimMatchesLaunch } from "./session-link.js";
 import { createWorkboardSqliteStores } from "./sqlite-store.js";
 import {
   buildWorkerContext,
@@ -20,24 +23,18 @@ import {
   cardRunId,
   cardSessionKey,
   computeCardDiagnostics,
-  isDependencyPromotableStatus,
-  latestRunningAttempt,
   mergeDiagnostics,
-  retryBudgetExhausted,
   shouldSkipPersistedLifecycleStatusUpdate,
   shouldSyncWorkboardLifecycleStatus,
 } from "./store-card-helpers.js";
-import { isWorkboardClaimReclaimable, secondsToDurationMs } from "./store-constants.js";
+import { WorkboardDispatchStore } from "./store-dispatch.js";
 import type {
   WorkboardBulkInput,
   WorkboardCardPatch,
   WorkboardDiagnosticsResult,
-  WorkboardDispatchOptions,
-  WorkboardDispatchResult,
   WorkboardMutationScope,
 } from "./store-inputs.js";
-import { capText, normalizeBoardId, normalizeTimestamp } from "./store-normalizers.js";
-import { WorkboardNotificationStore } from "./store-notifications.js";
+import { capText, normalizeLaunchClaimGeneration } from "./store-normalizers.js";
 import { readCards } from "./store-read.js";
 
 export type { WorkboardDispatchResult } from "./store-inputs.js";
@@ -62,6 +59,18 @@ type WorkboardExecutionAssociationPatch = WorkboardCardPatch & {
 };
 type WorkboardPreparedLaunch = Extract<WorkboardLaunchState, { phase: "prepared" }>;
 
+function intentProvisionalRunId(cardId: string, intentRunId: string): string {
+  if (
+    typeof intentRunId !== "string" ||
+    intentRunId.length !== 43 ||
+    !/^wb-[0-9a-f]{40}$/.test(intentRunId)
+  ) {
+    throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+  }
+  const digest = createHash("sha256").update(cardId).update("\0").update(intentRunId).digest("hex");
+  return `workboard:intent:${digest}`;
+}
+
 function preparedLaunchMatchesCard(
   card: WorkboardCard,
   expected: WorkboardPreparedLaunch,
@@ -72,6 +81,11 @@ function preparedLaunchMatchesCard(
     launch.requestedSessionKey === expected.requestedSessionKey &&
     launch.provisionalRunId === expected.provisionalRunId &&
     launch.preparedAt === expected.preparedAt &&
+    launch.claimOwnerId === expected.claimOwnerId &&
+    launch.claimGeneration === expected.claimGeneration &&
+    (launch.claimGeneration === undefined
+      ? !claimConflictsWithLaunch(card.metadata?.claim, launch)
+      : claimMatchesLaunch(card.metadata?.claim, launch)) &&
     card.sessionKey === expected.requestedSessionKey &&
     card.runId === expected.provisionalRunId &&
     card.execution?.sessionKey === expected.requestedSessionKey &&
@@ -184,8 +198,39 @@ function lifecycleExecution(params: {
   };
 }
 
-// Capability layers share persistence handles and the runtime's mutation ordering.
-export class WorkboardStore extends WorkboardNotificationStore {
+function hasExactTerminalClaimAssociation(
+  card: WorkboardCard,
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+  input: {
+    targetStatus: WorkboardStatus | undefined;
+    executionStatus: WorkboardExecutionStatus | undefined;
+    association?: WorkboardLifecycleAssociation;
+  },
+): boolean {
+  const association = input.association;
+  const sessionKey = cardSessionKey(card);
+  const runId = cardRunId(card);
+  const terminalStatusMatches =
+    (input.targetStatus === "review" && input.executionStatus === "review") ||
+    (input.targetStatus === "blocked" && input.executionStatus === "blocked");
+  return Boolean(
+    terminalStatusMatches &&
+    association?.runId &&
+    claim &&
+    launch?.phase === "accepted" &&
+    launch.acceptedSessionKey === association.sessionKey &&
+    launch.acceptedRunId === association.runId &&
+    claimMatchesLaunch(claim, launch) &&
+    sessionKey &&
+    runId &&
+    association.expectedSessionKey === sessionKey &&
+    association.expectedRunId === runId,
+  );
+}
+
+// Capability layers split review boundaries only; the core still owns persistence and mutation order.
+export class WorkboardStore extends WorkboardDispatchStore {
   async prepareExecutionLaunch(
     id: string,
     input: {
@@ -193,19 +238,30 @@ export class WorkboardStore extends WorkboardNotificationStore {
       now: number;
       scope: WorkboardMutationScope;
       assertOwnerCurrent?: () => void;
+      intentRunId?: string;
     },
   ): Promise<{ card: WorkboardCard; launch: WorkboardPreparedLaunch }> {
+    const intentKey =
+      input.intentRunId === undefined ? undefined : intentProvisionalRunId(id, input.intentRunId);
     return await this.enqueueMutation(async () => {
       const result = await this.updateLatestCard(
         id,
         (card) => {
           assertCanMutateClaimedCard(card, input.scope);
-          const provisionalRunId = `workboard:${card.id}:${card.updatedAt}`;
+          const provisionalRunId = intentKey ?? `workboard:${card.id}:${card.updatedAt}`;
+          const claim = card.metadata?.claim;
+          const claimGeneration = normalizeLaunchClaimGeneration(claim?.claimedAt);
+          if (claim && claimGeneration === undefined) {
+            throw new Error("Workboard launch requires a positive safe-integer claim generation.");
+          }
           const launch: WorkboardPreparedLaunch = {
             phase: "prepared",
             requestedSessionKey: input.requestedSessionKey,
             provisionalRunId,
             preparedAt: card.updatedAt,
+            ...(claim && claimGeneration !== undefined
+              ? { claimOwnerId: claim.ownerId, claimGeneration }
+              : {}),
           };
           return {
             sessionKey: input.requestedSessionKey,
@@ -330,8 +386,9 @@ export class WorkboardStore extends WorkboardNotificationStore {
           const launch = card.metadata?.automation?.launch;
           const associationIsCurrent =
             !input.association ||
-            ((input.sourceUpdatedAt === undefined ||
-              !shouldSkipPersistedLifecycleStatusUpdate(card, input.sourceUpdatedAt)) &&
+            (!claimConflictsWithLaunch(card.metadata?.claim, launch) &&
+              (input.sourceUpdatedAt === undefined ||
+                !shouldSkipPersistedLifecycleStatusUpdate(card, input.sourceUpdatedAt)) &&
               (launch?.phase !== "prepared" ||
                 (input.association.acceptedAt !== undefined &&
                   input.association.acceptedAt >= launch.preparedAt)) &&
@@ -405,6 +462,17 @@ export class WorkboardStore extends WorkboardNotificationStore {
           } else if (associationIsCurrent && card.metadata?.stale) {
             metadata = { ...metadata, stale: null };
           }
+          if (
+            associationIsCurrent &&
+            hasExactTerminalClaimAssociation(
+              card,
+              card.metadata?.claim,
+              acceptedLaunch ?? launch,
+              input,
+            )
+          ) {
+            metadata = { ...metadata, claim: undefined };
+          }
           if (metadata) {
             patch.metadata = metadata;
           }
@@ -425,120 +493,6 @@ export class WorkboardStore extends WorkboardNotificationStore {
       async () => await this.promoteDependencyReady(id, now),
       assertOwnerCurrent,
     );
-  }
-
-  private async getAutoOrchestrationBoard(
-    card: WorkboardCard,
-  ): Promise<WorkboardBoardMetadata | undefined> {
-    if (
-      card.status !== "triage" ||
-      card.metadata?.archivedAt ||
-      card.metadata?.workerProtocol?.state === "idle"
-    ) {
-      return undefined;
-    }
-    const board = await this.boardStore.lookup(cardBoardId(card));
-    return board?.version === 1 && board.board.orchestration?.autoDecompose === true
-      ? board.board
-      : undefined;
-  }
-
-  async dispatch(
-    input: number | WorkboardDispatchOptions = Date.now(),
-  ): Promise<WorkboardDispatchResult> {
-    const now = typeof input === "number" ? input : normalizeTimestamp(input.now, Date.now());
-    const boardId = typeof input === "number" ? undefined : normalizeBoardId(input.boardId);
-    const assertOwnerCurrent = typeof input === "number" ? undefined : input.assertOwnerCurrent;
-    return await this.enqueueMutation(async () => {
-      if (boardId) {
-        await this.assertCardsBoard(boardId);
-      }
-      const promoted: WorkboardCard[] = [];
-      const reclaimed: WorkboardCard[] = [];
-      const blocked: WorkboardCard[] = [];
-      const orchestrated: WorkboardCard[] = [];
-      const orchestratedByBoard = new Map<string, number>();
-      for (const card of await this.list({ boardId })) {
-        // Archived cards remain readable and restorable, but must never re-enter automation.
-        if (card.metadata?.archivedAt) {
-          continue;
-        }
-        // Keep the batch FIFO, but accepted work on one card cannot admit the next.
-        await this.withMutationAuthority(async () => {
-          let latest = await this.promoteDependencyReady(card.id, now);
-          const wasPromoted = latest.status !== card.status;
-          const claim = latest.metadata?.claim;
-          const latestAttempt = latestRunningAttempt(latest);
-          const maxRuntimeSeconds = latest.metadata?.automation?.maxRuntimeSeconds;
-          const runtimeStartedAt = latestAttempt?.startedAt ?? claim?.claimedAt ?? latest.startedAt;
-          const timedOut =
-            Boolean(maxRuntimeSeconds && runtimeStartedAt) &&
-            now - runtimeStartedAt! > secondsToDurationMs(maxRuntimeSeconds!);
-          const claimExpired = isWorkboardClaimReclaimable(claim, now);
-          const retriesExhausted = retryBudgetExhausted(latest);
-          if (latest.status === "running" && (timedOut || claimExpired)) {
-            const reason = timedOut
-              ? "Run exceeded the card max runtime."
-              : "Claim expired without a recent heartbeat.";
-            const finished = this.finishRun(latest, "blocked", now, reason);
-            latest = await this.updateCard(await this.requireCard(latest.id), {
-              ...finished,
-              metadata: {
-                ...finished.metadata,
-                notifications: this.appendNotification(latest.metadata, now, {
-                  kind: "failed",
-                  message: reason,
-                }),
-              },
-            });
-            blocked.push(latest);
-          } else if (claimExpired) {
-            latest = await this.updateCard(await this.requireCard(latest.id), {
-              metadata: { ...latest.metadata, claim: undefined },
-            });
-            reclaimed.push(latest);
-          }
-          if (
-            !latest.metadata?.claim &&
-            retriesExhausted &&
-            isDependencyPromotableStatus(latest.status)
-          ) {
-            latest = await this.updateCard(await this.requireCard(latest.id), {
-              status: "blocked",
-              metadata: {
-                ...latest.metadata,
-                notifications: this.appendNotification(latest.metadata, now, {
-                  kind: "failed",
-                  message: "Card exhausted its retry budget.",
-                }),
-              },
-            });
-            blocked.push(latest);
-          }
-          const orchestrationBoard = await this.getAutoOrchestrationBoard(latest);
-          if (orchestrationBoard) {
-            const latestBoardId = cardBoardId(latest);
-            const cap = orchestrationBoard.orchestration?.autoDecomposePerDispatch ?? 3;
-            const boardCount = orchestratedByBoard.get(latestBoardId) ?? 0;
-            if (boardCount < cap) {
-              latest = await this.recordOrchestrationCandidate(latest, now);
-              orchestrated.push(latest);
-              orchestratedByBoard.set(latestBoardId, boardCount + 1);
-            }
-          }
-          if (wasPromoted && latest.status !== "blocked") {
-            promoted.push(latest);
-          }
-        }, assertOwnerCurrent);
-      }
-      return {
-        promoted,
-        reclaimed,
-        blocked,
-        orchestrated,
-        count: promoted.length + reclaimed.length + blocked.length + orchestrated.length,
-      };
-    });
   }
 
   async bulkUpdate(input: WorkboardBulkInput): Promise<{ cards: WorkboardCard[] }> {
@@ -628,8 +582,14 @@ export class WorkboardStore extends WorkboardNotificationStore {
     });
   }
 
-  async buildWorkerContext(id: string): Promise<string> {
+  async buildWorkerContext(id: string, options: { relatedOnly?: boolean } = {}): Promise<string> {
     const card = await this.requireCard(id);
+    if (options.relatedOnly) {
+      const related = (
+        await Promise.all(cardParentIds(card).map(async (parentId) => await this.get(parentId)))
+      ).filter((entry): entry is WorkboardCard => entry !== undefined);
+      return buildWorkerContext(card, related, { includeRecentAgentWork: false });
+    }
     return buildWorkerContext(
       card,
       await readCards(this.store, {

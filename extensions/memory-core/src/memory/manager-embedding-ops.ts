@@ -1,51 +1,44 @@
-import { createDeferred } from "openclaw/plugin-sdk/concurrency-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import {
   formatEmbeddingModelInput,
   isEmbeddingBatchUnavailableError,
   resolveEmbeddingInputFormatVersion,
-  type EmbeddingInput,
-  type MemoryEmbeddingProviderRuntime,
 } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
-import { createSubsystemLogger } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import {
   buildFileEntry,
   buildMultimodalChunkForIndexing,
-  createMemorySearchDeadlineControl,
-  MEMORY_SEARCH_DEADLINE_CONTROL,
   runWithConcurrency,
-  type MemorySearchDeadlineControl,
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
-import { MAX_TIMER_TIMEOUT_MS, resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
-import { sleepWithAbort } from "openclaw/plugin-sdk/runtime-env";
 import { chunkItems } from "openclaw/plugin-sdk/text-chunking";
 import {
   withMemoryWorkspaceLock,
   withMemoryWorkspacePreparation,
 } from "../memory-workspace-lock.js";
 import { readSessionResetRecallCutoffMetadata } from "../session-reset-recall-metadata.js";
-import type { EmbeddingProvider } from "./embeddings.js";
+import {
+  assertBoundedMemoryOperation,
+  assertBoundedMemorySnapshot,
+  boundedMemoryAdmissionActive,
+  MemoryAdmissionRefused,
+} from "./bounded-admission.js";
+import {
+  MemoryManagerEmbeddingRetryOps,
+  embeddingOperationLog as log,
+} from "./embedding-retry-ops.js";
+import { countBatchSources, formatBatchSourceCounts } from "./manager-batch-source-counts.js";
+import { MemoryBatchSubmissionOwner } from "./manager-batch-submission.js";
 import type { IndexedMemoryChunk } from "./manager-chunk-writer.js";
 import { prepareMemoryIndexInWorker } from "./manager-cpu-worker-runtime.js";
-import { readMemoryDatabaseRevision } from "./manager-db-kernel.js";
-import {
-  MemoryManagerEmbeddingCacheOps,
-  type MemoryEmbeddingCacheCandidate,
-} from "./manager-embedding-cache-ops.js";
-import { createMemoryEmbeddingOperationError } from "./manager-embedding-errors.js";
+import { recoverMemoryEmbeddingBatch } from "./manager-embedding-batch-recovery.js";
+import type { MemoryEmbeddingCacheCandidate } from "./manager-embedding-cache-ops.js";
 import {
   runMemoryEmbeddingBatchTimeoutRetry,
-  runMemoryEmbeddingBatchRetryWithSplit,
-  runMemoryEmbeddingRetryLoop,
+  resolveMemoryEmbeddingBatch,
 } from "./manager-embedding-policy.js";
 import { resolveChunkProvenance } from "./manager-index-preparation.js";
 import { readMemoryIndexSource } from "./manager-index-source.js";
-import {
-  resolveMemoryIndexProviderIdentities,
-  type MemoryIndexProviderIdentity,
-} from "./manager-reindex-state.js";
 import type { MemorySourceIndexReplacement } from "./manager-source-index-kernel.js";
 import type {
   MemoryIndexWorkItem,
@@ -54,18 +47,10 @@ import type {
 } from "./manager-sync-ops.js";
 import { logMemoryVectorDegradedWrite } from "./manager-vector-warning.js";
 import { resolveMemoryPathClassification } from "./memory-path-provenance.js";
-import { runEmbeddingOperationWithTimeout } from "./paused-deadline.js";
 
 const EMBEDDING_BATCH_MAX_TOKENS = 8000;
-const EMBEDDING_INDEX_CONCURRENCY = 4;
-const EMBEDDING_TIMEOUTS_MS = {
-  query: { remote: 60_000, local: 5 * 60_000 },
-  batch: { remote: 2 * 60_000, local: 10 * 60_000 },
-};
 const SOURCE_WIDE_BATCH_MAX_FILES = 2048;
 const SOURCE_WIDE_BATCH_MAX_REQUESTS = 50000;
-
-const log = createSubsystemLogger("memory");
 
 type MemoryIndexEntry = MemoryIndexWorkItem["entry"];
 
@@ -76,133 +61,61 @@ type PreparedMemoryIndexEntry = {
   structuredInputBytes?: number;
 };
 
-function countBatchSources(items: Array<{ source: MemorySource }>): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const item of items) {
-    counts[item.source] = (counts[item.source] ?? 0) + 1;
-  }
-  return counts;
-}
-
-function formatBatchSourceCounts(counts: Record<string, number>): string {
-  return (
-    Object.entries(counts)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([source, count]) => `${source}=${count}`)
-      .join(",") || "none"
-  );
-}
-
-export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCacheOps {
+export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingRetryOps {
   protected readonly batchFailureLimit = 2;
   protected batchFailure: { count: number; lastError?: string; lastProvider?: string } = {
     count: 0,
   };
-  protected abstract markLocalEmbeddingProviderDegraded(err: unknown): void;
-  private activeProviderUses = new Map<
-    EmbeddingProvider,
-    ReturnType<typeof createDeferred<void>> & { count: number }
-  >();
-  private syncProviderGenerationRelease: (() => void) | null = null;
-  private syncProviderGenerationOwners = 0;
-
-  protected acquireProviderUse(provider: EmbeddingProvider): () => void {
-    const use = this.activeProviderUses.get(provider) ?? {
-      ...createDeferred(),
-      count: 0,
-    };
-    use.count += 1;
-    this.activeProviderUses.set(provider, use);
-    let released = false;
-    return () => {
-      if (released) {
-        return;
-      }
-      released = true;
-      use.count -= 1;
-      if (use.count > 0) {
-        return;
-      }
-      this.activeProviderUses.delete(provider);
-      use.resolve();
-    };
-  }
-
-  protected async withProviderUse<T>(
-    provider: EmbeddingProvider,
-    run: () => Promise<T>,
-  ): Promise<T> {
-    const release = this.acquireProviderUse(provider);
+  private readonly batchAbortController = new AbortController();
+  private readonly batchSubmissionOwner = new MemoryBatchSubmissionOwner(async (command) => {
+    const database = this.publishedDatabase;
     try {
-      return await run();
-    } finally {
-      release();
+      return await database.runBatchSubmission(command, () => {
+        if (
+          this.closing ||
+          this.closed ||
+          this.publishedDatabase !== database ||
+          !database.db.isOpen
+        ) {
+          throw new Error("Native batch submission owner changed");
+        }
+      });
+    } catch (error) {
+      // Reconcile an uncertain commit for display, never replay a paid submission.
+      if (!this.closing && !this.closed && this.publishedDatabase === database) {
+        await this.loadBatchSubmissionStatus().catch(() => undefined);
+      }
+      throw error;
     }
-  }
+  });
 
-  protected async awaitProviderIdle(provider: EmbeddingProvider): Promise<void> {
-    const use = this.activeProviderUses.get(provider);
-    if (!use) {
-      return;
+  protected async loadBatchSubmissionStatus(): Promise<void> {
+    const database = this.publishedDatabase;
+    const version = this.batchSubmissionOwner.captureStatusVersion();
+    const status = await database.readBatchSubmissionStatus();
+    if (this.closed || this.closing || this.publishedDatabase !== database) {
+      throw new Error("Native batch status owner changed");
     }
-    await use.promise;
+    this.batchSubmissionOwner.installStatus(status, version);
+  }
+  protected readBatchSubmissionQuarantineStatus() {
+    return this.batchSubmissionOwner.readStatus();
   }
 
-  protected override beginSyncProviderGeneration(options?: { forceFtsOnly?: boolean }): void {
-    if (this.syncProviderGeneration) {
-      this.syncProviderGenerationOwners += 1;
-      return;
-    }
-    const provider = options?.forceFtsOnly ? null : this.provider;
-    const runtime = provider ? this.providerRuntime : undefined;
-    const identities = resolveMemoryIndexProviderIdentities({
-      provider,
-      cacheKeyData: runtime?.cacheKeyData,
-      aliases: runtime?.indexIdentityAliases,
-    });
-    const providerKey = expectDefined(
-      identities.at(0),
-      "primary memory provider identity",
-    ).providerKey;
-    const database = this.database;
-    const generation = {
-      database,
-      databaseRevision: readMemoryDatabaseRevision(database.db),
-      cacheWritesInvalidated: false,
-      providerKey,
-      identities,
-    };
-    this.syncProviderGeneration = provider
-      ? { ...generation, kind: "semantic", provider, ...(runtime ? { runtime } : {}) }
-      : { ...generation, kind: "fts-only", provider: null };
-    this.syncProviderGenerationRelease = provider ? this.acquireProviderUse(provider) : null;
-    this.syncProviderGenerationOwners = 1;
+  protected async assertNoBatchSubmissionQuarantine(): Promise<void> {
+    await this.batchSubmissionOwner.assertReady();
   }
 
-  protected override endSyncProviderGeneration(): void {
-    if (this.syncProviderGenerationOwners > 1) {
-      this.syncProviderGenerationOwners -= 1;
-      return;
-    }
-    this.syncProviderGenerationOwners = 0;
-    this.syncProviderGeneration = null;
-    this.syncProviderGenerationRelease?.();
-    this.syncProviderGenerationRelease = null;
+  clearBatchSubmissionQuarantine(): Promise<boolean> {
+    return this.batchSubmissionOwner.clear();
   }
 
-  protected computeProviderKey(): string {
-    return expectDefined(
-      this.resolveProviderIndexIdentities().at(0),
-      "primary memory provider identity",
-    ).providerKey;
+  protected async commitBatchSubmissionQuarantine(): Promise<void> {
+    await this.batchSubmissionOwner.commit();
   }
 
-  protected resolveProviderIndexIdentities(): MemoryIndexProviderIdentity[] {
-    return resolveMemoryIndexProviderIdentities({
-      provider: this.provider,
-      cacheKeyData: this.providerRuntime?.cacheKeyData,
-      aliases: this.providerRuntime?.indexIdentityAliases,
-    });
+  protected abortEmbeddingBatches(): void {
+    this.batchAbortController.abort();
   }
 
   private async embedChunksWithBatch(
@@ -212,7 +125,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     debugContext: Record<string, unknown> = {},
   ): Promise<number[][]> {
     const provider = generation.provider;
-    const batchEmbed = generation.runtime?.batchEmbed;
+    const batchEmbed = resolveMemoryEmbeddingBatch(generation.runtime);
     if (!batchEmbed) {
       return this.embedChunksInBatches(candidates, generation, EMBEDDING_BATCH_MAX_TOKENS);
     }
@@ -225,9 +138,18 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
       return embeddings;
     }
 
-    const missingChunks = missingCandidates.map((candidate) => candidate.chunk);
+    const missingChunks = missingCandidates.map((candidate) => ({
+      ...candidate.chunk,
+      sourceKey: JSON.stringify({
+        source: candidate.source,
+        path: candidate.entry.path,
+        startLine: candidate.chunk.startLine,
+        endLine: candidate.chunk.endLine,
+      }),
+    }));
     const batchResult = this.batch.enabled
       ? await runMemoryEmbeddingBatchTimeoutRetry({
+          failureMode: generation.runtime?.batchFailureMode,
           onRetry: () =>
             log.warn(`memory embeddings: ${provider.id} batch timed out; retrying once`),
           run: () =>
@@ -252,6 +174,12 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
               concurrency: this.batch.concurrency,
               pollIntervalMs: this.batch.pollIntervalMs,
               timeoutMs: this.batch.timeoutMs,
+              signal: this.batchAbortController.signal,
+              submissionLifecycle: this.batchSubmissionOwner.createLifecycle({
+                provider: { id: provider.id, model: provider.model },
+                providerKey: generation.providerKey,
+                dimensions: generation.embeddingDimensions ?? undefined,
+              }),
               debug: (message, data) =>
                 log.debug(message, { ...data, source, chunks: candidates.length, ...debugContext }),
             }),
@@ -268,11 +196,72 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
       if (!batchResult.value) {
         return this.embedChunksInBatches(candidates, generation, EMBEDDING_BATCH_MAX_TOKENS);
       }
+      if (!Array.isArray(batchResult.value)) {
+        log.warn("memory embeddings: recovering only missing Batch inputs with the same provider", {
+          provider: provider.id,
+          reason: batchResult.value.reason,
+        });
+        const recovered = await recoverMemoryEmbeddingBatch({
+          partial: batchResult.value,
+          count: missingCandidates.length,
+          dimensions: generation.embeddingDimensions ?? provider.dimensions,
+          assertCurrent: () => {
+            this.batchAbortController.signal.throwIfAborted();
+            this.assertEmbeddingCacheGenerationCurrent(generation);
+            if (generation.cacheWritesInvalidated) {
+              throw new Error("Memory embedding recovery generation invalidated");
+            }
+          },
+          persist: async (indices, vectors) => {
+            try {
+              await this.persistGeneratedEmbeddings(
+                indices.map((index) => missingCandidates[index]!),
+                vectors,
+                generation,
+              );
+            } catch (error) {
+              generation.cacheWritesInvalidated = true;
+              throw error;
+            }
+          },
+          recover: (indices, onSuccess) => {
+            const selected = indices.map((index) => missingCandidates[index]!);
+            const positions = new Map(
+              selected.map((candidate, position) => [candidate, indices[position]!]),
+            );
+            return this.embedChunksInBatches(
+              selected,
+              generation,
+              EMBEDDING_BATCH_MAX_TOKENS,
+              (items, vectors) =>
+                onSuccess(
+                  items.map((item) => positions.get(item)!),
+                  vectors,
+                ),
+            );
+          },
+        });
+        for (const [index, item] of missing.entries()) {
+          embeddings[item] = recovered[index]!;
+        }
+        return embeddings;
+      }
       batchEmbeddings = batchResult.value;
       await this.persistGeneratedEmbeddings(missingCandidates, batchEmbeddings, generation);
     } else {
       if (batchResult) {
         const message = formatErrorMessage(batchResult.error);
+        if (
+          generation.runtime?.batchFailureMode === "error" ||
+          generation.runtime?.batchFailureMode === "fail-closed"
+        ) {
+          this.batchFailure = {
+            count: this.batchFailure.count + batchResult.attempts,
+            lastError: message,
+            lastProvider: provider.id,
+          };
+          throw batchResult.error;
+        }
         const forceDisable = isEmbeddingBatchUnavailableError(batchResult.error);
         if (this.batch.enabled) {
           const count =
@@ -298,235 +287,6 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     return embeddings;
   }
 
-  protected override async embedBatchWithRetry(
-    inputs: Array<string | EmbeddingInput>,
-    generation?: MemorySemanticProviderGeneration,
-    cacheCandidates?: MemoryEmbeddingCacheCandidate[],
-  ): Promise<number[][]> {
-    if (inputs.length === 0) {
-      return [];
-    }
-    const provider = generation?.provider ?? this.provider;
-    if (!provider) {
-      throw new Error("Cannot embed batch in FTS-only mode (no embedding provider)");
-    }
-    const structured = inputs.some((input) => typeof input !== "string");
-    const label = structured ? "structured batch" : "batch";
-    const requestItems = inputs.map((input, index) => ({
-      input,
-      cacheCandidate: cacheCandidates?.[index],
-    }));
-    try {
-      return await this.withProviderUse(
-        provider,
-        async () =>
-          await runMemoryEmbeddingBatchRetryWithSplit({
-            items: requestItems,
-            run: async (batchItems) => {
-              const timeoutMs = this.resolveEmbeddingTimeout(
-                "batch",
-                provider,
-                generation?.runtime,
-              );
-              log.debug(`memory embeddings: ${label} start`, {
-                provider: provider.id,
-                items: batchItems.length,
-                timeoutMs,
-              });
-              const result = await runEmbeddingOperationWithTimeout({
-                timeoutMs,
-                message: `memory embeddings batch timed out after ${Math.round(timeoutMs / 1000)}s`,
-                run: async (signal) =>
-                  await provider.embedBatch(
-                    batchItems.map((item) =>
-                      formatEmbeddingModelInput(item.input, provider.model, "document"),
-                    ),
-                    { signal, inputType: "document" },
-                  ),
-              });
-              if (!structured) {
-                log.debug("memory embeddings: batch completed", {
-                  provider: provider.id,
-                  items: batchItems.length,
-                });
-              }
-              return result;
-            },
-            onSuccess: async (batchItems, batchEmbeddings) => {
-              if (!generation) {
-                return;
-              }
-              const batchCandidates = batchItems.flatMap((item) =>
-                item.cacheCandidate ? [item.cacheCandidate] : [],
-              );
-              if (batchCandidates.length !== batchItems.length) {
-                return;
-              }
-              await this.persistGeneratedEmbeddings(batchCandidates, batchEmbeddings, generation);
-            },
-            waitForRetry: async (delayMs) => {
-              await this.waitForEmbeddingRetry(
-                delayMs,
-                structured ? "retrying structured batch" : "retrying",
-              );
-            },
-            onSplit: ({ itemCount, splitAt }) => {
-              log.warn(
-                `memory embeddings ${label} failed; splitting ${itemCount} inputs into ${splitAt} + ${itemCount - splitAt}`,
-              );
-            },
-          }),
-      );
-    } catch (err) {
-      if (!structured) {
-        log.debug("memory embeddings: batch failed", {
-          provider: provider.id,
-          error: formatErrorMessage(err),
-        });
-      }
-      this.markLocalEmbeddingProviderDegraded(err);
-      throw createMemoryEmbeddingOperationError({
-        operation: structured ? "structured-batch" : "batch",
-        providerId: provider.id,
-        cause: err,
-      });
-    }
-  }
-
-  private async waitForEmbeddingRetry(
-    delayMs: number,
-    action: string,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    log.warn(`memory embeddings retryable error; ${action} in ${delayMs}ms`);
-    await sleepWithAbort(delayMs, signal);
-  }
-
-  private resolveEmbeddingTimeout(
-    kind: "query" | "batch",
-    provider: EmbeddingProvider | null = this.provider,
-    providerRuntime: MemoryEmbeddingProviderRuntime | undefined = this.providerRuntime,
-  ): number {
-    const configuredTimeoutSeconds = this.settings.sync.embeddingBatchTimeoutSeconds;
-    if (
-      kind === "batch" &&
-      typeof configuredTimeoutSeconds === "number" &&
-      configuredTimeoutSeconds > 0
-    ) {
-      return resolveTimerTimeoutMs(configuredTimeoutSeconds * 1000, MAX_TIMER_TIMEOUT_MS);
-    }
-    const defaults = EMBEDDING_TIMEOUTS_MS[kind];
-    const runtimeTimeoutMs =
-      kind === "query"
-        ? providerRuntime?.inlineQueryTimeoutMs
-        : providerRuntime?.inlineBatchTimeoutMs;
-    return typeof runtimeTimeoutMs === "number" && runtimeTimeoutMs > 0
-      ? resolveTimerTimeoutMs(runtimeTimeoutMs, defaults.remote)
-      : defaults[provider?.id === "local" ? "local" : "remote"];
-  }
-
-  protected async probeEmbeddingProvider(
-    provider: EmbeddingProvider,
-    providerRuntime: MemoryEmbeddingProviderRuntime | undefined,
-  ): Promise<void> {
-    const timeoutMs = this.resolveEmbeddingTimeout("query", provider, providerRuntime);
-    const deadlineControl = createMemorySearchDeadlineControl();
-    try {
-      await runEmbeddingOperationWithTimeout({
-        timeoutMs,
-        message: `memory embedding probe timed out after ${Math.round(timeoutMs / 1000)}s`,
-        deadlineControl,
-        run: (signal) =>
-          this.withProviderUse(provider, () =>
-            provider.embed(formatEmbeddingModelInput("ping", provider.model, "query"), {
-              signal,
-              inputType: "query",
-              [MEMORY_SEARCH_DEADLINE_CONTROL]: deadlineControl,
-            }),
-          ),
-      });
-    } catch (error) {
-      if (provider === this.provider) {
-        this.markLocalEmbeddingProviderDegraded(error);
-      }
-      throw error;
-    }
-  }
-
-  protected async embedQueryWithRetry(
-    text: string,
-    signal?: AbortSignal,
-    providerOverride?: EmbeddingProvider,
-    providerRuntimeOverride?: MemoryEmbeddingProviderRuntime,
-    deadlineControl?: MemorySearchDeadlineControl,
-  ): Promise<number[]> {
-    const provider = providerOverride ?? this.provider;
-    const providerRuntime = providerOverride ? providerRuntimeOverride : this.providerRuntime;
-    if (!provider) {
-      throw new Error("Cannot embed query in FTS-only mode (no embedding provider)");
-    }
-    try {
-      return await this.withProviderUse(
-        provider,
-        async () =>
-          await runMemoryEmbeddingRetryLoop({
-            profile: "query",
-            run: async () => {
-              signal?.throwIfAborted();
-              const timeoutMs = this.resolveEmbeddingTimeout("query", provider, providerRuntime);
-              log.debug("memory embeddings: query start", { provider: provider.id, timeoutMs });
-              return await runEmbeddingOperationWithTimeout({
-                timeoutMs,
-                message: `memory embeddings query timed out after ${Math.round(timeoutMs / 1000)}s`,
-                signal,
-                deadlineControl,
-                run: async (opSignal) =>
-                  await provider.embed(formatEmbeddingModelInput(text, provider.model, "query"), {
-                    signal: opSignal,
-                    inputType: "query",
-                    ...(deadlineControl
-                      ? { [MEMORY_SEARCH_DEADLINE_CONTROL]: deadlineControl }
-                      : {}),
-                  }),
-              });
-            },
-            signal,
-            waitForRetry: async (delayMs) => {
-              await this.waitForEmbeddingRetry(delayMs, "retrying query", signal);
-            },
-          }),
-      );
-    } catch (err) {
-      throw createMemoryEmbeddingOperationError({
-        operation: "query",
-        providerId: provider.id,
-        cause: err,
-      });
-    }
-  }
-
-  protected async withTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    message: string,
-  ): Promise<T> {
-    return await runEmbeddingOperationWithTimeout({ timeoutMs, message, run: () => promise });
-  }
-
-  protected getIndexConcurrency(): number {
-    if (this.batch.enabled) {
-      return this.batch.concurrency;
-    }
-    const configured = this.settings.remote?.nonBatchConcurrency;
-    if (typeof configured === "number" && Number.isFinite(configured)) {
-      return Math.max(1, Math.floor(configured));
-    }
-    const provider = this.syncProviderGeneration
-      ? this.syncProviderGeneration.provider
-      : this.provider;
-    return provider?.id === "ollama" ? 1 : EMBEDDING_INDEX_CONCURRENCY;
-  }
-
   private async writeChunks(
     { entry, source, chunks }: PreparedMemoryIndexEntry,
     generation: MemorySyncProviderGeneration | null,
@@ -544,7 +304,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
         : undefined;
     await withMemoryWorkspaceLock(this.workspaceDir, async () => {
       const assertCurrent = () => {
-        this.memoryFiles?.assertCurrent();
+        assertBoundedMemoryOperation(this.agentId);
         if (
           this.closed ||
           database.closed ||
@@ -629,6 +389,13 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     source: MemorySource,
     generation: MemorySyncProviderGeneration | null,
   ): Promise<PreparedMemoryIndexEntry | null> {
+    assertBoundedMemoryOperation(this.agentId);
+    if (
+      boundedMemoryAdmissionActive(this.agentId) &&
+      (source !== "memory" || entry.kind === "multimodal" || this.batch.enabled)
+    ) {
+      throw new MemoryAdmissionRefused();
+    }
     const kind = entry.kind;
     const suppliedContent = entry.content;
     const prepare = async (): Promise<PreparedMemoryIndexEntry | null> => {
@@ -680,6 +447,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
         this.dirty = true;
         return null;
       }
+      assertBoundedMemorySnapshot(this.agentId, entry.absPath, read.content, entry.hash);
       const cutoff = readSessionResetRecallCutoffMetadata(entry);
       const prepared = await prepareMemoryIndexInWorker({
         entry: {
@@ -727,7 +495,8 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     items: MemoryIndexWorkItem[],
     generation: MemorySyncProviderGeneration | null,
   ): Promise<void> {
-    const batchEmbed = generation?.kind === "semantic" ? generation.runtime?.batchEmbed : undefined;
+    const batchEmbed =
+      generation?.kind === "semantic" ? resolveMemoryEmbeddingBatch(generation.runtime) : undefined;
     if (
       generation?.kind !== "semantic" ||
       !this.batch.enabled ||
@@ -909,4 +678,3 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     await this.writeChunks(prepared, generation, embeddings, vectorReady);
   }
 }
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

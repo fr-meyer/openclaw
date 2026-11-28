@@ -80,9 +80,6 @@ function createLazyStandingIntentTool(
   ctx: OpenClawPluginToolContext,
   reportUnavailable: (reason: string) => void,
 ): AnyAgentTool | null {
-  if (ctx.senderIsOwner !== true) {
-    return null;
-  }
   const cfg = ctx.getRuntimeConfig?.() ?? ctx.runtimeConfig ?? ctx.config;
   const provider = ctx.messageChannel?.trim();
   const senderId = ctx.requesterSenderId?.trim();
@@ -322,6 +319,40 @@ export default definePluginEntry({
         { names: [contract.name] },
       );
     }
+
+    api.registerTool(
+      {
+        contextVersion: 2,
+        create: (ctx: OpenClawPluginToolContext<2>): AnyAgentTool | null => {
+          if (ctx.senderIsOwner !== true || !ctx.toolBindings?.["memory-core.bounded-owner"]) {
+            return null;
+          }
+          return {
+            name: "memory_bounded_control",
+            label: "Bounded Memory Control",
+            description:
+              "Execute the prebound owner-only native memory operation; no model-supplied policy or budget.",
+            parameters: {
+              type: "object",
+              additionalProperties: false,
+              properties: { action: { type: "string", enum: ["forward"] } },
+              required: ["action"],
+            },
+            execute: async (callId, params, signal, onUpdate) => {
+              ctx.assertInvocationCurrent();
+              const { createBoundedMemoryOwnerTool } =
+                await import("./src/memory/bounded-admission-tool.js");
+              const tool = createBoundedMemoryOwnerTool(ctx);
+              if (!tool) {
+                throw new Error("Bounded owner authority unavailable");
+              }
+              return tool.execute(callId, params, signal, onUpdate);
+            },
+          };
+        },
+      },
+      { names: ["memory_bounded_control"], optional: true },
+    );
 
     api.registerTool(
       {

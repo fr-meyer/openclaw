@@ -21,6 +21,9 @@ import { updateCommand } from "./update-command.js";
 vi.mock("../../infra/container-environment.js", () => ({ isContainerEnvironment: () => false }));
 
 const { fixture } = installFreshUpdateFixture();
+const quote = process.platform === "win32" ? quotePowerShellArg : quoteCliArg;
+const lastJson = () => vi.mocked(defaultRuntime.writeJson).mock.lastCall?.[0];
+const matchingEntry = (shape: object) => expect.arrayContaining([expect.objectContaining(shape)]);
 beforeEach(() => {
   // This synthetic installation has no plugins to include in its recovery baseline.
   vi.stubEnv("OPENCLAW_DISABLE_BUNDLED_PLUGINS", "1");
@@ -136,7 +139,7 @@ it.each([
     expect(captureNotices).toHaveLength(debugCapture ? 1 : 0);
     const preview = vi.mocked(defaultRuntime.writeJson).mock.calls.at(-1)?.[0];
     const notes = json ? JSON.stringify(preview) : log.mock.calls.flat().join("\n");
-    const replacement = !compatible && restart && owned && (!current || (running && refresh));
+    const replacement = !compatible && restart && owned && current && running && refresh;
     if (!compatible && !replacement) {
       const recoverySteps = [
         {
@@ -175,7 +178,7 @@ it.each([
           notes: [expect.stringContaining(message)],
           failures: [
             {
-              reason: "node-runtime-preflight",
+              reason: current ? "node-runtime-preflight" : "preflight-node-runtime-incompatible",
               message: expect.stringContaining(message),
               recoverySteps,
               failureFacts: expect.arrayContaining([
@@ -212,29 +215,23 @@ it.each([
       await expect(
         updateCommand({ ...opts, json: true, admission: "installed" }),
       ).rejects.toBeInstanceOf(Error);
-      if (compatible || replacement) {
+      if (compatible) {
         expect(packageUpdate.stagePackageInstallUpdate).toHaveBeenCalledWith(
           expect.objectContaining({ nodeRunner: replacement ? "/current/node" : "/service/node" }),
         );
       } else {
-        expect(defaultRuntime.writeJson).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            reason: "node-runtime-preflight",
-            steps: expect.arrayContaining([
-              expect.objectContaining({
-                stderrTail: expect.stringContaining(
-                  `node ${process.platform === "win32" ? quotePowerShellArg(path.join(fixture.root, "openclaw.mjs")) : quoteCliArg(path.join(fixture.root, "openclaw.mjs"))} update --tag 2026.9.2`,
-                ),
-                failureFacts: expect.arrayContaining([
-                  expect.objectContaining({
-                    code: "node-runtime-preflight",
-                    message: expect.stringContaining("Required: openclaw@2026.9.2 Node >=26.12.1"),
-                  }),
-                ]),
-              }),
-            ]),
+        expect(lastJson()).toMatchObject({
+          reason: "preflight-node-runtime-incompatible",
+          steps: matchingEntry({
+            stderrTail: expect.stringContaining(
+              `node ${quote(path.join(fixture.root, "openclaw.mjs"))} update --tag 2026.9.2`,
+            ),
+            failureFacts: matchingEntry({
+              code: "node-runtime-preflight",
+              message: expect.stringContaining("Required: openclaw@2026.9.2 Node >=26.12.1"),
+            }),
           }),
-        );
+        });
         expect(packageUpdate.stagePackageInstallUpdate).not.toHaveBeenCalled();
       }
       expect(fs.existsSync(fixture.databasePath)).toBe(false);

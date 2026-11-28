@@ -1091,7 +1091,7 @@ describe("compaction-safeguard recent-turn preservation", () => {
     },
   );
 
-  it("fails closed when audit-required tail sections cannot fit the artifact cap", async () => {
+  it("returns the best degraded summary when audit-required tail sections cannot fit", async () => {
     const latestAsk = "preserve the pending deployment status";
     const identifier = `https://example.com/${"a".repeat(MAX_COMPACTION_SUMMARY_CHARS)}`;
     const oversizedRequiredTail = structuredSummary({ asks: latestAsk, identifiers: identifier });
@@ -1104,10 +1104,11 @@ describe("compaction-safeguard recent-turn preservation", () => {
 
     const { result } = await runCompactionScenario(sessionManager, event);
 
-    expect(result).toEqual({ cancel: true });
+    expect(expectCompactionResult(result).details).toMatchObject({ qualityDegraded: true });
     expect(mockSummarizeCompactionHistory).toHaveBeenCalledTimes(1);
-    expect(consumeCompactionSafeguardCancellation(sessionManager)?.reason).toBe(
-      "Compaction safeguard required facts exceed the finalized summary budget.",
+    expect(consumeCompactionSafeguardCancellation(sessionManager)).toBeNull();
+    expect(compactionLogger.warn.mock.calls.flat().join("\n")).toContain(
+      "reasonCode=quality_guard_degraded_fallback",
     );
   });
 
@@ -1331,15 +1332,13 @@ describe("compaction-safeguard recent-turn preservation", () => {
         expect(consumeCompactionSafeguardCancellation(sessionManager)).toBeNull();
       } else {
         const { result } = await runCompactionScenario(sessionManager, event);
-        expect(result).toEqual({ cancel: true });
+        expect(expectCompactionResult(result).details).toMatchObject({ qualityDegraded: true });
         expect(
           requireRecord(mockCallArg(mockSummarizeCompactionHistory, 2)).customInstructions,
         ).toContain("Quality check feedback");
-        expect(consumeCompactionSafeguardCancellation(sessionManager)?.reason).toBe(
-          "Compaction safeguard finalized summary failed quality checks and corrective generation failed.",
-        );
+        expect(consumeCompactionSafeguardCancellation(sessionManager)).toBeNull();
         const warnings = compactionLogger.warn.mock.calls.flat().join("\n");
-        expect(warnings).toContain("reasonCode=corrective_generation_failed");
+        expect(warnings).toContain("reasonCode=quality_guard_degraded_fallback");
         expect(warnings).toContain("attempt=2");
         expect(warnings).not.toContain(correctiveFailureMarker);
       }

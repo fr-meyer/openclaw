@@ -9,6 +9,7 @@ import {
 import type { OpenClawPluginApi } from "../api.js";
 import { redactClaimToken, redactDispatchResult } from "./card-redaction.js";
 import { dispatchAndStartWorkboardCards } from "./dispatcher.js";
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { WorkboardCardConflictError, type WorkboardStore } from "./store.js";
 import {
   assertWorkboardWorkspaceMutationAccess,
@@ -125,33 +126,73 @@ export async function resolveGatewayWorkspaceMutationAccess(
 }
 
 export function createWorkboardDispatchHandler(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: OpenClawPluginApi;
   store: WorkboardStore;
 }) {
   return async (
     { params: requestParams, client, context }: GatewayMethodContext,
-    options: { supportsMaxStarts: boolean; directCard?: boolean },
+    options: { supportsMaxStarts: boolean; supportsCardId?: boolean; directCard?: boolean },
   ) => {
-    const cardId = options.directCard ? readId(requestParams) : undefined;
-    const { boardId, maxStarts: rawMaxStarts } = asRecord(requestParams);
+    const input = asRecord(requestParams);
+    const rawCardId = input.cardId;
+    if (!options.directCard && !options.supportsCardId && rawCardId !== undefined) {
+      throw new Error("cardId requires workboard.cards.dispatchWithOptions.");
+    }
+    if (
+      !options.directCard &&
+      rawCardId !== undefined &&
+      (typeof rawCardId !== "string" || !rawCardId.trim())
+    ) {
+      throw new Error("cardId must be a non-empty string.");
+    }
+    const cardId = options.directCard
+      ? readId(input)
+      : typeof rawCardId === "string"
+        ? rawCardId.trim()
+        : undefined;
+    const intentRunId = input.intentRunId;
+    if (intentRunId !== undefined) {
+      if (!options.supportsCardId || !cardId) {
+        throw new Error("intentRunId requires one exact card through dispatchWithOptions.");
+      }
+      if (
+        typeof intentRunId !== "string" ||
+        intentRunId.length !== 43 ||
+        !/^wb-[0-9a-f]{40}$/.test(intentRunId)
+      ) {
+        throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+      }
+    }
+    const { boardId: rawBoardId, maxStarts: rawMaxStarts } = input;
+    if (Object.hasOwn(input, "boardId") && (typeof rawBoardId !== "string" || !rawBoardId.trim())) {
+      throw new Error("boardId must be a non-empty string.");
+    }
+    const boardId = typeof rawBoardId === "string" ? rawBoardId.trim() : undefined;
     if (!options.supportsMaxStarts && rawMaxStarts !== undefined) {
       throw new Error("maxStarts requires workboard.cards.dispatchWithOptions.");
     }
     const maxStarts = options.supportsMaxStarts
       ? readOptionalPositiveInteger(rawMaxStarts, "maxStarts")
       : undefined;
-    const provider = options.directCard
-      ? normalizeOptionalString(requestParams.provider)
-      : undefined;
-    const model = options.directCard ? normalizeOptionalString(requestParams.model) : undefined;
+    if (cardId && maxStarts !== undefined && maxStarts !== 1) {
+      throw new Error("maxStarts must be 1 when cardId is provided.");
+    }
+    const provider = options.directCard ? normalizeOptionalString(input.provider) : undefined;
+    const model = options.directCard ? normalizeOptionalString(input.model) : undefined;
     const result = await dispatchAndStartWorkboardCards({
+      liveExecutions: params.liveExecutions,
       store: params.store,
       subagent: params.api.runtime.subagent,
       worktrees: params.api.runtime.worktrees,
       options: {
-        ...(cardId ? { cardId, maxStarts: 1 } : {}),
-        boardId: typeof boardId === "string" ? boardId : undefined,
+        ...(cardId
+          ? { cardId, maxStarts: 1, targetMode: options.directCard ? "start" : "dispatch" }
+          : {}),
+        ...(typeof intentRunId === "string" ? { intentRunId } : {}),
+        boardId,
         ...(maxStarts !== undefined ? { maxStarts } : {}),
+        ...(cardId && !options.directCard ? { targetMode: "dispatch" } : {}),
         ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
         materializeWorktree: true,
@@ -178,13 +219,22 @@ export function createWorkboardDispatchHandler(params: {
         workspaceAccess: resolveGatewayWorkboardWorkspaceAccess({ context, client }),
       },
     });
-    if (cardId) {
+    if (options.directCard) {
       const started = result.started[0];
       if (!started?.card) {
         throw new Error(result.startFailures[0]?.error ?? "Workboard card did not start.");
       }
       return { ...started, card: redactClaimToken(started.card) };
     }
-    return redactDispatchResult(result);
+    return {
+      ...redactDispatchResult(result),
+      started: result.started.map((started) => {
+        if (!started.card) {
+          return started;
+        }
+        const redacted = Object.assign({}, started);
+        return Object.assign(redacted, { card: redactClaimToken(started.card) });
+      }),
+    };
   };
 }

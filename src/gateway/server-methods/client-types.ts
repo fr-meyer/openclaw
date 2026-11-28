@@ -31,6 +31,7 @@ export type GatewayNodeInvokeStream = {
 export type GatewayClient = Pick<
   GatewayWsClient,
   | "connect"
+  | "authenticationMethod"
   | "authenticatedMethod"
   | "gatewayBootId"
   | "authPolicy"

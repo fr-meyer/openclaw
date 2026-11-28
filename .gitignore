@@ -238,3 +238,11 @@ extensions/discord/assets/embedded-app-sdk.mjs
 
 # Pinned Swift lint/format tools installed by scripts/install-swift-tools.sh
 .build/
+
+# Only the exact approved npm archive and public provenance may be tracked.
+!/vendor/
+/vendor/*
+!/vendor/npm/
+/vendor/npm/*
+!/vendor/npm/npm-12.2.3-local-ghsa-g3hv-75wg-m249.tgz
+!/vendor/npm/PROVENANCE.json

@@ -283,6 +283,43 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         for (const source of stale) {
           console.error(`  - ${source}`);
         }
+        // Diagnostic only: retain the existing stale-asset failure and scoped path list.
+        const diff = spawnSync(
+          "git",
+          [
+            "--no-optional-locks",
+            "--no-pager",
+            "--literal-pathspecs",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            "--no-renames",
+            "--raw",
+            "--patch",
+            "HEAD",
+            "--",
+            ...stale,
+          ],
+          {
+            cwd: rootDir,
+            stdio: ["ignore", "pipe", "pipe"],
+            maxBuffer: 32 * 1024,
+            timeout: 5_000,
+          },
+        );
+        const output = diff.stdout ?? Buffer.alloc(0);
+        const printed = output.subarray(0, 16 * 1024);
+        console.error(
+          `Generated asset diff (diagnostic only; ${printed.length}/${output.length} captured bytes):`,
+        );
+        if (printed.length > 0) {
+          process.stderr.write(printed);
+          process.stderr.write("\n");
+        }
+        if (diff.error || diff.status !== 0 || printed.length < output.length) {
+          console.error("Generated asset diff incomplete: unavailable, timed out, or truncated.");
+        }
         console.error("Rebuild with `pnpm plugins:assets:build` and commit the regenerated files.");
         process.exit(1);
       }

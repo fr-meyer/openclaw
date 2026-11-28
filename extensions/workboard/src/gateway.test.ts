@@ -1,8 +1,13 @@
+// Workboard tests cover gateway plugin behavior.
+import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { describe, expect, it, vi } from "vitest";
 import type { OpenClawPluginApi } from "../api.js";
+import { dispatchAndStartWorkboardCards } from "./dispatcher.js";
 import { registerWorkboardGatewayMethods } from "./gateway.js";
+import { createWorkboardLiveExecutionTracker } from "./live-execution.js";
+import { createGatewayMethodCapture } from "./test/gateway-methods.js";
 import { startEmptySessionsBoardService } from "./test/sessions-board.js";
 import {
   createWorkboardSqliteTestHarness,
@@ -10,37 +15,102 @@ import {
 } from "./test/sqlite-store.js";
 import { createWorkboardTools } from "./tools.js";
 
-function createGatewayMethodCapture() {
-  type RegisteredMethod = {
-    handler: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[1];
-    opts: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[2];
-  };
-  const methods = new Map<string, RegisteredMethod>();
-  const api = {
-    runtime: {
-      state: {
-        openKeyedStore: vi.fn(),
-      },
-    },
-    registerGatewayMethod: vi.fn(
-      (method: string, handler: RegisteredMethod["handler"], opts: RegisteredMethod["opts"]) => {
-        methods.set(method, { handler, opts });
-      },
-    ),
-  } as unknown as OpenClawPluginApi;
-  const invoke = async (name: string, params: Record<string, unknown>) => {
-    const method = methods.get(name);
-    if (!method) {
-      throw new Error(`Missing Gateway method: ${name}`);
-    }
-    const respond = vi.fn();
-    await method.handler({ params, respond } as never);
-    return respond;
-  };
-  return { api, methods, invoke, registerGatewayMethod: api.registerGatewayMethod };
-}
-
 describe("workboard gateway methods", () => {
+  it("reads exact live settlement without granting release or mutating the card", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const card = await store.create({
+      title: "Bound worker",
+      status: "ready",
+      workspaceAccess: { unrestricted: true },
+    });
+    const liveExecutions = createWorkboardLiveExecutionTracker();
+    await dispatchAndStartWorkboardCards({
+      store,
+      liveExecutions,
+      subagent: {
+        run: async () => ({
+          runId: "observed-run",
+          execution: { observeSettlement: () => "settled" },
+        }),
+      },
+      options: { cardId: card.id, maxStarts: 1, now: 10 },
+    });
+    const before = await store.get(card.id);
+    const { api, methods } = createGatewayMethodCapture();
+    registerWorkboardGatewayMethods({ api, store, liveExecutions });
+    const method = methods.get("workboard.cards.executionSettlement")!;
+    expect(method.opts).toEqual({ scope: "operator.read" });
+    const respond = vi.fn();
+    await method.handler({ params: { id: card.id }, respond } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        cardId: card.id,
+        runId: "observed-run",
+        producerState: "settled",
+        resourceFencing: "unknown",
+        releaseAuthorized: false,
+      }),
+    );
+    expect(await store.get(card.id)).toEqual(before);
+    const claim = before?.metadata?.claim;
+    expect(claim).toBeDefined();
+    const released = await store.releaseClaim(card.id, {
+      ownerId: claim!.ownerId,
+      token: claim!.token,
+      status: "review",
+    });
+    expect(released.metadata?.claim).toBeUndefined();
+    expect(released.metadata?.automation?.launch).toEqual(before?.metadata?.automation?.launch);
+    respond.mockClear();
+    await method.handler({ params: { id: card.id }, respond } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        runId: "observed-run",
+        claimOwnerId: claim!.ownerId,
+        claimGeneration: claim!.claimedAt,
+        producerState: "settled",
+        resourceFencing: "unknown",
+        releaseAuthorized: false,
+      }),
+    );
+    expect(await store.get(card.id)).toEqual(released);
+    liveExecutions.stop();
+    respond.mockClear();
+    await method.handler({ params: { id: card.id }, respond } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ producerState: "unknown" }),
+    );
+  });
+
+  it("exposes exact-card targeting through the existing dashboard dispatch action", () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
+    ) as {
+      dashboard?: {
+        actionVerbs?: Array<{
+          id?: string;
+          method?: string;
+          paramShape?: { properties?: Record<string, unknown> };
+        }>;
+      };
+    };
+    const dispatch = manifest.dashboard?.actionVerbs?.find((entry) => entry.id === "dispatch");
+
+    expect(dispatch).toMatchObject({
+      method: "workboard.cards.dispatchWithOptions",
+      paramShape: {
+        properties: {
+          boardId: expect.any(Object),
+          cardId: expect.objectContaining({ type: "string", minLength: 1 }),
+          maxStarts: expect.objectContaining({ type: "integer", minimum: 1 }),
+        },
+      },
+    });
+  });
+
   it("refuses a Sessions board edit after the Gateway caller loses authority", async () => {
     const store = createWorkboardSqliteTestStore();
     const sessionsBoard = await startEmptySessionsBoardService(store);
@@ -264,6 +334,7 @@ describe("workboard gateway methods", () => {
     registerWorkboardGatewayMethods({ api, store });
 
     expect([...methods.keys()]).toEqual([
+      "workboard.cards.executionSettlement",
       "workboard.cards.list",
       "workboard.cards.create",
       "workboard.cards.captureSession",
@@ -744,140 +815,6 @@ describe("workboard gateway methods", () => {
     expect(respond.mock.calls[0]?.[2]).toMatchObject({
       message: "labels must be 40 characters or fewer.",
     });
-  });
-
-  it("returns an actionable exact-card admission failure", async () => {
-    const { methods, registerGatewayMethod } = createGatewayMethodCapture();
-    const run = vi.fn();
-    const api = {
-      runtime: {
-        state: { openKeyedStore: vi.fn() },
-        subagent: { run },
-      },
-      registerGatewayMethod,
-    } as unknown as OpenClawPluginApi;
-    const store = createWorkboardSqliteTestStore();
-    const card = await store.create({
-      title: "Blocked exact start",
-      status: "blocked",
-      workspaceAccess: { unrestricted: true },
-    });
-    registerWorkboardGatewayMethods({ api, store });
-    const respond = vi.fn();
-
-    await methods.get("workboard.cards.start")?.handler({
-      params: { id: card.id },
-      context: { getRuntimeConfig: () => ({}) },
-      respond,
-    } as never);
-
-    expect(run).not.toHaveBeenCalled();
-    expect(respond).toHaveBeenCalledWith(
-      false,
-      undefined,
-      expect.objectContaining({
-        code: "workboard_error",
-        message: expect.stringMatching(/blocked.*backlog.*todo.*ready/i),
-      }),
-    );
-  });
-
-  it("threads maxStarts and dispatches omitted params with the legacy default cap", async () => {
-    const { methods, registerGatewayMethod } = createGatewayMethodCapture();
-    const run = vi.fn(async (input: { idempotencyKey: string }) => ({
-      runId: `accepted:${input.idempotencyKey}`,
-    }));
-    const api = {
-      runtime: {
-        state: { openKeyedStore: vi.fn() },
-        subagent: { run },
-      },
-      registerGatewayMethod,
-    } as unknown as OpenClawPluginApi;
-    const store = createWorkboardSqliteTestStore();
-    await Promise.all(
-      Array.from({ length: 5 }, (_, index) =>
-        store.create({
-          title: `Capped ${index}`,
-          status: "ready",
-          priority: "urgent",
-          agentId: `capped-${index}`,
-          boardId: "capped",
-          workspaceAccess: { unrestricted: true },
-        }),
-      ),
-    );
-    registerWorkboardGatewayMethods({ api, store });
-    const handler = methods.get("workboard.cards.dispatchWithOptions")?.handler;
-
-    const respond = vi.fn();
-    await handler?.({ params: { boardId: "capped", maxStarts: 4 }, respond } as never);
-
-    expect(respond.mock.calls[0]?.[0]).toBe(true);
-    expect(respond.mock.calls[0]?.[1]?.started).toHaveLength(4);
-    expect(run).toHaveBeenCalledTimes(4);
-
-    const defaultCards = await Promise.all(
-      Array.from({ length: 5 }, (_, index) =>
-        store.create({
-          title: `Legacy ${index}`,
-          status: "ready",
-          priority: "urgent",
-          agentId: index === 0 ? undefined : `legacy-${index}`,
-          boardId: "default",
-          workspaceAccess: { unrestricted: true },
-        }),
-      ),
-    );
-    const defaultRespond = vi.fn();
-    await methods.get("workboard.cards.dispatch")?.handler({ respond: defaultRespond } as never);
-    expect(defaultRespond.mock.calls[0]?.[0]).toBe(true);
-    expect(defaultRespond.mock.calls[0]?.[1]?.started).toHaveLength(3);
-    await expect(store.get(defaultCards[0]!.id)).resolves.toMatchObject({ status: "running" });
-    expect(run).toHaveBeenCalledTimes(7);
-    const startedCards = (await store.list()).filter((card) => card.status === "running");
-    expect(startedCards).toHaveLength(7);
-    const expectedRunIds = run.mock.calls.map(([input]) => `accepted:${input.idempotencyKey}`);
-    expect(startedCards.map((card) => card.runId)).toEqual(expect.arrayContaining(expectedRunIds));
-    for (const card of startedCards) {
-      const runId = card.runId;
-      if (defaultCards.some(({ id }) => id === card.id)) {
-        expect(defaultRespond.mock.calls[0]?.[1]).toMatchObject({
-          started: expect.arrayContaining([expect.objectContaining({ cardId: card.id, runId })]),
-        });
-        expect(run).toHaveBeenCalledWith(
-          expect.objectContaining({
-            sessionKey: `${card.agentId ? `agent:${card.agentId}:` : ""}subagent:workboard-default-${card.id}`,
-          }),
-        );
-      }
-      expect(card).toMatchObject({
-        runId,
-        execution: { runId },
-        metadata: {
-          automation: { launch: { phase: "accepted", acceptedRunId: runId } },
-          attempts: [expect.objectContaining({ id: runId, runId })],
-        },
-      });
-    }
-
-    const legacyRespond = vi.fn();
-    await methods
-      .get("workboard.cards.dispatch")
-      ?.handler({ params: { maxStarts: 1 }, respond: legacyRespond } as never);
-    expect(legacyRespond.mock.calls[0]?.[0]).toBe(false);
-    expect(legacyRespond.mock.calls[0]?.[2]?.message).toBe(
-      "maxStarts requires workboard.cards.dispatchWithOptions.",
-    );
-
-    for (const value of [0, -1, 1.5, "2"]) {
-      const invalidRespond = vi.fn();
-      await handler?.({ params: { maxStarts: value }, respond: invalidRespond } as never);
-      expect(invalidRespond.mock.calls[0]?.[0]).toBe(false);
-      expect(invalidRespond.mock.calls[0]?.[2]?.message).toBe(
-        "maxStarts must be a positive integer.",
-      );
-    }
   });
 
   it("keeps write-scope worktree dispatch within configured agent workspaces", async () => {

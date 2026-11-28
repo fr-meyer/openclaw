@@ -120,6 +120,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   const runWithPluginMetadataSnapshot = pluginMetadataSnapshotScope.run;
   const invalidatePluginMetadataSnapshot = () => {
     // Filesystem/install repairs replace the authoritative plugin generation.
+    delete configResult.preflightLegacyStateConfig;
     pluginMetadataSnapshotState.current = undefined;
     pluginMetadataSnapshotScope.invalidate();
   };
@@ -626,7 +627,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   // write drops them — its blocking note already states nothing was changed.
   const pendingChangePanels = changesPanelSink.drain();
 
-  return {
+  const configResult = {
     ...finalized,
     ...(shouldWriteConfig && sessionStoreOwnerRecovery.changes.length > 0
       ? {
@@ -667,4 +668,5 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     runWithPluginMetadataSnapshot,
     invalidatePluginMetadataSnapshot,
   };
+  return configResult;
 }

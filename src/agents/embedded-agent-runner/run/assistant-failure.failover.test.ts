@@ -322,7 +322,10 @@ describe("assistant failure recovery", () => {
     [{ kind: "ok" }, {}],
     [{ kind: "timeout", phase: "compaction", source: "observation" }, {}],
     [{ kind: "timeout", phase: "compaction", source: "runtime" }, { stopReason: "timeout" }],
-    [{ kind: "timeout", phase: "tool_execution", source: "runtime" }, { stopReason: "timeout" }],
+    [
+      { kind: "timeout", phase: "tool_execution", source: "runtime" },
+      { stopReason: "timeout", timeoutPhase: "tool_execution" },
+    ],
     [
       { kind: "timeout", phase: "prompt", source: "idle" },
       { stopReason: "timeout", timeoutPhase: "provider", providerStarted: true },
