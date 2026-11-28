@@ -1,3 +1,4 @@
+import { MemoryBatchSubmissionKernel } from "./manager-batch-submission-kernel.js";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { openOpenClawAgentDatabaseReadOnly } from "openclaw/plugin-sdk/memory-core-host-engine-knn";
 import {
@@ -49,6 +50,7 @@ export type MemorySearchWorkerInput =
       | { kind: "keyword"; query: MemoryKeywordWorkerQuery; includeIndexState?: boolean }
       | { kind: "vector"; query: MemoryVectorWorkerQuery }
       | { kind: "index-state" }
+      | { kind: "batch-status"; fileIdentity: MemoryShadowConnection["fileIdentity"] }
       | {
           kind: "source-state";
           query: Omit<Parameters<typeof loadMemorySourceFileState>[0], "db">;
@@ -70,6 +72,7 @@ export type MemorySearchWorkerOutput =
   | { kind: "prewarm" }
   | { kind: "presence"; present: boolean }
   | { kind: "index-state"; state: ReturnType<typeof readMemoryRetrievalIndexState> }
+  | { kind: "batch-status"; status: ReturnType<MemoryBatchSubmissionKernel["readStatus"]> }
   | { kind: "source-state"; rows: ReturnType<typeof loadMemorySourceFileState> }
   | ({ kind: "recall-metadata" } & ReturnType<typeof readMemoryRecallData>)
   | {
@@ -146,6 +149,10 @@ serveWorkerTasks(async (input): Promise<MemorySearchWorkerOutput> => {
   }
   const { db } = opened.database;
   try {
+    if (request.kind === "batch-status") {
+      assertMemoryShadowIdentity(request.databasePath, request.fileIdentity);
+      return { kind: "batch-status", status: new MemoryBatchSubmissionKernel(() => db).readStatus() };
+    }
     if (request.kind === "source-state") {
       assertMemoryShadowIdentity(request.databasePath, request.fileIdentity);
       return { kind: "source-state", rows: loadMemorySourceFileState({ db, ...request.query }) };

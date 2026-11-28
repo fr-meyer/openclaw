@@ -84,10 +84,6 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
       normalizeBoundedString(input.token, undefined, 160, "claim token") ?? randomUUID();
     return await this.enqueueMutation(async () => {
       const now = Date.now();
-      const expiresAt = addWorkboardDurationMs(
-        now,
-        ttlSeconds ? secondsToDurationMs(ttlSeconds) : DEFAULT_CLAIM_TTL_MS,
-      );
       const guarded = await this.promoteDependencyReady(id, now);
       if (guarded.metadata?.archivedAt) {
         throw new Error("card is archived.");
@@ -139,8 +135,13 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
       }
       const metadata = clearDiagnostics(guarded.metadata, ["stranded_ready"]);
       const previousLaunchAt = guarded.metadata?.automation?.launch?.preparedAt;
-      // A replacement must be newer than the prior launch even in one clock tick.
+      // Fence a replacement claim above the prior launch generation even when
+      // both claims share one wall-clock millisecond.
       const claimedAt = previousLaunchAt === undefined ? now : Math.max(now, previousLaunchAt + 1);
+      const expiresAt = addWorkboardDurationMs(
+        now,
+        ttlSeconds ? secondsToDurationMs(ttlSeconds) : DEFAULT_CLAIM_TTL_MS,
+      );
       const card = await this.updateCard(
         await this.requireCard(id),
         {
@@ -182,7 +183,7 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
               now,
               Math.max(
                 1,
-                claim.expiresAt > claim.claimedAt
+                claim.expiresAt > claim.lastHeartbeatAt
                   ? claim.expiresAt - claim.lastHeartbeatAt
                   : DEFAULT_CLAIM_TTL_MS,
               ),

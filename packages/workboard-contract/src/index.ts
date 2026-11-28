@@ -262,9 +262,9 @@ type WorkboardLaunchIdentity = {
   requestedSessionKey: string;
   provisionalRunId: string;
   preparedAt: number;
-  /** Claim owner captured when the launch was prepared, absent for legacy launches. */
+  /** Store-owned claim snapshot; both fields are absent on legacy or unclaimed launches. */
   claimOwnerId?: string;
-  /** Positive safe-integer claim generation captured at launch preparation. */
+  /** The claim's immutable claimedAt generation, not a worker-stop or fencing proof. */
   claimGeneration?: number;
 };
 

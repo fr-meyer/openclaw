@@ -2764,6 +2764,91 @@ describe("WorkboardStore", () => {
     });
   });
 
+  it("includes parent results and recent assignee work in worker context", async () => {
+    const store = createWorkboardSqliteTestStore({ createStores: createKernelStores });
+    const parent = await store.create({
+      title: "Design",
+      status: "running",
+      agentId: "agent-a",
+    });
+    await store.complete(parent.id, { summary: "Use board-scoped queues." }, null);
+    await store.create({
+      title: "Older task",
+      status: "done",
+      agentId: "agent-a",
+      metadata: { automation: { summary: "Finished related cleanup." } },
+    });
+    const child = await store.create({
+      title: "Implement",
+      agentId: "agent-a",
+      parents: [parent.id],
+    });
+
+    const context = await store.buildWorkerContext(child.id);
+
+    expect(context).toContain("## Parent results");
+    expect(context).toContain("Use board-scoped queues.");
+    expect(context).toContain("## Recent done work by agent-a");
+    expect(context).toContain("Finished related cleanup.");
+
+    const crossBoardChild = await store.create({
+      title: "Cross-board child",
+      boardId: "product",
+      parents: [parent.id],
+    });
+
+    await expect(store.buildWorkerContext(crossBoardChild.id)).resolves.toContain(
+      "Use board-scoped queues.",
+    );
+  });
+
+  it("persists board metadata and notification subscriptions in separate SQLite tables", async () => {
+    const {
+      store,
+      stores: { cards, boards, subscriptions },
+    } = createWorkboardSqliteTestHarness({ createStores: createKernelStores });
+
+    const board = await store.upsertBoard({
+      id: "ops",
+      name: "Ops",
+      description: "Operational work",
+      defaultWorkspace: { kind: "dir", path: "/tmp/openclaw-ops" },
+    });
+    const card = await store.create({ title: "Ops card", boardId: "ops" });
+    const subscription = await store.subscribeNotifications({
+      boardId: "ops",
+      cardId: card.id,
+      target: "session:operator",
+      eventKinds: ["completed", "failed"],
+    });
+
+    await expect(boards.lookup("ops")).resolves.toMatchObject({
+      version: 1,
+      board: { id: "ops", name: "Ops", description: "Operational work" },
+    });
+    await expect(subscriptions.lookup(subscription.id)).resolves.toMatchObject({
+      version: 1,
+      subscription: {
+        id: subscription.id,
+        boardId: "ops",
+        cardId: card.id,
+        target: "session:operator",
+        eventKinds: ["completed", "failed"],
+      },
+    });
+    await expect(cards.lookup("ops")).resolves.toBeUndefined();
+    expect(board.defaultWorkspace).toEqual({ kind: "dir", path: "/tmp/openclaw-ops" });
+    expect((await store.listBoards()).boards.find((item) => item.id === "ops")).toMatchObject({
+      name: "Ops",
+      total: 1,
+      active: 1,
+      byStatus: { todo: 1 },
+    });
+    await expect(store.listNotificationSubscriptions({ boardId: "ops" })).resolves.toMatchObject({
+      subscriptions: [expect.objectContaining({ id: subscription.id, cardId: card.id })],
+    });
+  });
+
   it("promotes, reassigns, and reclaims cards for operator recovery", async () => {
     const store = createWorkboardSqliteTestStore({ createStores: createKernelStores });
     const card = await store.create({

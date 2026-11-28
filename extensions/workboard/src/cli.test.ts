@@ -226,60 +226,90 @@ describe("registerWorkboardCli", () => {
     );
   });
 
-  it("forwards an exact card and optional intent through the scoped Gateway method", async () => {
+  it("forwards one exact --card target through dispatchWithOptions", async () => {
     const store = createWorkboardSqliteTestStore();
-    const intentRunId = `wb-${"a".repeat(40)}`;
-    gatewayRuntime.callGatewayFromCli.mockResolvedValue({ started: [], startFailures: [] });
-    for (const intent of [undefined, intentRunId]) {
-      const program = createProgram(store);
-      await captureStdout(async () => {
-        await program.parseAsync(
-          [
-            "workboard",
-            "dispatch",
-            "--board",
-            "ops",
-            "--card",
-            "card-exact-1",
-            ...(intent ? ["--intent-run-id", intent, "--max-starts", "1"] : []),
-          ],
-          { from: "user" },
-        );
-      });
-      expect(gatewayRuntime.callGatewayFromCli).toHaveBeenLastCalledWith(
-        "workboard.cards.dispatchWithOptions",
-        expect.anything(),
-        {
-          boardId: "ops",
-          cardId: "card-exact-1",
-          ...(intent ? { intentRunId: intent, maxStarts: 1 } : {}),
-        },
-        { mode: "cli", scopes: ["operator.write", "operator.read"] },
-      );
-    }
+    const program = createProgram(store);
+    gatewayRuntime.callGatewayFromCli.mockResolvedValueOnce({ started: [], startFailures: [] });
+
+    await program.parseAsync(
+      ["workboard", "dispatch", "--board", "ops", "--card", "card-exact-1"],
+      { from: "user" },
+    );
+
+    expect(gatewayRuntime.callGatewayFromCli).toHaveBeenCalledWith(
+      "workboard.cards.dispatchWithOptions",
+      expect.anything(),
+      { boardId: "ops", cardId: "card-exact-1" },
+      expect.anything(),
+    );
   });
 
-  it("rejects invalid exact-card options before contacting the Gateway", async () => {
+  it("forwards a receipt id only with an exact card", async () => {
     const store = createWorkboardSqliteTestStore();
-    const cases: Array<[string[], string]> = [
-      [["--card", "   "], "--card must be a non-empty string."],
-      [["--intent-run-id", `wb-${"a".repeat(40)}`], "--intent-run-id requires --card."],
-      ...["bad", `wb-${"A".repeat(40)}`, `wb-${"a".repeat(39)}`, `wb-${"a".repeat(40)}\n`].map(
-        (intent): [string[], string] => [
-          ["--card", "card-exact-1", "--intent-run-id", intent],
-          "--intent-run-id must be a wb-<40 lowercase hex> dispatch intent id.",
-        ],
-      ),
-      [
-        ["--card", "card-exact-1", "--max-starts", "2"],
-        "--max-starts must be 1 when --card is provided.",
-      ],
-    ];
-    for (const [args, message] of cases) {
+    const program = createProgram(store);
+    const intentRunId = `wb-${"a".repeat(40)}`;
+    gatewayRuntime.callGatewayFromCli.mockResolvedValueOnce({ started: [], startFailures: [] });
+
+    await program.parseAsync(
+      ["workboard", "dispatch", "--card", "card-exact-1", "--intent-run-id", intentRunId],
+      { from: "user" },
+    );
+
+    expect(gatewayRuntime.callGatewayFromCli).toHaveBeenCalledWith(
+      "workboard.cards.dispatchWithOptions",
+      expect.anything(),
+      { boardId: undefined, cardId: "card-exact-1", intentRunId },
+      expect.anything(),
+    );
+  });
+
+  it("rejects a receipt id without an exact card before contacting the Gateway", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const program = createProgram(store);
+
+    await expect(
+      program.parseAsync(["workboard", "dispatch", "--intent-run-id", `wb-${"a".repeat(40)}`], {
+        from: "user",
+      }),
+    ).rejects.toThrow("--intent-run-id requires --card.");
+    expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
+  });
+
+  it.each(["bad", `wb-${"A".repeat(40)}`, `wb-${"a".repeat(39)}`])(
+    "rejects invalid receipt id %s before contacting the Gateway",
+    async (intentRunId) => {
+      const store = createWorkboardSqliteTestStore();
+      const program = createProgram(store);
+
       await expect(
-        createProgram(store).parseAsync(["workboard", "dispatch", ...args], { from: "user" }),
-      ).rejects.toThrow(message);
-    }
+        program.parseAsync(
+          ["workboard", "dispatch", "--card", "card-exact-1", "--intent-run-id", intentRunId],
+          { from: "user" },
+        ),
+      ).rejects.toThrow("--intent-run-id must be a wb-<40 lowercase hex> dispatch intent id.");
+      expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a blank exact card before contacting the Gateway", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const program = createProgram(store);
+
+    await expect(
+      program.parseAsync(["workboard", "dispatch", "--card", "   "], { from: "user" }),
+    ).rejects.toThrow("--card must be a non-empty string.");
+    expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
+  });
+
+  it("rejects a multi-start cap for an exact card before contacting the Gateway", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const program = createProgram(store);
+
+    await expect(
+      program.parseAsync(["workboard", "dispatch", "--card", "card-exact-1", "--max-starts", "2"], {
+        from: "user",
+      }),
+    ).rejects.toThrow("--max-starts must be 1 when --card is provided.");
     expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,638 @@
+"""Tiny local Git fixtures only; no production origin or application execution."""
+from copy import deepcopy
+import ast
+import contextlib
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import socket
+import shutil
+import subprocess
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+import urllib.request
+
+import finite_public_root_bootstrap_v109 as b
+
+HERE = Path(__file__).resolve().parent
+REAL_POPEN = subprocess.Popen
+REAL_RUN = subprocess.run
+HOST_ATTEMPTS = []
+LOCAL_GIT_CALLS = []
+
+
+def local_git_only(argv, *args, **kwargs):
+    if not isinstance(argv, (list, tuple)) or argv[0] != '/usr/bin/git':
+        HOST_ATTEMPTS.append('non_git'); raise AssertionError('only fixed local Git permitted')
+    if 'fetch' in argv and not any(str(value).startswith('file://') for value in argv):
+        HOST_ATTEMPTS.append('remote_fetch'); raise AssertionError('remote Git forbidden')
+    if any(value in argv for value in ['clone', 'push', 'ls-remote', 'submodule']):
+        HOST_ATTEMPTS.append('remote_verb'); raise AssertionError('unowned Git verb forbidden')
+    LOCAL_GIT_CALLS.append('fetch' if 'fetch' in argv else 'local_metadata_or_fixture')
+    return REAL_POPEN(argv, *args, **kwargs)
+
+
+def git(root, *args, data=None, check=True):
+    env = b.git_environment(os.environ)
+    env.update(GIT_AUTHOR_NAME='Synthetic', GIT_AUTHOR_EMAIL='synthetic@example.invalid',
+        GIT_COMMITTER_NAME='Synthetic', GIT_COMMITTER_EMAIL='synthetic@example.invalid',
+        GIT_AUTHOR_DATE='2026-01-01T00:00:00Z', GIT_COMMITTER_DATE='2026-01-01T00:00:00Z')
+    return REAL_RUN(['/usr/bin/git', '-C', str(root), *args], input=data, env=env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check)
+
+
+class GitFixture:
+    def __init__(self, base):
+        self.base = base; self.remote = base / 'remote'; self.remote.mkdir()
+        git(self.remote, 'init', '--bare')
+        def tree(values):
+            rows = []
+            for name, text in sorted(values.items()):
+                blob = git(self.remote, 'hash-object', '-w', '--stdin', data=text.encode()).stdout.strip()
+                rows.append(b'100644 blob ' + blob + b'\t' + name.encode() + b'\n')
+            return git(self.remote, 'mktree', data=b''.join(rows)).stdout.strip().decode()
+        def commit(values, parents=()):
+            tr = tree(values); argv = ['commit-tree', tr]
+            for parent in parents: argv.extend(['-p', parent])
+            oid = git(self.remote, *argv, data=b'synthetic\n').stdout.strip().decode()
+            return oid, tr
+        self.common, self.common_tree = commit({'base': 'base'})
+        self.target, self.target_tree = commit({'base': 'base', 'target': 'target'}, [self.common])
+        self.head, self.head_tree = commit({'base': 'base', 'caller': 'caller'}, [self.common])
+        self.merge, _ = commit({'base': 'base', 'target': 'target', 'caller': 'caller'}, [self.target, self.head])
+        self.bad_parent, _ = commit({'base': 'base', 'target': 'target', 'caller': 'caller'}, [self.head, self.target])
+        self.bad_tree, _ = commit({'base': 'base', 'caller': 'caller'}, [self.target, self.head])
+        fork, _ = commit({'fork': 'fork'}, [self.common])
+        upstream, _ = commit({'upstream': 'upstream'}, [self.common])
+        integration, _ = commit({'integration': 'integration'}, [fork, upstream])
+        generated, _ = commit({'generated': 'generated'}, [integration])
+        self.source, self.source_tree = commit({'source': 'source'}, [generated])
+        self.source_roots = sorted([self.common, fork, upstream, integration, generated, self.source])
+        self.unrelated, _ = commit({'unrelated': 'not selected'})
+        for name, oid in [('caller', self.head), ('merge', self.merge), ('source', self.source),
+                          ('unrelated', self.unrelated), ('wrong-parent', self.bad_parent), ('wrong-tree', self.bad_tree)]:
+            git(self.remote, 'update-ref', 'refs/heads/' + name, oid)
+
+    def checkout(self, path):
+        path.mkdir(); git(path, 'init'); git(path, 'remote', 'add', 'origin', b.ORIGIN)
+        git(path, '-c', 'protocol.file.allow=always', 'fetch', '--depth=1', '--no-tags',
+            self.remote.as_uri(), self.head)
+        git(path, 'checkout', '--detach', self.head)
+
+
+class BootstrapTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='finite-root-fixture-')
+        cls.base = Path(cls.temp.name).resolve()
+        with patch.object(subprocess, 'Popen', local_git_only):
+            cls.fixture = GitFixture(cls.base)
+        cls.runtime, cls.core = b.owners(HERE)
+
+    @classmethod
+    def tearDownClass(cls): cls.temp.cleanup()
+
+    def setUp(self):
+        self.guards = []
+        for target, name, replacement in [(subprocess, 'Popen', local_git_only),
+                (socket, 'socket', lambda *a, **k: (_ for _ in ()).throw(AssertionError('network forbidden'))),
+                (urllib.request, 'urlopen', lambda *a, **k: (_ for _ in ()).throw(AssertionError('network forbidden')))]:
+            guard = patch.object(target, name, replacement); guard.start(); self.addCleanup(guard.stop)
+        self.case = Path(tempfile.mkdtemp(prefix='case-', dir=self.base))
+        self.root = self.case / 'pipeline'; self.fixture.checkout(self.root)
+        self.output = self.case / 'custody'; self.output.mkdir(mode=0o700)
+        self.owner = b.OwnedGit(self.root, b.git_environment(os.environ), time.time() + 120,
+                                self.output, self.core)
+        self.selected = {'source': {'sourceSha': self.fixture.source,
+                                    'sourceTree': self.fixture.source_tree}}
+
+    def graph_pins(self):
+        f = self.fixture
+        return patch.multiple(self.runtime, WORKFLOW_TARGET=f.target, WORKFLOW_TARGET_TREE=f.target_tree,
+            WORKFLOW_MERGE_BASE=f.common, WORKFLOW_MERGE_BASE_TREE=f.common_tree)
+
+    def acquire(self, merge=None, selected=None, unshallow=True, job="source"):
+        f = self.fixture; original = b.fetch_argv
+        def local(root, m, s, shallow):
+            argv = original(root, m, s, shallow and unshallow)
+            argv[argv.index(b.ORIGIN)] = f.remote.as_uri()
+            argv[argv.index('fetch'):argv.index('fetch')] = ['-c', 'protocol.file.allow=always']
+            self.last_fetch_argv = list(argv)
+            return argv
+        with patch.object(b, 'fetch_argv', local), self.graph_pins():
+            return b.acquire(self.owner, self.runtime, self.core, f.head,
+                merge or f.merge, selected or self.selected, self.owner.env, job=job)
+
+    def test_full_unshallow_two_roots_keeps_headP_and_unrelated_ref_absent(self):
+        value = self.acquire()
+        self.assertEqual(value['fetchAttempts'], 1)
+        self.assertEqual(value['actualWorkflowParents'], [self.fixture.target, self.fixture.head])
+        self.assertEqual(value['workflowParentsRawSha256'], hashlib.sha256(
+            (self.fixture.target + ' ' + self.fixture.head + '\n').encode()).hexdigest())
+        self.assertNotEqual(value['declaredPRBase'], value['actualWorkflowParents'][0])
+        self.assertEqual(self.owner.read('rev-parse', 'HEAD').strip().decode(), self.fixture.head)
+        self.assertEqual(self.owner.read('rev-parse', '--is-shallow-repository').strip(), b'false')
+        for root in self.fixture.source_roots:
+            self.assertEqual(self.owner.read('cat-file', '-t', root).strip(), b'commit')
+        self.assertNotEqual(git(self.root, 'cat-file', '-e', self.fixture.unrelated, check=False).returncode, 0)
+        self.assertFalse(value['sourceQualified'])
+
+    def test_existing_full_graph_uses_same_one_fetch_without_deepening(self):
+        self.acquire()
+        other = self.case / 'second-custody'; other.mkdir(); self.owner.output = other
+        self.assertEqual(self.acquire()['status'], 'full_closure_only')
+
+    def test_final_fetches_only_merge_with_complete_pipeline_graph_and_no_source_claim(self):
+        value = self.acquire(job='final')
+        f = self.fixture
+        at = self.last_fetch_argv.index(f.remote.as_uri())
+        self.assertEqual(self.last_fetch_argv[at + 1:], [f.merge])
+        self.assertEqual(value['status'], 'pipeline_metadata_closure_only')
+        self.assertEqual(value['purpose'], 'final_result_metadata')
+        self.assertIs(value['selectedSourceRootRequested'], False)
+        self.assertIs(value['selectedSourceBodyVerified'], False)
+        self.assertIs(value['sourceQualified'], False)
+        self.assertIs(value['applicationExecuted'], False)
+        self.assertNotIn('sourceSha', value)
+        self.assertNotIn('sourceTree', value)
+        self.assertEqual(value['fetchAttempts'], 1)
+        self.assertEqual(value['actualWorkflowParents'], [f.target, f.head])
+        self.assertTrue(value['mergeProof']['completeTreeCompared'])
+        self.assertEqual(self.owner.read('rev-parse', 'HEAD').strip().decode(), f.head)
+        self.assertEqual(self.owner.read('rev-parse', '--is-shallow-repository').strip(), b'false')
+        for oid in (f.common, f.target, f.head, f.merge):
+            self.assertEqual(self.owner.read('cat-file', '-t', oid).strip(), b'commit')
+        for oid in (f.source, f.unrelated):
+            self.assertNotEqual(git(self.root, 'cat-file', '-e', oid, check=False).returncode, 0)
+
+    def test_final_still_refuses_shallow_graph(self):
+        with self.assertRaisesRegex(b.Refusal, 'full_nonshallow'):
+            self.acquire(job='final', unshallow=False)
+
+    def test_final_still_refuses_wrong_physical_merge_parents(self):
+        with self.assertRaisesRegex(ValueError, 'workflow_merge_parents'):
+            self.acquire(job='final', merge=self.fixture.bad_parent)
+
+    def test_final_still_refuses_incomplete_merge_tree(self):
+        with self.assertRaisesRegex(ValueError, 'workflow_full_merge_tree_changed'):
+            self.acquire(job='final', merge=self.fixture.bad_tree)
+
+    def test_admission_still_fetches_and_verifies_selected_source_root(self):
+        value = self.acquire(job='admission')
+        at = self.last_fetch_argv.index(self.fixture.remote.as_uri())
+        self.assertEqual(self.last_fetch_argv[at + 1:], [self.fixture.merge, self.fixture.source])
+        self.assertEqual(value['status'], 'full_closure_only')
+        self.assertEqual(value['sourceSha'], self.fixture.source)
+        self.assertEqual(value['sourceTree'], self.fixture.source_tree)
+
+    def test_unknown_internal_role_refuses_before_repository_queries(self):
+        with self.assertRaisesRegex(b.Refusal, 'fixed_job_role'):
+            self.acquire(job='other')
+        self.assertEqual(self.owner.ordinal, 0)
+
+    def test_unchanged_local_donor_consumes_independent_S_from_narrow_store(self):
+        self.acquire()
+        f = self.fixture; source = self.case / 'source'; source.mkdir()
+        git(source, 'init'); git(source, 'remote', 'add', 'origin', b.ORIGIN)
+        git(source, '-c', 'protocol.file.allow=always', 'fetch', '--depth=1', '--no-tags',
+            f.remote.as_uri(), f.source)
+        git(source, 'checkout', '--detach', f.source)
+        source_custody = self.case / 'source-custody'; source_custody.mkdir()
+        receiver = b.OwnedGit(source, b.git_environment(os.environ), time.time() + 120,
+                              source_custody, self.core)
+        def read(root, *args):
+            self.assertIn(root, (self.root, source))
+            return (self.owner if root == self.root else receiver).read(*args)
+        donor = self.core.local_closure_donor_uri(self.case, self.root, source,
+            f.head, f.source, f.source_tree, f.source_roots, read)
+        self.assertEqual(donor, self.root.as_uri())
+        # Exact maintained downstream operation, not a cat-file-only claim.
+        git(source, '-c', 'protocol.file.allow=always', '-c', 'credential.helper=',
+            '-c', 'maintenance.auto=0', '-c', 'gc.auto=0', 'fetch', '--no-tags',
+            '--unshallow', donor, *f.source_roots)
+        self.assertEqual(receiver.read('rev-parse', '--is-shallow-repository').strip(), b'false')
+        self.assertEqual(self.core.local_closure_donor_uri(self.case, self.root, source,
+            f.head, f.source, f.source_tree, f.source_roots, read), donor)
+        for root in f.source_roots:
+            self.assertEqual(receiver.read('cat-file', '-t', root).strip(), b'commit')
+
+    def test_missing_merge_and_missing_source_refuse_once(self):
+        for which in ('merge', 'source'):
+            with self.subTest(which=which):
+                root = self.case / which; self.fixture.checkout(root)
+                self.owner.root = root; out = self.case / (which + '-out'); out.mkdir(); self.owner.output = out
+                missing = 'f' * 40
+                selected = deepcopy(self.selected)
+                if which == 'source': selected['source']['sourceSha'] = missing
+                with self.assertRaises(b.Refusal): self.acquire(missing if which == 'merge' else None, selected)
+                facts = [json.loads(x.read_bytes()) for x in out.glob('*.status.private.json')]
+                self.assertEqual(sum(x['kind'] == 'finite_fetch' for x in facts), 1)
+
+    def test_wrong_workflow_parent_order_and_complete_tree_refuse(self):
+        for merge in (self.fixture.bad_parent, self.fixture.bad_tree):
+            out = self.case / merge; out.mkdir(); self.owner.output = out
+            with self.assertRaises(ValueError): self.acquire(merge)
+
+    def test_wrong_source_tree_refuses(self):
+        selected = deepcopy(self.selected); selected['source']['sourceTree'] = 'f' * 40
+        with self.assertRaises(b.Refusal): self.acquire(selected=selected)
+
+    def test_missing_source_blob_cannot_supply_complete_closure(self):
+        broken = self.case / 'missing-blob-remote'
+        shutil.copytree(self.fixture.remote, broken)
+        row = git(broken, 'ls-tree', self.fixture.source, '--', 'source').stdout.split()
+        oid = row[2].decode(); (broken / 'objects' / oid[:2] / oid[2:]).unlink()
+        with patch.object(self.fixture, 'remote', broken), self.assertRaises(ValueError):
+            self.acquire()
+
+    def test_remaining_shallow_marker_refuses(self):
+        with self.assertRaisesRegex(b.Refusal, 'full_nonshallow'): self.acquire(unshallow=False)
+
+    def test_wrong_origin_partial_or_alternate_refuses_before_fetch(self):
+        git(self.root, 'remote', 'set-url', 'origin', 'https://example.invalid/unapproved')
+        with self.assertRaisesRegex(b.Refusal, 'fixed_origin'): self.acquire()
+        git(self.root, 'remote', 'set-url', 'origin', b.ORIGIN)
+        git(self.root, 'config', 'extensions.partialclone', 'origin')
+        with self.assertRaisesRegex(b.Refusal, 'partial_or_redirect_config'): self.acquire()
+        git(self.root, 'config', '--unset', 'extensions.partialclone')
+        (self.root / '.git/objects/info/alternates').write_text('/nonexistent')
+        with self.assertRaisesRegex(b.Refusal, 'alternate_objects'): self.acquire()
+        self.assertFalse(any(json.loads(x.read_bytes())['kind'] == 'finite_fetch'
+                             for x in self.output.glob('*.status.private.json')))
+
+    def test_local_tls_redirect_replacement_and_object_link_overrides_refuse(self):
+        git(self.root, 'config', 'http.sslVerify', 'false')
+        with self.assertRaisesRegex(b.Refusal, 'partial_or_redirect_config'): self.acquire()
+        git(self.root, 'config', '--unset', 'http.sslVerify')
+        git(self.root, 'update-ref', 'refs/replace/' + self.fixture.head, self.fixture.head)
+        with self.assertRaisesRegex(b.Refusal, 'replacement_or_graft'): self.acquire()
+        git(self.root, 'update-ref', '-d', 'refs/replace/' + self.fixture.head)
+        objects = self.root / '.git/objects'; original = self.root / '.git/original-objects'
+        objects.rename(original); objects.symlink_to(original, target_is_directory=True)
+        with self.assertRaisesRegex(b.Refusal, 'owned_objects'): self.acquire()
+
+    def test_production_fetch_argv_has_only_fixed_origin_exactM_S_and_no_wildcards(self):
+        argv = b.fetch_argv(self.root, self.fixture.merge, self.fixture.source, True)
+        self.assertEqual(argv[-3:], [b.ORIGIN, self.fixture.merge, self.fixture.source])
+        self.assertIn('--unshallow', argv)
+        self.assertFalse(any('*' in x or 'filter' in x for x in argv))
+        self.assertEqual(b.ORIGIN, 'https://github.com/fr-meyer/openclaw')
+
+    def test_bad_root_shape_never_fetches(self):
+        with patch.object(self.owner, 'run', side_effect=AssertionError('no child')):
+            with self.assertRaises(b.Refusal):
+                b.acquire(self.owner, self.runtime, self.core, self.fixture.head, 'missing', self.selected, {})
+
+    def test_token_only_in_ephemeral_fetch_environment_not_argv(self):
+        token = 'synthetic-token-' + 'x' * 32
+        env, secrets = b.fetch_environment(self.owner.env, token)
+        self.assertNotIn('GH_TOKEN', env)
+        self.assertIn(token.encode(), secrets)
+        self.assertNotIn(token, ' '.join(b.fetch_argv(self.root, self.fixture.merge, self.fixture.source, True)))
+        self.assertNotIn('GIT_CONFIG_VALUE_7', b.git_environment(dict(os.environ, GH_TOKEN=token)))
+
+    def test_failure_custody_redacts_complete_and_partial_auth_before_refusal(self):
+        token = b'ghs_FAKE_not_a_credential_1234567890abcdef'
+        self.owner.secrets = (token,)
+        class Child:
+            returncode = 1
+            def communicate(self, timeout):
+                return b'', b'Authorization: basic sensitive\n' + token + b'\n' + token[:9] + b'\nfatal: fixed synthetic refusal\n'
+        with patch.object(subprocess, 'Popen', return_value=Child()), contextlib.redirect_stdout(io.StringIO()) as output:
+            result = self.owner.run([b.GIT], fetch=True)
+        self.assertEqual(result.returncode, 1)
+        saved = b''.join(x.read_bytes() for x in self.output.iterdir())
+        self.assertNotIn(token[:9], saved); self.assertNotIn(b'basic sensitive', saved)
+        self.assertNotIn(token[:9].decode(), output.getvalue())
+        self.assertIn(b'fixed synthetic refusal', saved)
+
+    def test_timeout_with_valid_complete_output_is_failure_after_custody(self):
+        class Child:
+            returncode = None
+            def communicate(self, timeout): raise subprocess.TimeoutExpired('git', timeout, output=b'{}', stderr=b'public synthetic')
+        def settled(child): child.child.returncode = -9; return child.stdout, True, 'settled'
+        with patch.object(subprocess, 'Popen', return_value=Child()), \
+             patch.object(self.core, 'settle_owned_timeout_group', side_effect=settled) as cleanup, \
+             contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(b.Refusal, 'owned_child_incomplete'): self.owner.run([b.GIT], fetch=True)
+        cleanup.assert_called_once()
+        fact = json.loads(next(self.output.glob('*.status.private.json')).read_bytes())
+        self.assertTrue(fact['timedOut']); self.assertTrue(fact['cleanupSettled'])
+        self.assertEqual(next(self.output.glob('*.stdout.redacted.private')).read_bytes(), b'{}')
+
+    def test_launch_failure_is_recorded_without_claimed_child(self):
+        with patch.object(subprocess, 'Popen', side_effect=PermissionError(13, 'synthetic')):
+            with self.assertRaisesRegex(b.Refusal, 'child_launch_refused'): self.owner.run([b.GIT])
+        self.assertFalse(json.loads(next(self.output.glob('*.status.private.json')).read_bytes())['childStarted'])
+
+    def test_expired_budget_and_missing_token_refuse_before_child(self):
+        self.owner.deadline = time.time() - 1
+        with patch.object(subprocess, 'Popen', side_effect=AssertionError('no child')):
+            with self.assertRaisesRegex(b.Refusal, 'shared_deadline'): self.owner.run([b.GIT])
+        with self.assertRaises(b.Refusal): b.fetch_environment(self.owner.env, None)
+
+    def test_no_cli_fixture_or_origin_fallback_and_disarmed_default(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(b.main([], {}), 0)
+        self.assertEqual(json.loads(out.getvalue())['status'], 'DISARMED')
+        for flag in ('--origin', '--fixture'):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                b.main(['--job', 'source', flag, 'file:///tmp/not-a-route'], {})
+
+    def test_official_tag_fixture_and_existing_materializer_are_unchanged(self):
+        raw = (HERE / self.runtime.TAG_FIXTURE.removeprefix('scripts/fork-release/')).read_bytes()
+        self.assertEqual((len(raw), hashlib.sha256(raw).hexdigest()), (1028, self.runtime.TAG_SHA256))
+        self.assertEqual(self.runtime.policy.UPSTREAM['tagObject'], '88a19e0d8677804d8ec98e30a3a3a3a9308ebee0')
+
+    def test_no_real_network_or_unowned_process_attempt(self): self.assertEqual(HOST_ATTEMPTS, [])
+
+    def config_custody_refuses_without_text(self, body, marker):
+        for code in (0, 2):
+            output = self.case / ('config-' + str(code)); output.mkdir()
+            self.owner.output = output
+            err = b'unknown diagnostic ' + marker + b'\n'
+            class Child:
+                returncode = code
+                def communicate(self, timeout): return body, err
+            def child(argv, *args, **kwargs):
+                if 'config' in argv and '--get-regexp' in argv:
+                    return Child()
+                return local_git_only(argv, *args, **kwargs)
+            with patch.object(subprocess, 'Popen', side_effect=child), \
+                 contextlib.redirect_stdout(io.StringIO()) as printed, self.assertRaises(b.Refusal):
+                b.repository_state(self.owner, self.fixture.head, True)
+            custody = b''.join(path.read_bytes() for path in output.iterdir())
+            self.assertNotIn(marker, custody)
+            self.assertNotIn(marker.decode(), printed.getvalue())
+            facts = [json.loads(path.read_bytes()) for path in output.glob('*.status.private.json')]
+            last = max(facts, key=lambda value: value['ordinal'])
+            self.assertTrue(last['outputSuppressed'])
+            self.assertEqual(last['exitCode'], code)
+            self.assertEqual(last['stdout']['bytes'], len(body))
+            self.assertEqual(last['stdout']['sha256'], hashlib.sha256(body).hexdigest())
+            self.assertEqual(last['stderr']['bytes'], len(err))
+            self.assertEqual(last['stdout']['redactedPrefixBytes'], 0)
+            self.assertEqual(last['stderr']['redactedPrefixBytes'], 0)
+
+    def test_unknown_credential_helper_value_is_never_persisted_or_printed(self):
+        marker = b'FAKE_UNRELATED_HELPER_CREDENTIAL_97cc'
+        self.config_custody_refuses_without_text(b'credential.helper !printf ' + marker + b'\n', marker)
+
+    def test_credential_bearing_config_key_is_never_persisted_or_printed(self):
+        marker = b'FAKE_CREDENTIAL_IN_URL_KEY_183a'
+        self.config_custody_refuses_without_text(
+            b'url.https://example.invalid/' + marker + b'.insteadof https://github.com/\n', marker)
+
+    def identity_custody_case(self, query, body, marker, mode, *, accepted=False):
+        output = self.case / ('identity-' + mode); output.mkdir()
+        self.owner.output = output
+        err = b'unknown synthetic stderr ' + marker + b'\n'
+        class Child:
+            returncode = 0
+            def communicate(self, timeout): return body, err
+        def child(argv, *args, **kwargs):
+            if tuple(argv[-len(query):]) == query: return Child()
+            return local_git_only(argv, *args, **kwargs)
+        with patch.object(subprocess, 'Popen', side_effect=child), contextlib.redirect_stdout(io.StringIO()) as printed:
+            if accepted:
+                self.assertTrue(b.repository_state(self.owner, self.fixture.head, True))
+            else:
+                with self.assertRaises(b.Refusal):
+                    b.repository_state(self.owner, self.fixture.head, True)
+        custody = b''.join(path.read_bytes() for path in output.iterdir())
+        self.assertNotIn(marker, custody)
+        self.assertNotIn(marker.decode(), printed.getvalue())
+        frames = [json.loads(path.read_bytes()) for path in output.glob('*.status.private.json')]
+        frame = next(value for value in frames if value.get('repositoryIdentityMode') == mode)
+        self.assertIs(frame['identityAccepted'], accepted)
+        self.assertEqual(frame['stdout']['bytes'], len(body))
+        self.assertEqual(frame['stdout']['sha256'], hashlib.sha256(body).hexdigest())
+        self.assertEqual(frame['stderr']['redactedPrefixBytes'], 0)
+        if not accepted: self.assertEqual(frame['stdout']['redactedPrefixBytes'], 0)
+
+    def test_wrong_origin_unknown_access_token_is_suppressed_before_refusal(self):
+        marker = b'FAKE_UNKNOWN_ORIGIN_ACCESS_TOKEN_4b69'
+        self.identity_custody_case(('remote', 'get-url', 'origin'),
+            b'https://github.com/fr-meyer/openclaw?access_token=' + marker + b'\n', marker, 'origin')
+
+    def test_replacement_ref_name_is_suppressed_before_refusal(self):
+        marker = b'FAKE_UNKNOWN_REPLACEMENT_CREDENTIAL_191a'
+        self.identity_custody_case(('for-each-ref', '--format=%(refname)', 'refs/replace'),
+            b'refs/replace/' + marker + b'\n', marker, 'replacement_refs')
+
+    def test_malformed_head_and_shallow_outputs_are_suppressed(self):
+        marker = b'FAKE_UNKNOWN_IDENTITY_CONTROL_17c9'
+        self.identity_custody_case(('rev-parse', 'HEAD'),
+            self.fixture.head.encode() + b'\n' + marker + b'\n', marker, 'head')
+        self.identity_custody_case(('rev-parse', '--is-shallow-repository'),
+            b'true\n' + marker + b'\n', marker, 'shallow')
+
+    def test_valid_fixed_origin_keeps_no_arbitrary_stderr(self):
+        marker = b'FAKE_UNKNOWN_IDENTITY_STDERR_07ee'
+        self.identity_custody_case(('remote', 'get-url', 'origin'),
+            b.ORIGIN.encode() + b'\n', marker, 'origin', accepted=True)
+
+    def test_actual_workflow_hash_fixture_selector_and_clock_caps_are_consistent(self):
+        root = HERE.parents[1]
+        workflow = (root / '.github/workflows/future-v109-source-validation.yml').read_bytes()
+        helper_hash = hashlib.sha256((HERE / 'finite_public_root_bootstrap_v109.py').read_bytes()).hexdigest()
+        import model_diagnostic_v109 as route
+        prep = (HERE / 'fixtures/v109-h3-lock-preparation.yml').read_bytes()
+        full = (HERE / 'fixtures/v109-h3-source-validation.yml').read_bytes()
+        bindings = self.runtime.policy.parse((root / self.runtime.BINDINGS).read_bytes())
+        request = self.runtime.policy.parse((root / self.runtime.REQUEST).read_bytes())
+        self.runtime.policy.validate_request(request, bindings)
+        phase = request['phase']
+        self.assertIn(phase, ('lock-preparation', 'validation'))
+        self.assertEqual(workflow, {'lock-preparation': prep, 'validation': full}[phase])
+        for raw, count, expected in ((prep, 1, route.H3_PREPARATION_WORKFLOW_SHA256),
+                (full, 3, route.H3_SOURCE_WORKFLOW_SHA256)):
+            with self.subTest(bootstrapCount=count):
+                text = raw.decode()
+                self.assertEqual(text.count(helper_hash), count)
+                self.assertEqual(text.count('Checkout exact pipeline bootstrap only'), count)
+                self.assertEqual(text.count('timeout-minutes: 5'), count)
+                self.assertNotIn('fetch-depth: 0', text)
+                self.assertEqual(expected, hashlib.sha256(raw).hexdigest())
+        text = full.decode()
+        self.assertIn('max-parallel: 3', text)
+        parsed = ast.parse((HERE / 'source_validation_selection_v109.py').read_bytes())
+        entries = next(x.value for x in parsed.body if isinstance(x, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == 'PIPELINE_CONTRACT_TESTS' for t in x.targets))
+        self.assertEqual(ast.literal_eval(entries).count('test_finite_public_root_bootstrap_v109.py'), 1)
+        import re
+        actual = dict((name, int(value)) for name, value in re.findall(
+            r'profile: ([a-z0-9-]+)\n\s+minutes: ([0-9]+)', text))
+        self.assertEqual(actual, self.runtime.policy.PROFILE_MINUTES)
+
+    def test_only_fixed_refusal_codes_may_escape(self):
+        self.assertEqual(b.safe_refusal_code(b.Refusal('bootstrap.fixed_origin')), 'bootstrap.fixed_origin')
+        self.assertEqual(b.safe_refusal_code(ValueError('private arbitrary error')), 'bootstrap.runtime_refused')
+        self.assertEqual(b.safe_refusal_code(subprocess.CalledProcessError(1, ['secret'])), 'bootstrap.runtime_refused')
+
+
+class SimulatedBudgetTests(unittest.TestCase):
+    """No Git, network, timer or application execution; exercise actual owners."""
+    def setUp(self):
+        for owner, name in ((subprocess, 'Popen'), (subprocess, 'run'),
+                            (socket, 'socket'), (urllib.request, 'urlopen'), (time, 'sleep')):
+            guard = patch.object(owner, name, side_effect=AssertionError('host action forbidden'))
+            guard.start(); self.addCleanup(guard.stop)
+
+    def main_deadline(self, job, job_deadline, clock=1000, *, native_job=None,
+                      phase='validation', refusal=None):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory(prefix='finite-budget-synthetic-') as tmp:
+            workspace = Path(tmp).resolve(); folder = workspace / 'pipeline/scripts/fork-release'
+            folder.mkdir(parents=True)
+            temp = workspace / 'runner-temp'; temp.mkdir()
+            env = {'PATH': '/usr/bin:/bin', 'GITHUB_WORKSPACE': str(workspace),
+                   'GITHUB_JOB': job if native_job is None else native_job,
+                   'RUNNER_TEMP': str(temp), 'GITHUB_EVENT_PATH': str(workspace / 'unused.json'),
+                   'GITHUB_WORKFLOW_SHA': 'b' * 40, 'V109_APPROVED_AT': 'approved',
+                   'V109_EXPIRES_AT': 'expires', 'CLOCK': str(clock), 'GH_TOKEN': 'synthetic-' + 'x' * 32}
+            policy = SimpleNamespace(PROFILES=('types-tests',), parse=lambda raw: {},
+                                     source_authorization_window=lambda bindings: ('approved', 'expires'))
+            runtime = SimpleNamespace(policy=policy, CLOCK='CLOCK',
+                load_metadata=lambda *args, **kwargs: ({'authorization': {'approvedAt': 'approved'}}, {'phase': phase}, b'request'),
+                event_binding=lambda event, env: 'a' * 40,
+                check_admission_outputs=lambda *args: None,
+                job_deadline=lambda *args: job_deadline)
+            core = SimpleNamespace(profile_signals=contextlib.nullcontext)
+            observed = []
+            def acquire(owner, *args, **kwargs):
+                self.assertEqual(kwargs, {'job': job})
+                observed.append(owner.deadline)
+                return {'status': 'synthetic', 'sourceQualified': False}
+            args = ['--job', job] + (['--profile', 'types-tests'] if job == 'source' else [])
+            with patch.object(b, '__file__', str(folder / 'finite_public_root_bootstrap_v109.py')), \
+                 patch.object(b, 'owners', return_value=(runtime, core)), \
+                 patch.object(b, 'regular', return_value=b'{}'), \
+                 patch.object(b, 'acquire', side_effect=acquire) as call, \
+                 patch.object(b, 'save') as save, patch.object(time, 'time', return_value=1000), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                if refusal is not None:
+                    with self.assertRaisesRegex(b.Refusal, refusal):
+                        b.main(args, env)
+                    call.assert_not_called(); save.assert_not_called()
+                    self.assertEqual(list(temp.iterdir()), [])
+                    return None
+                result = b.main(args, env)
+            self.assertEqual(result, 0)
+            call.assert_called_once()
+            return observed[0]
+
+    def test_actual_main_helper_cap_and_cleanup_reserve(self):
+        self.assertEqual(b.HELPER_SECONDS, 900)
+        self.assertEqual(b.CLEANUP_RESERVE_SECONDS, 20)
+        self.assertEqual(self.main_deadline('source', 6400), 1880)
+        self.assertEqual(self.main_deadline('admission', 2700), 1880)
+
+    def test_actual_main_shorter_job_deadline_still_wins(self):
+        self.assertEqual(self.main_deadline('source', 1450), 1430)
+
+    def test_actual_final_ten_minute_clamp_still_wins(self):
+        self.assertEqual(self.main_deadline('final', 6400), 1520)
+        self.assertEqual(self.main_deadline('final', 1450), 1430)
+
+    def test_requested_role_must_equal_actual_job_before_any_owner_or_git_action(self):
+        for requested, actual in [('final', 'source'), ('source', 'final'),
+                                  ('admission', 'final'), ('final', None),
+                                  ('final', 'final-other')]:
+            argv = ['--job', requested]
+            if requested == 'source': argv.extend(['--profile', 'types-tests'])
+            env = {} if actual is None else {'GITHUB_JOB': actual}
+            with self.subTest(requested=requested, actual=actual), \
+                 patch.object(b, 'owners') as owners, patch.object(b, 'OwnedGit') as owner, \
+                 patch.object(b, 'save') as save, \
+                 self.assertRaisesRegex(b.Refusal, 'fixed_job_role'):
+                b.main(argv, env)
+            owners.assert_not_called(); owner.assert_not_called(); save.assert_not_called()
+
+    def test_no_user_skip_source_option_exists(self):
+        with patch.object(b, 'owners') as owners, contextlib.redirect_stderr(io.StringIO()), \
+             self.assertRaises(SystemExit):
+            b.main(['--job', 'final', '--skip-source'], {'GITHUB_JOB': 'final'})
+        owners.assert_not_called()
+
+    def test_exact_preparation_native_alias_preserves_full_admission_role(self):
+        self.assertEqual(self.main_deadline('admission', 3700,
+            native_job='lock-preparation', phase='lock-preparation'), 1880)
+
+    def test_preparation_alias_refuses_validation_and_correction_before_git_or_output(self):
+        for phase in ('validation', 'correction'):
+            with self.subTest(phase=phase):
+                self.main_deadline('admission', 3700, native_job='lock-preparation',
+                    phase=phase, refusal='fixed_job_phase_role')
+
+    def test_lock_preparation_requires_exact_admission_flag_and_native_alias(self):
+        for role in ('admission', 'source', 'final'):
+            with self.subTest(role=role):
+                self.main_deadline(role, 3700, native_job=role,
+                    phase='lock-preparation', refusal='fixed_job_phase_role')
+
+    def test_correction_final_keeps_exact_positive_native_binding_and_ten_minute_cap(self):
+        self.assertEqual(self.main_deadline('final', 6400, phase='correction'), 1520)
+
+    def test_actual_main_exhausted_cleanup_window_refuses_before_acquisition(self):
+        with self.assertRaisesRegex(b.Refusal, 'shared_deadline'):
+            self.main_deadline('source', 1020)
+
+    def child_case(self, *, deadline, fetch, timeout=False):
+        from types import SimpleNamespace
+        timeouts, files = [], {}
+        class Child:
+            returncode = 0
+            def communicate(self, timeout):
+                timeouts.append(timeout)
+                if timeout_case:
+                    raise subprocess.TimeoutExpired('synthetic', timeout, output=b'{}', stderr=b'synthetic')
+                return b'public synthetic', b''
+        timeout_case = timeout
+        def settle(child):
+            child.child.returncode = -15
+            return child.stdout, True, 'synthetic_settled'
+        core = SimpleNamespace(ProfileInterrupted=type('Interrupted', (Exception,), {}),
+                               settle_owned_timeout_group=unittest.mock.Mock(side_effect=settle))
+        owner = b.OwnedGit(Path('/synthetic'), {}, deadline, Path('/synthetic-output'), core)
+        with patch.object(time, 'time', return_value=1000), \
+             patch.object(subprocess, 'Popen', return_value=Child()) as popen, \
+             patch.object(b, 'save', side_effect=lambda path, raw: files.__setitem__(str(path), raw)), \
+             contextlib.redirect_stdout(io.StringIO()):
+            if timeout:
+                with self.assertRaisesRegex(b.Refusal, 'owned_child_incomplete'):
+                    owner.run([b.GIT], fetch=fetch)
+            else:
+                self.assertEqual(owner.run([b.GIT], fetch=fetch).returncode, 0)
+        popen.assert_called_once()
+        return timeouts, files, core
+
+    def test_actual_child_uses_shared_remaining_and_metadata_cap(self):
+        self.assertEqual(self.child_case(deadline=1880, fetch=True)[0], [880])
+        self.assertEqual(self.child_case(deadline=1430, fetch=True)[0], [430])
+        self.assertEqual(self.child_case(deadline=1880, fetch=False)[0], [60])
+
+    def test_timeout_keeps_evidence_and_calls_owned_cleanup_once(self):
+        timeouts, files, core = self.child_case(deadline=1880, fetch=True, timeout=True)
+        self.assertEqual(timeouts, [880])
+        core.settle_owned_timeout_group.assert_called_once()
+        status = json.loads(next(v for k, v in files.items() if k.endswith('.status.private.json')))
+        self.assertTrue(status['timedOut']); self.assertTrue(status['cleanupSettled'])
+        self.assertEqual(status['exitCode'], -15)
+        self.assertEqual(next(v for k, v in files.items() if k.endswith('.stdout.redacted.private')), b'{}')
+
+    def test_expired_actual_child_budget_refuses_without_launch_or_cleanup(self):
+        from types import SimpleNamespace
+        core = SimpleNamespace(settle_owned_timeout_group=unittest.mock.Mock())
+        owner = b.OwnedGit(Path('/synthetic'), {}, 1000, Path('/unused'), core)
+        with patch.object(time, 'time', return_value=1000), self.assertRaisesRegex(b.Refusal, 'shared_deadline'):
+            owner.run([b.GIT], fetch=True)
+        self.assertEqual(owner.ordinal, 0)
+        core.settle_owned_timeout_group.assert_not_called()
+
+
+if __name__ == '__main__': unittest.main()

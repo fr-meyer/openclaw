@@ -1,3 +1,4 @@
+import { assertBoundedMemoryOperation, boundedMemoryAdmissionActive, MemoryAdmissionRefused } from "./bounded-admission.js";
 import { randomUUID } from "node:crypto";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { resolveEmbeddingInputFormatVersion } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
@@ -21,6 +22,7 @@ import {
   type EmbeddingProvider,
   type EmbeddingProviderRuntime,
 } from "./embeddings.js";
+import type { MemoryCandidateManifest, MemoryCandidateStamp } from "./manager-candidate.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
 import { memoryDatabaseTableExists, readMemoryDatabaseRevision } from "./manager-db-kernel.js";
 import { cleanupAgedMemoryReindexTempFiles, removeMemoryDatabaseFiles } from "./manager-db.js";
@@ -99,6 +101,8 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
   protected abstract releaseProvider(provider: EmbeddingProvider): void;
   protected fallbackProviderInitPromise: Promise<boolean> | null = null;
   protected syncProviderGeneration: MemorySyncProviderGeneration | null = null;
+  protected abstract assertNoBatchSubmissionQuarantine(): Promise<void>;
+  protected abstract commitBatchSubmissionQuarantine(): Promise<void>;
 
   protected abstract beginSyncProviderGeneration(options?: { forceFtsOnly?: boolean }): void;
   protected abstract endSyncProviderGeneration(): void;
@@ -188,6 +192,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
     const hasTargetSessionRequest = hasTargetedSessionSyncParams(params);
     let needsFullReindex = Boolean(params?.force && !hasTargetSessionRequest);
     try {
+      await this.assertNoBatchSubmissionQuarantine();
       // An unavailable configured provider must not replace semantic vectors
       // with FTS-only rows; fresh and already-FTS-only indexes remain safe.
       this.assertFtsOnlySyncAllowed();
@@ -329,6 +334,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
             this.recordAutomaticRebuild();
           }
           await this.runInPlaceReindex(progress);
+          await this.commitBatchSubmissionQuarantine();
           return;
         }
 
@@ -343,6 +349,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
           targetArchiveFiles: targetArchiveFiles ? Array.from(targetArchiveFiles) : undefined,
           progress: progress ?? undefined,
         });
+        await this.commitBatchSubmissionQuarantine();
       } catch (err) {
         this.dirty ||= this.sources.has("memory");
         const reason = formatErrorMessage(err);
@@ -358,6 +365,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
             this.beginSyncProviderGeneration();
             await this.runInPlaceReindex(progress);
           }
+          await this.commitBatchSubmissionQuarantine();
           return;
         }
         if (!this.provider && this.fts.enabled && isMemoryEmbeddingOperationError(err)) {
@@ -438,6 +446,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
   }
 
   protected async activateFallbackProvider(reason: string): Promise<boolean> {
+    assertBoundedMemoryOperation(this.agentId, true);
     if (this.closed) {
       return false;
     }
@@ -517,18 +526,30 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
     return true;
   }
 
-  private async runInPlaceReindex(progress?: MemorySyncProgressState): Promise<void> {
+  protected async runInPlaceReindex(
+    progress?: MemorySyncProgressState,
+    candidate?: {
+      databasePath: string;
+      stamp: MemoryCandidateStamp;
+      expected: { provider: string; model: string; dimensions: number };
+      signal?: AbortSignal;
+      onSourceWork: () => void;
+    },
+  ): Promise<MemoryCandidateManifest | undefined> {
     // Build outside the shared agent DB, then publish only memory-owned tables
     // in one short transaction so failed rebuilds leave the current index usable.
     const dbPath = resolveUserPath(this.settings.store.databasePath);
-    const tempDbPath = `${dbPath}.memory-reindex-${randomUUID()}`;
+    const tempDbPath = candidate?.databasePath ?? `${dbPath}.memory-reindex-${randomUUID()}`;
     const originalDb = this.db;
     const originalRetryState = this.snapshotReindexRetryState();
     const shouldRetryMemoryOnFailure = this.sources.has("memory");
     const shouldRetrySessionsOnFailure = this.shouldSyncSessions(undefined, true);
     let shadowCleanup: MemoryIndexDatabase | undefined;
+    let retainCandidate = false;
     try {
-      await cleanupAgedMemoryReindexTempFiles(dbPath);
+      if (!candidate) {
+        await cleanupAgedMemoryReindexTempFiles(dbPath);
+      }
       const originalRevision = readMemoryDatabaseRevision(originalDb);
       const shadow = MemoryIndexDatabase.openShadow(tempDbPath, this.settings.store.vector.enabled);
       shadowCleanup = shadow;
@@ -545,6 +566,23 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
             ftsTokenizer: this.settings.store.fts.tokenizer,
           });
 
+          if (candidate) {
+            candidate.signal?.throwIfAborted();
+            // Store export identity in existing SQLite metadata before source work
+            // can submit a provider request. No new journal or sidecar state owner.
+            await this.withDatabaseWrite(() => this.writeMeta({
+              model: candidate.expected.model,
+              provider: candidate.expected.provider,
+              providerKey: this.syncProviderGeneration?.providerKey,
+              chunkTokens: this.settings.chunking.tokens,
+              chunkOverlap: this.settings.chunking.overlap,
+              candidate: { ...candidate.stamp, candidateFileIdentity: readMemoryShadowIdentity(tempDbPath) },
+            }));
+            candidate.signal?.throwIfAborted();
+            // Any failure after admission may have paid results or UNKNOWN work.
+            retainCandidate = true;
+            candidate.onSourceWork();
+          }
           await this.executeSourceSync({
             shouldSyncMemory: shouldRetryMemoryOnFailure,
             shouldSyncSessions: shouldRetrySessionsOnFailure,
@@ -558,7 +596,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
             ? this.syncProviderGeneration.provider
             : this.provider;
           const vectorIndexComplete = syncProvider === null || this.vector.available === true;
+          candidate?.signal?.throwIfAborted();
           const nextMeta: MemoryIndexMeta = {
+            ...(candidate ? { candidate: { ...candidate.stamp, candidateFileIdentity: readMemoryShadowIdentity(tempDbPath), phase: "complete" as const } } : {}),
             model: syncProvider?.model ?? "fts-only",
             provider: syncProvider?.id ?? "none",
             providerKey: this.syncProviderGeneration
@@ -583,6 +623,13 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
             nextMeta.vectorDims = this.vector.dims;
           }
 
+          if (candidate && (
+            nextMeta.provider !== candidate.expected.provider ||
+            nextMeta.model !== candidate.expected.model ||
+            nextMeta.vectorDims !== candidate.expected.dimensions
+          )) {
+            throw new Error("Memory candidate provider/model/dimensions differ from approved identity");
+          }
           await this.withDatabaseWrite(() => this.writeMeta(nextMeta));
           return {
             nextMeta,
@@ -595,6 +642,15 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
         }
       });
 
+      if (candidate) {
+        // No publication, canonical cache prune or live vector/FTS state install.
+        return {
+          databasePath: tempDbPath,
+          fileIdentity: readMemoryShadowIdentity(tempDbPath),
+          meta: rebuilt.nextMeta,
+          activation: "manual-only",
+        };
+      }
       await withMemoryWorkspaceLock(this.workspaceDir, async () => {
         await withMemoryIndexGeneration(dbPath, "write", async () => {
           await this.publishedDatabase.publishShadow(
@@ -640,7 +696,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
       throw err;
     } finally {
       try {
-        if (shadowCleanup?.shadowReleased) {
+        if (shadowCleanup?.shadowReleased && !retainCandidate) {
           shadowCleanup.assertShadowPath();
           await removeMemoryDatabaseFiles(tempDbPath);
         }

@@ -1,0 +1,216 @@
+name: future-v109-grouped-validation-20261030
+run-name: future-v109-grouped-validation-20261030
+on:
+  pull_request:
+    branches: [release-pipeline/v105-image-only-20261024]
+    types: [opened, reopened, synchronize]
+    paths:
+      - .github/workflows/future-v109-source-validation.yml
+      - scripts/fork-release/source_validation_v109.py
+      - scripts/fork-release/source_validation_contract_v109.py
+      - scripts/fork-release/source_validation_selection_v109.py
+      - scripts/fork-release/lockfile_policy_v109.py
+      - scripts/fork-release/source_validation_v108.py
+      - scripts/fork-release/composite_closed_usage.py
+      - scripts/fork-release/composite_closed_usage_v109.py
+      - scripts/fork-release/preflight.py
+      - scripts/fork-release/release.py
+      - scripts/fork-release/source_reconciliation_v109.py
+      - scripts/fork-release/native_tests.mjs
+      - scripts/fork-release/fixtures/v2026.10.9.official.tag.raw
+      - scripts/fork-release/fixtures/v109-lock-preparation.yml
+      - scripts/fork-release/fixtures/v109-source-validation.yml
+      - scripts/fork-release/candidates/v2026.10.9-source-only/**
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: ${{ contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->') && 'future-v109-source-hold-pr28' || 'future-v109-source-validation-pr28' }}
+  cancel-in-progress: false
+# DISARMED preparation only. Replace these two literals together with genuine
+# approved bindings; their exact equality is independently checked by the owner.
+env:
+  V109_APPROVED_AT: DISARMED
+  V109_EXPIRES_AT: DISARMED
+  PYTHONDONTWRITEBYTECODE: '1'
+defaults:
+  run:
+    shell: bash
+jobs:
+  admission:
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.pull_request.number == 28 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v107-source-binding' && !contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      source_sha: ${{ steps.admission.outputs.source_sha }}
+      request_sha: ${{ steps.admission.outputs.request_sha }}
+      pipeline_head: ${{ steps.admission.outputs.pipeline_head }}
+      run_id: ${{ steps.admission.outputs.run_id }}
+      phase: ${{ steps.admission.outputs.phase }}
+    steps:
+      - name: Start shared deadline before checkout
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import os, time
+          def utc(v):
+              if not isinstance(v, str) or len(v) != 20 or not v.endswith('Z'):
+                  raise SystemExit('v9.disarmed_or_invalid_clock')
+              return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+          start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
+          now = int(time.time())
+          if end-start != 96*3600 or not start <= now < end-60:
+              raise SystemExit('v9.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout reviewed pipeline closure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Exact public admission and cumulative accounting
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 pipeline/scripts/fork-release/source_validation_v109.py admit
+  source:
+    if: ${{ !contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->') }}
+    name: source (${{ matrix.profile }})
+    needs: admission
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.minutes }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - profile: dependency
+            minutes: 60
+          - profile: types-production
+            minutes: 90
+          - profile: types-tests
+            minutes: 90
+          - profile: types-scripts
+            minutes: 90
+          - profile: workboard-1
+            minutes: 60
+          - profile: workboard-2
+            minutes: 60
+          - profile: models-1
+            minutes: 60
+          - profile: models-2
+            minutes: 60
+          - profile: sqlite
+            minutes: 60
+          - profile: doctor-1
+            minutes: 90
+          - profile: doctor-2
+            minutes: 75
+          - profile: doctor-3
+            minutes: 75
+          - profile: memory
+            minutes: 60
+          - profile: pipeline-contracts
+            minutes: 45
+          - profile: compatibility
+            minutes: 60
+    env:
+      V109_ADMISSION_REQUEST_SHA256: ${{ needs.admission.outputs.request_sha }}
+      V109_ADMISSION_PIPELINE_HEAD: ${{ needs.admission.outputs.pipeline_head }}
+      V109_ADMISSION_SOURCE_SHA: ${{ needs.admission.outputs.source_sha }}
+      V109_ADMISSION_RUN_ID: ${{ needs.admission.outputs.run_id }}
+    steps:
+      - name: Start shared deadline before checkout
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import os, time
+          def utc(v):
+              if not isinstance(v, str) or len(v) != 20 or not v.endswith('Z'):
+                  raise SystemExit('v9.disarmed_or_invalid_clock')
+              return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+          start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
+          now = int(time.time())
+          if end-start != 96*3600 or not start <= now < end-60:
+              raise SystemExit('v9.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout reviewed pipeline closure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Checkout exact admitted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ needs.admission.outputs.source_sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - name: Pinned public Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+          check-latest: false
+      - name: Verify and acquire local public closure
+        run: python3 pipeline/scripts/fork-release/source_validation_v109.py fetch-closure --profile '${{ matrix.profile }}'
+      - name: Run fresh secretless source profile
+        run: python3 pipeline/scripts/fork-release/source_validation_v109.py run --profile '${{ matrix.profile }}'
+  final:
+    if: always() && !contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->')
+    needs: [admission, source]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      V109_ADMISSION_RESULT: ${{ needs.admission.result }}
+      V109_SOURCE_RESULT: ${{ needs.source.result }}
+    steps:
+      - name: Start shared deadline before checkout
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import os, time
+          def utc(v):
+              if not isinstance(v, str) or len(v) != 20 or not v.endswith('Z'):
+                  raise SystemExit('v9.disarmed_or_invalid_clock')
+              return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+          start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
+          now = int(time.time())
+          if end-start != 96*3600 or not start <= now < end-60:
+              raise SystemExit('v9.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout reviewed pipeline closure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Retain truthful fresh-coverage result
+        run: python3 pipeline/scripts/fork-release/source_validation_v109.py finalize
+      - name: Upload bounded safe result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v109-source-validation-${{ github.run_id }}-attempt1
+          path: ${{ runner.temp }}/v109-source-result/source-validation.json
+          if-no-files-found: error
+          retention-days: 3
+          include-hidden-files: false

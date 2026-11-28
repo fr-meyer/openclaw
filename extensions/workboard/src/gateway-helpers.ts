@@ -1,3 +1,4 @@
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { ErrorCodes, errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
@@ -125,6 +126,7 @@ export async function resolveGatewayWorkspaceMutationAccess(
 }
 
 export function createWorkboardDispatchHandler(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: OpenClawPluginApi;
   store: WorkboardStore;
 }) {
@@ -132,22 +134,44 @@ export function createWorkboardDispatchHandler(params: {
     { params: requestParams, client, context }: GatewayMethodContext,
     options: { supportsMaxStarts: boolean; supportsCardId?: boolean; directCard?: boolean },
   ) => {
-    const {
-      boardId,
-      cardId: rawCardId,
-      intentRunId: rawIntentRunId,
-      maxStarts: rawMaxStarts,
-    } = asRecord(requestParams);
+    const input = asRecord(requestParams);
+    const rawCardId = input.cardId;
     if (!options.directCard && !options.supportsCardId && rawCardId !== undefined) {
       throw new Error("cardId requires workboard.cards.dispatchWithOptions.");
     }
-    let cardId = options.directCard ? readId(requestParams) : undefined;
-    if (!options.directCard && rawCardId !== undefined) {
-      if (typeof rawCardId !== "string" || !rawCardId.trim()) {
-        throw new Error("cardId must be a non-empty string.");
-      }
-      cardId = rawCardId.trim();
+    if (
+      !options.directCard &&
+      rawCardId !== undefined &&
+      (typeof rawCardId !== "string" || !rawCardId.trim())
+    ) {
+      throw new Error("cardId must be a non-empty string.");
     }
+    const cardId = options.directCard
+      ? readId(input)
+      : typeof rawCardId === "string"
+        ? rawCardId.trim()
+        : undefined;
+    const intentRunId = input.intentRunId;
+    if (intentRunId !== undefined) {
+      if (!options.supportsCardId || !cardId) {
+        throw new Error("intentRunId requires one exact card through dispatchWithOptions.");
+      }
+      if (
+        typeof intentRunId !== "string" ||
+        intentRunId.length !== 43 ||
+        !/^wb-[0-9a-f]{40}$/.test(intentRunId)
+      ) {
+        throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+      }
+    }
+    const { boardId: rawBoardId, maxStarts: rawMaxStarts } = input;
+    if (
+      Object.hasOwn(input, "boardId") &&
+      (typeof rawBoardId !== "string" || !rawBoardId.trim())
+    ) {
+      throw new Error("boardId must be a non-empty string.");
+    }
+    const boardId = typeof rawBoardId === "string" ? rawBoardId.trim() : undefined;
     if (!options.supportsMaxStarts && rawMaxStarts !== undefined) {
       throw new Error("maxStarts requires workboard.cards.dispatchWithOptions.");
     }
@@ -157,31 +181,21 @@ export function createWorkboardDispatchHandler(params: {
     if (cardId && maxStarts !== undefined && maxStarts !== 1) {
       throw new Error("maxStarts must be 1 when cardId is provided.");
     }
-    if (rawIntentRunId !== undefined && (!options.supportsCardId || !cardId)) {
-      throw new Error("intentRunId requires one exact card through dispatchWithOptions.");
-    }
-    if (
-      rawIntentRunId !== undefined &&
-      (typeof rawIntentRunId !== "string" ||
-        rawIntentRunId.length !== 43 ||
-        !/^wb-[0-9a-f]{40}$/.test(rawIntentRunId))
-    ) {
-      throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
-    }
     const provider = options.directCard
-      ? normalizeOptionalString(requestParams.provider)
+      ? normalizeOptionalString(input.provider)
       : undefined;
-    const model = options.directCard ? normalizeOptionalString(requestParams.model) : undefined;
+    const model = options.directCard ? normalizeOptionalString(input.model) : undefined;
     const result = await dispatchAndStartWorkboardCards({
+      liveExecutions: params.liveExecutions,
       store: params.store,
       subagent: params.api.runtime.subagent,
       worktrees: params.api.runtime.worktrees,
       options: {
-        ...(cardId ? { cardId, maxStarts: 1 } : {}),
-        boardId: typeof boardId === "string" ? boardId : undefined,
+        ...(cardId ? { cardId, maxStarts: 1, targetMode: options.directCard ? "start" : "dispatch" } : {}),
+        ...(typeof intentRunId === "string" ? { intentRunId } : {}),
+        boardId,
         ...(maxStarts !== undefined ? { maxStarts } : {}),
         ...(cardId && !options.directCard ? { targetMode: "dispatch" } : {}),
-        ...(typeof rawIntentRunId === "string" ? { intentRunId: rawIntentRunId } : {}),
         ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
         materializeWorktree: true,

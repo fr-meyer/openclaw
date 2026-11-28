@@ -61,6 +61,7 @@ import {
   registryRecord,
 } from "./full-release-validation-state.test-support.js";
 
+const REPOSITORY_UNDER_TEST = process.env.GITHUB_REPOSITORY || "openclaw/openclaw";
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 function runPlanSubprocess(overrides: Record<string, unknown>, env: Record<string, string> = {}) {
@@ -1206,6 +1207,7 @@ describe("release decision policy", () => {
           conclusion: "success",
           html_url: original.url,
           path: ".github/workflows/ci.yml@refs/heads/release-ci/tooling",
+          repository: { full_name: REPOSITORY_UNDER_TEST },
           run_attempt: 2,
           triggering_actor: { login: "release-operator" },
         }),
@@ -1308,6 +1310,12 @@ describe("release decision policy", () => {
         conclusion: "success",
         created_at: "2026-08-21T00:00:00Z",
         html_url: planned.url,
+        id: 101,
+        path: ".github/workflows/ci.yml",
+        repository: { full_name: REPOSITORY_UNDER_TEST },
+        run_attempt: 1,
+        status: "completed",
+        triggering_actor: { login: "github-actions[bot]" },
         updated_at: "2026-08-21T00:01:00Z",
       });
     };

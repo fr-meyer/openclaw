@@ -360,7 +360,10 @@ async function syncWorkboardLifecycleSessions(params: {
     const terminalRunId = terminalRunIdFromSession(session);
     if (
       terminalRunId &&
-      !workboardCardMatchesLifecycleLink(card, { sessionKey: session.key, runId: terminalRunId })
+      !workboardCardMatchesLifecycleLink(card, {
+        sessionKey: session.key,
+        runId: terminalRunId,
+      })
     ) {
       continue;
     }

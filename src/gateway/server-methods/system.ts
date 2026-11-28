@@ -216,6 +216,7 @@ export const systemHandlers: GatewayRequestHandlers = {
       (client.connect.role ?? "operator") !== "operator" ||
       client.internal?.authenticatedOperator !== true ||
       !approvedMethod ||
+      client.authenticationMethod !== method ||
       !client.connect.scopes?.includes(READ_SCOPE) ||
       !client.connId ||
       !client.gatewayBootId ||
@@ -227,16 +228,25 @@ export const systemHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "verified read unavailable"));
       return;
     }
-    const namespace = context.nodeWorkerGatewayNamespace;
-    if (!namespace) {
+    try {
+      readGatewayRequestMutationAuthority(options).assertCurrent();
+      client.connectionSignal.throwIfAborted();
+      const identity = context.readWorkerRuntimeIdentity?.();
+      if (
+        !identity ||
+        identity.bootId !== client.gatewayBootId ||
+        identity.namespace !== context.nodeWorkerGatewayNamespace
+      ) {
+        throw new Error("Gateway worker runtime identity mismatch");
+      }
+      const result: GatewayWorkerNamespaceGetResult = {
+        bootId: identity.bootId,
+        namespace: identity.namespace,
+      };
+      respond(true, result, undefined);
+    } catch {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "worker namespace unavailable"));
-      return;
     }
-    const result: GatewayWorkerNamespaceGetResult = {
-      bootId: client.gatewayBootId,
-      namespace,
-    };
-    respond(true, result, undefined);
   },
   "gateway.identity.get": async ({ respond }) => {
     const identity = await loadOrCreateProcessDeviceIdentityAsync();

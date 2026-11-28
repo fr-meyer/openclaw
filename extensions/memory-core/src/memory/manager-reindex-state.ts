@@ -8,6 +8,8 @@ import {
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 
+import type { MemoryCandidateStamp } from "./manager-candidate.js";
+
 export type MemoryIndexIdentityState =
   | Exclude<HostMemoryIndexIdentityState, { status: "mismatched"; owner: "openclaw" }>
   | (Extract<HostMemoryIndexIdentityState, { status: "mismatched"; owner: "openclaw" }> & {
@@ -15,6 +17,7 @@ export type MemoryIndexIdentityState =
     });
 
 export type MemoryIndexMeta = {
+  candidate?: MemoryCandidateStamp;
   model: string;
   provider: string;
   providerKey?: string;

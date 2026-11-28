@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MemorySearchResult } from "../memory-host-sdk/host/types.js";
 import type { MemorySearchHit } from "../plugins/memory-provider-types.js";
 import {
@@ -251,15 +251,22 @@ describe("project memory bootstrap", () => {
   });
 
   it("cites legacy chunks by start line from the already-loaded runtime", async () => {
+    const startedAt = Date.now();
     const lines = await prepareEntries([
       { ...entries[0]!, startLine: 5, endLine: 6, source: undefined as never },
     ]);
 
+    const finishedAt = Date.now();
+    expect(runtimeMocks.getManager).toHaveBeenCalledOnce();
     expect(runtimeMocks.getManager).toHaveBeenCalledWith({
       cfg: {},
       agentId: "main",
       purpose: "default",
+      admission: { signal: undefined, deadlineMs: expect.any(Number) },
     });
+    const { admission } = runtimeMocks.getManager.mock.calls[0]![0];
+    expect(admission.deadlineMs).toBeGreaterThanOrEqual(startedAt + 1_000);
+    expect(admission.deadlineMs).toBeLessThanOrEqual(finishedAt + 1_000);
     expect(runtimeMocks.getProvider).not.toHaveBeenCalled();
     expect(lines).toContain("- Use the release helper. (Source: MEMORY.md#L5)");
   });
@@ -508,4 +515,189 @@ describe("native project memory bootstrap", () => {
       expect(close).toHaveBeenCalledOnce();
     },
   );
+});
+
+// The existing closed runtime mock isolates host waiting/lease ownership, not provider internals.
+describe("project recall total budget and cancellation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runtimeMocks.getManager.mockReset();
+    runtimeMocks.getProvider.mockReset();
+    runtimeMocks.legacyRuntime = undefined;
+    runtimeMocks.providerRuntime = { open: vi.fn() };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const params = { cfg: {}, agentId: "main", activeProjectKeys: ["alpha"] };
+  const context = (signal: AbortSignal) => ({
+    authority: { kind: "host" as const, operation: "project-budget-test" },
+    signal,
+    assertCurrent() {},
+  });
+  const gate = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((accept) => { resolve = accept; });
+    return { promise, resolve };
+  };
+
+  it.each(["empty", "no-runtime", "native"])("preserves pre-abort reason on %s", async (route) => {
+    const caller = new AbortController();
+    const reason = { canceled: route };
+    caller.abort(reason);
+    if (route === "no-runtime") runtimeMocks.providerRuntime = undefined;
+    await expect(prepareProjectMemoryBootstrap({
+      ...params,
+      activeProjectKeys: route === "empty" ? [] : params.activeProjectKeys,
+      context: context(caller.signal),
+    })).rejects.toBe(reason);
+    expect(runtimeMocks.getProvider).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["open", "candidates", "close"])(
+    "bounds hanging native %s and releases the eventual lease once",
+    async (stage) => {
+      const blocked = gate();
+      const entered = gate();
+      const released = gate();
+      const close = vi.fn(async () => {
+        if (stage === "close") { entered.resolve(); await blocked.promise; }
+        released.resolve();
+      });
+      const candidates = vi.fn(async () => {
+        if (stage === "candidates") { entered.resolve(); await blocked.promise; }
+        return { hits: [{
+          reference: { providerId: "records", id: "late" },
+          excerpt: "Late result must not enter prompt",
+          automaticRecall: { eligible: true, projectKeys: ["alpha"] },
+        }] };
+      });
+      runtimeMocks.getProvider.mockImplementation(async () => {
+        if (stage === "open") { entered.resolve(); await blocked.promise; }
+        return { provider: { capabilities: { candidates: ["project"] }, candidates, close } };
+      });
+      const pending = prepareProjectMemoryBootstrap(params);
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(pending).resolves.toEqual([]);
+      blocked.resolve();
+      await released.promise;
+      expect(close).toHaveBeenCalledOnce();
+      if (stage === "open") expect(candidates).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it.each(["open", "candidates", "close"])(
+    "propagates real parent abort during %s without abandoning late release",
+    async (stage) => {
+      const caller = new AbortController();
+      const blocked = gate();
+      const entered = gate();
+      const released = gate();
+      const reason = { source: "parent", stage };
+      const close = vi.fn(async () => {
+        if (stage === "close") { entered.resolve(); await blocked.promise; }
+        released.resolve();
+      });
+      const candidates = vi.fn(async () => {
+        if (stage === "candidates") { entered.resolve(); await blocked.promise; }
+        return { hits: [{
+          reference: { providerId: "records", id: "late" },
+          excerpt: "Late result must not enter prompt",
+          automaticRecall: { eligible: true, projectKeys: ["alpha"] },
+        }] };
+      });
+      runtimeMocks.getProvider.mockImplementation(async ({ context: callerContext }) => {
+        expect(callerContext.signal).toBe(caller.signal);
+        if (stage === "open") { entered.resolve(); await blocked.promise; }
+        return { provider: { capabilities: { candidates: ["project"] }, candidates, close } };
+      });
+      const pending = prepareProjectMemoryBootstrap({ ...params, context: context(caller.signal) });
+      const checked = expect(pending).rejects.toBe(reason);
+      await entered.promise;
+      caller.abort(reason);
+      await checked;
+      blocked.resolve();
+      await released.promise;
+      expect(close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it("lets observable parent cancellation beat same-tick deadline fallback", async () => {
+    const caller = new AbortController();
+    const reason = new Error("parent canceled");
+    const blocked = gate();
+    runtimeMocks.providerRuntime = undefined;
+    runtimeMocks.legacyRuntime = { getMemorySearchManager: runtimeMocks.getManager };
+    runtimeMocks.getManager.mockImplementation(async () => { await blocked.promise; return { manager: null }; });
+    setTimeout(() => caller.abort(reason), 1_000);
+    const pending = prepareProjectMemoryBootstrap({ ...params, context: context(caller.signal) });
+    const checked = expect(pending).rejects.toBe(reason);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await checked;
+    blocked.resolve();
+  });
+
+  it("passes the original absolute deadline and never closes a borrowed legacy manager", async () => {
+    const close = vi.fn();
+    const listCuratedProjectCandidates = vi.fn();
+    const manager = { close, listCuratedProjectCandidates };
+    const entered = gate();
+    let resolveManager!: (value: { manager: typeof manager }) => void;
+    const managerResult = new Promise<{ manager: typeof manager }>((resolve) => {
+      resolveManager = resolve;
+    });
+    runtimeMocks.providerRuntime = undefined;
+    runtimeMocks.legacyRuntime = { getMemorySearchManager: runtimeMocks.getManager };
+    const start = Date.now();
+    // No assertions in this callback: optional-recall errors are intentionally caught.
+    runtimeMocks.getManager.mockImplementation(() => {
+      entered.resolve();
+      return managerResult;
+    });
+    const pending = prepareProjectMemoryBootstrap(params);
+    await entered.promise;
+    expect(runtimeMocks.getManager).toHaveBeenCalledOnce();
+    expect(runtimeMocks.getManager).toHaveBeenCalledWith({
+      cfg: params.cfg,
+      agentId: params.agentId,
+      purpose: "default",
+      admission: { signal: undefined, deadlineMs: start + 1_000 },
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(pending).resolves.toEqual([]);
+    resolveManager({ manager });
+    await expect(managerResult).resolves.toEqual({ manager });
+    // Drain the loader continuation attached before this late manager resolution.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runtimeMocks.getManager).toHaveBeenCalledOnce();
+    expect(listCuratedProjectCandidates).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("observes a late host-owned open rejection without claiming its lease", async () => {
+    const blocked = gate();
+    const entered = gate();
+    const released = gate();
+    const close = vi.fn(async () => { released.resolve(); });
+    // Model memory-runtime's own late-open rejection cleanup: no handle is returned.
+    runtimeMocks.getProvider.mockImplementation(async () => {
+      entered.resolve();
+      await blocked.promise;
+      await close();
+      throw new Error("host rejected stale caller after cleaning its provider");
+    });
+    const pending = prepareProjectMemoryBootstrap(params);
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(pending).resolves.toEqual([]);
+    blocked.resolve();
+    await released.promise;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
 });

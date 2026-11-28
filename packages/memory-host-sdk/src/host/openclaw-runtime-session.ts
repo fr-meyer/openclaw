@@ -436,3 +436,8 @@ export async function readSessionResetRecallCutoffInWorker(
     await import("../../../../src/config/sessions/session-transcript-read-worker-runtime.js");
   return read(...args);
 }
+
+export { readOwnedWarmSessionSnapshotSync } from "../../../../src/config/sessions/session-accessor.js";
+export { captureSessionTranscriptStorageEnvironment };
+
+export { prepareOwnedSessionEntryProjectionInWorker } from "../../../../src/config/sessions/session-transcript-read-worker-runtime.js";

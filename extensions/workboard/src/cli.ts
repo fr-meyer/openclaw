@@ -28,7 +28,7 @@ type DispatchOptions = GatewayOptions & {
   maxStarts?: number;
 };
 
-function invalidCliArgument(message: string): Error {
+function invalidCliArgument(message: string): Error & { code: string; exitCode: number } {
   return Object.assign(new Error(message), {
     name: "InvalidArgumentError",
     code: "commander.invalidArgument",

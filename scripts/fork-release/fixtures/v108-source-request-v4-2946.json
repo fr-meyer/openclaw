@@ -1,0 +1,49 @@
+{
+  "schema": "openclaw.fork-source-validation-request.v4",
+  "campaignId": "future-v108-source-validation-20261027",
+  "profilePolicy": "five-gate-repair-v1",
+  "round": 5,
+  "lifetimeOperatorRound": 6,
+  "profiles": [
+    "dependency",
+    "types-tests",
+    "types-scripts",
+    "models-1",
+    "doctor-1",
+    "compatibility",
+    "pipeline-contracts"
+  ],
+  "sourceSha": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+  "sourceTree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4",
+  "firstSourceSha": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+  "firstSourceTree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4",
+  "sourceAuthorization": "future-v108-five-gate-repair-20261028T1007Z",
+  "manifestSha256": "39436d06465c651f63ded013530f91aaf549932dd32390d31b809f8982f527f0",
+  "inventorySha256": "5f9f2f96f3303487daccb5a59177b7ee7ffa6457a0d5bac98187683b353d8ec7",
+  "settledUsageSha256": "69a4ab1b30f00b95312ee217fd87dbf32249abd0686bcb941e704d34c9855047",
+  "priorRunIds": [
+    "40607329263",
+    "40609889437",
+    "40616416909",
+    "40639374411",
+    "40647629182",
+    "40681376480"
+  ],
+  "sourceWitness": {
+    "schema": "openclaw.v108.fixture-generator-equivalence.v1",
+    "scope": "approved-fixture-and-generator-source-remediation",
+    "closedPrefixSha256": "69a4ab1b30f00b95312ee217fd87dbf32249abd0686bcb941e704d34c9855047",
+    "stageBase": {
+      "parentSha": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+      "parentTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+      "changedPaths": [
+        "scripts/generate-npm-package-lock.mts",
+        "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+        "test/scripts/generate-npm-package-lock.test.ts",
+        "test/v108-remediation-security.test.mjs"
+      ],
+      "unchangedTreeSha256": "2f57194e68abae82570aa87279e597f9aad4d067c42ca2d0e9931ebf98c8de71"
+    },
+    "corrective": null
+  }
+}

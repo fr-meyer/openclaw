@@ -19,6 +19,8 @@ import type { RestoredCronContinuation } from "./agent-handler-helpers.js";
 import type { PreparedAgentRunUserTurn, prepareAgentRunUserTurn } from "./agent-run-user-turn.js";
 import type { AgentTurnIo } from "./types.js";
 
+import type { AgentTurnExecutionSettlement } from "./execution-settlement.types.js";
+
 export type PreparedAgentRunModelRuntime =
   | {
       preparedModelRuntimeLease: PreparedModelRuntimeLease;
@@ -33,6 +35,7 @@ export type PreparedAgentRunModelRuntime =
     };
 
 export type PreparedAgentRunDispatch = PreparedAgentRunModelRuntime & {
+  executionSettlement?: AgentTurnExecutionSettlement;
   activeGatewayWorkAdmission: SessionWorkAdmissionLease;
   activeRunAbort: ReturnType<typeof registerChatAbortController>;
   cronCreatorAuthority?: GatewayCronCreatorAuthorityAdmission;

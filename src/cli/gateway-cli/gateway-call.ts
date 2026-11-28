@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { callGatewayVerifiedRead } from "./call.js";
 import {
   callGatewayVerifiedReadFromCli,
   resolveGatewayRpcOptionsWithLocalPort,
@@ -36,9 +37,6 @@ export async function runGatewayCallCommand(params: {
       "gateway.workerNamespace.get requires --verified-read <boot-id> and --expect-url <url>.",
     );
   }
-  if (bootId !== undefined && method !== "gateway.workerNamespace.get") {
-    throw new Error("--verified-read is only available for gateway.workerNamespace.get.");
-  }
   if (bootId === undefined) {
     return {
       result: await params.callReadOnly(method, rpcOpts, callParams),
@@ -49,6 +47,13 @@ export async function runGatewayCallCommand(params: {
   const expectUrl = rpcOpts.expectUrl;
   if (!expectUrl) {
     throw new Error("--verified-read requires --expect-url <url>.");
+  }
+  if (method !== "gateway.workerNamespace.get") {
+    return {
+      result: await callGatewayVerifiedRead(method, rpcOpts, callParams, bootId),
+      verifiedRead: true,
+      json: rpcOpts.json === true,
+    };
   }
   if (
     typeof callParams !== "object" ||

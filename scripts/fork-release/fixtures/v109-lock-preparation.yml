@@ -1,0 +1,127 @@
+name: future-v109-grouped-validation-20261030
+run-name: future-v109-grouped-validation-20261030
+on:
+  pull_request:
+    branches: [release-pipeline/v105-image-only-20261024]
+    types: [opened, reopened, synchronize]
+    paths:
+      - .github/workflows/future-v109-source-validation.yml
+      - scripts/fork-release/source_validation_v109.py
+      - scripts/fork-release/source_validation_contract_v109.py
+      - scripts/fork-release/source_validation_selection_v109.py
+      - scripts/fork-release/lockfile_policy_v109.py
+      - scripts/fork-release/source_validation_v108.py
+      - scripts/fork-release/composite_closed_usage.py
+      - scripts/fork-release/composite_closed_usage_v109.py
+      - scripts/fork-release/preflight.py
+      - scripts/fork-release/release.py
+      - scripts/fork-release/source_reconciliation_v109.py
+      - scripts/fork-release/native_tests.mjs
+      - scripts/fork-release/fixtures/v2026.10.9.official.tag.raw
+      - scripts/fork-release/fixtures/v109-lock-preparation.yml
+      - scripts/fork-release/fixtures/v109-source-validation.yml
+      - scripts/fork-release/candidates/v2026.10.9-source-only/**
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: future-v109-source-validation-pr28
+  cancel-in-progress: false
+# DISARMED preparation only. Replace these two literals together with genuine
+# approved bindings; their exact equality is independently checked by the owner.
+env:
+  V109_APPROVED_AT: DISARMED
+  V109_EXPIRES_AT: DISARMED
+  PYTHONDONTWRITEBYTECODE: '1'
+defaults:
+  run:
+    shell: bash
+jobs:
+  lock-preparation:
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.pull_request.number == 28 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v107-source-binding'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Start shared deadline before checkout
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import os, time
+          def utc(v):
+              if not isinstance(v, str) or len(v) != 20 or not v.endswith('Z'):
+                  raise SystemExit('v9.disarmed_or_invalid_clock')
+              return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+          start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
+          now = int(time.time())
+          if end-start != 96*3600 or not start <= now < end-60:
+              raise SystemExit('v9.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout reviewed pipeline closure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Exact public admission and cumulative accounting
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 pipeline/scripts/fork-release/source_validation_v109.py admit
+      - name: Checkout exact admitted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ steps.admission.outputs.source_sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - name: Pinned public Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+          check-latest: false
+      - name: Verify and acquire local public closure
+        env:
+          V109_ADMISSION_REQUEST_SHA256: ${{ steps.admission.outputs.request_sha }}
+          V109_ADMISSION_PIPELINE_HEAD: ${{ steps.admission.outputs.pipeline_head }}
+          V109_ADMISSION_SOURCE_SHA: ${{ steps.admission.outputs.source_sha }}
+          V109_ADMISSION_RUN_ID: ${{ steps.admission.outputs.run_id }}
+        run: python3 pipeline/scripts/fork-release/source_validation_v109.py fetch-closure
+      - name: Derive lock only with secretless pinned pnpm
+        id: derivation
+        env:
+          V109_ADMISSION_REQUEST_SHA256: ${{ steps.admission.outputs.request_sha }}
+          V109_ADMISSION_PIPELINE_HEAD: ${{ steps.admission.outputs.pipeline_head }}
+          V109_ADMISSION_SOURCE_SHA: ${{ steps.admission.outputs.source_sha }}
+          V109_ADMISSION_RUN_ID: ${{ steps.admission.outputs.run_id }}
+        run: python3 pipeline/scripts/fork-release/source_validation_v109.py derive
+      - name: Retain bounded unvalidated lock diagnostic on refusal
+        if: failure() && steps.derivation.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v109-lock-diagnostic-${{ github.run_id }}-attempt1
+          path: |
+            ${{ runner.temp }}/v109-lock-diagnostic/pnpm-lock.yaml
+            ${{ runner.temp }}/v109-lock-diagnostic/lock.diff
+            ${{ runner.temp }}/v109-lock-diagnostic/lock-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 3
+          include-hidden-files: false
+      - name: Retain exact lock derivation for review
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v109-lock-preparation-${{ github.run_id }}-attempt1
+          path: |
+            ${{ runner.temp }}/v109-lock-artifact/pnpm-lock.yaml
+            ${{ runner.temp }}/v109-lock-artifact/lock.diff
+            ${{ runner.temp }}/v109-lock-artifact/generation.json
+          if-no-files-found: error
+          retention-days: 3
+          include-hidden-files: false

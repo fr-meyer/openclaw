@@ -156,6 +156,10 @@ class SessionSyncYieldHarness extends MemorySyncTestHarness {
     });
   }
 
+  protected async assertNoBatchSubmissionQuarantine(): Promise<void> {}
+
+  protected async commitBatchSubmissionQuarantine(): Promise<void> {}
+
   protected override async listSessionCorpusEntries(): Promise<SessionTranscriptCorpusEntry[]> {
     return this.corpusFiles.map((sessionFile, index) => ({
       agentId: this.agentId,

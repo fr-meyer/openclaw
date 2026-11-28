@@ -261,6 +261,7 @@ export function prepareSqliteQueryIterator<Params, Row = unknown>(
 export function iterateSqliteQuerySync<Row>(
   db: DatabaseSync,
   query: Compilable<Row>,
+  observeNext?: (elapsedMs: number) => void,
 ): IterableIterator<Row> {
   const owner = captureSqliteReaderOwner();
   return (function* () {
@@ -274,10 +275,32 @@ export function iterateSqliteQuerySync<Row>(
       }
       const parameters = compiledQuery.parameters as SQLInputValue[];
       const iterator = statement.iterate(...parameters);
+      // Adapter preserves for-of IteratorClose; owner was captured at invocation.
+      const observed = observeNext ? {
+        [Symbol.iterator]() {
+          // Acquire the native iterator record only when for-of does, after retain.
+          const source = iterator[Symbol.iterator]();
+          const next = source.next;
+          return {
+            next() {
+              const start = performance.now();
+              try { return Reflect.apply(next, source, []); }
+              finally {
+                try { observeNext(Math.max(0, performance.now() - start)); } catch { /* isolated */ }
+              }
+            },
+            get return() {
+              // GetMethod is evaluated once at IteratorClose, with its receiver kept.
+              const close = source.return;
+              return close == null ? undefined : () => Reflect.apply(close, source, []);
+            },
+          };
+        },
+      } : iterator;
       const reader = retainSqliteReader(db, "kysely iterator", owner);
       let failed = false;
       try {
-        for (const row of iterator) {
+        for (const row of observed) {
           reader.progress();
           yield row as Row;
         }

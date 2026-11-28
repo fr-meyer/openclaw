@@ -244,7 +244,12 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
     let scopedChannelRuntime:
       | { source: PluginRuntime["channel"]; value: PluginRuntime["channel"] }
       | undefined;
-    const projectTasks = createPackagedMergeguezTaskFlowProjector(record);
+    const projectTasks = createPackagedMergeguezTaskFlowProjector(record, {
+      assertCurrent: assertRuntimeCurrent,
+      record,
+      invoke: invokeSelectedRuntime,
+      currentView: currentInvocationRegistry,
+    });
     const runtime = new Proxy(registryParams.runtime, {
       get(_target, prop, receiver) {
         const getRuntimeProperty = () => readRuntimeProperty(record, prop, receiver);
@@ -686,7 +691,17 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
                 action: "run",
                 sessionKeys: [params.sessionKey],
               });
-              return await subagent.run(params);
+              const result = await subagent.run(params);
+              const execution = result.execution;
+              return execution
+                ? {
+                    ...result,
+                    execution: {
+                      observeSettlement: () =>
+                        runWithPluginScope(() => execution.observeSettlement()),
+                    },
+                  }
+                : result;
             });
           },
           waitForRun: (params) => runWithPluginScope(() => subagent.waitForRun(params)),

@@ -3,7 +3,7 @@
 ## Zod consumer migration
 
 [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
-is repaired without an audit exception. Native Zod consumers use `4.6.6`.
+is targeted without an audit exception (native qualification pending). Native Zod consumers use `4.6.6`.
 The exact-version Zod patch also applies the upstream early collection-bound
 behavior to the retained `zod/v3` compatibility parser in its ESM, CommonJS,
 and TypeScript sources. Oversized bounded arrays and sets reject before

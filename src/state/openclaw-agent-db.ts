@@ -1,3 +1,5 @@
+import { isOpenClawAgentDatabasePathCurrent } from "./openclaw-agent-db-identity.js";
+import { artifactPreservingReads } from "./artifact-preserving-state-reads.js";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { resolveStateDir } from "../config/paths.js";
@@ -689,6 +691,36 @@ export function getOpenClawAgentDatabaseIfOpen(
   observeOpenClawDatabaseMaintenanceResource(database.db);
   refreshAgentDatabaseIdleTimer(database);
   return database;
+}
+
+/** Existing native admission only: no open, companion, snapshot, extension or close fallback. */
+export function borrowCommittedOpenClawAgentDatabaseIfOpen(options: OpenClawAgentDatabaseOptions) {
+  if (artifactPreservingReads.getStore()) { throw new Error("Inspection context unsupported"); }
+  const pathname = resolveOpenClawAgentSqlitePath(options);
+  const ownerLease = cache.leases.get(pathname);
+  // Admission follows the actual native owner's captured namespace, never caller alias selection.
+  if (!ownerLease || path.resolve(resolveStateDir(options.env ?? process.env)) !== path.resolve(resolveStateDir(ownerLease.env)) ||
+    (options.env ?? process.env).OPENCLAW_SUPERVISOR_MODE !== ownerLease.env.OPENCLAW_SUPERVISOR_MODE) {
+    throw new Error("Native owner namespace unavailable");
+  }
+  const database = getOpenClawAgentDatabaseIfOpen({ ...options, env: ownerLease.env });
+  if (!database || !database.db.isOpen || database.db.isTransaction || cache.incognito.has(database)) {
+    throw new Error("Committed native owner unavailable");
+  }
+  const identity = readOpenClawAgentDatabaseIdentity(database);
+  // In-memory/unregistered identities cannot certify a currently selected physical file.
+  if (typeof identity.identity !== "string" || !isOpenClawAgentDatabasePathCurrent(database)) {
+    throw new Error("Native owner physical file unavailable");
+  }
+  let released = false;
+  const assertCurrent = () => {
+    if (released || cache.leases.get(pathname) !== ownerLease || cache.databases.get(pathname) !== database ||
+      !isOpenClawAgentDatabasePathCurrent(database)) { throw new Error("Native owner changed"); }
+    assertAgentDatabaseAdmitted(database.agentId, { env: ownerLease.env });
+  };
+  assertCurrent();
+  const release = retainAgentDatabase(database.db);
+  return { database, assertCurrent, release: () => { if (!released) { released = true; release(); } } };
 }
 
 /** Pin only admitted native readers already present in captured discovery families. */

@@ -1,7 +1,7 @@
+// Workboard plugin module implements store behavior.
 import { createHash } from "node:crypto";
 import type {
   WorkboardAttachment,
-  WorkboardBoardMetadata,
   WorkboardCard,
   WorkboardClaim,
   WorkboardDiagnostic,
@@ -23,29 +23,18 @@ import {
   cardRunId,
   cardSessionKey,
   computeCardDiagnostics,
-  isDependencyPromotableStatus,
-  latestRunningAttempt,
   mergeDiagnostics,
-  retryBudgetExhausted,
   shouldSkipPersistedLifecycleStatusUpdate,
   shouldSyncWorkboardLifecycleStatus,
 } from "./store-card-helpers.js";
-import { isWorkboardClaimReclaimable, secondsToDurationMs } from "./store-constants.js";
+import { WorkboardDispatchStore } from "./store-dispatch.js";
 import type {
   WorkboardBulkInput,
   WorkboardCardPatch,
   WorkboardDiagnosticsResult,
-  WorkboardDispatchOptions,
-  WorkboardDispatchResult,
   WorkboardMutationScope,
 } from "./store-inputs.js";
-import {
-  capText,
-  normalizeBoardId,
-  normalizeLaunchClaimGeneration,
-  normalizeTimestamp,
-} from "./store-normalizers.js";
-import { WorkboardNotificationStore } from "./store-notifications.js";
+import { capText, normalizeLaunchClaimGeneration } from "./store-normalizers.js";
 import { readCards } from "./store-read.js";
 
 export type { WorkboardDispatchResult } from "./store-inputs.js";
@@ -240,8 +229,8 @@ function hasExactTerminalClaimAssociation(
   );
 }
 
-// Capability layers share persistence handles and the runtime's mutation ordering.
-export class WorkboardStore extends WorkboardNotificationStore {
+// Capability layers split review boundaries only; the core still owns persistence and mutation order.
+export class WorkboardStore extends WorkboardDispatchStore {
   async prepareExecutionLaunch(
     id: string,
     input: {
@@ -506,129 +495,6 @@ export class WorkboardStore extends WorkboardNotificationStore {
     );
   }
 
-  private async getAutoOrchestrationBoard(
-    card: WorkboardCard,
-  ): Promise<WorkboardBoardMetadata | undefined> {
-    if (
-      card.status !== "triage" ||
-      card.metadata?.archivedAt ||
-      card.metadata?.workerProtocol?.state === "idle"
-    ) {
-      return undefined;
-    }
-    const board = await this.boardStore.lookup(cardBoardId(card));
-    return board?.version === 1 && board.board.orchestration?.autoDecompose === true
-      ? board.board
-      : undefined;
-  }
-
-  async dispatch(
-    input: number | WorkboardDispatchOptions = Date.now(),
-  ): Promise<WorkboardDispatchResult> {
-    const now = typeof input === "number" ? input : normalizeTimestamp(input.now, Date.now());
-    const boardId = typeof input === "number" ? undefined : normalizeBoardId(input.boardId);
-    const rawCardId = typeof input === "number" ? undefined : input.cardId;
-    if (rawCardId !== undefined && (typeof rawCardId !== "string" || !rawCardId.trim())) {
-      throw new Error("cardId must be a non-empty string.");
-    }
-    const cardId = typeof rawCardId === "string" ? rawCardId.trim() : undefined;
-    const assertOwnerCurrent = typeof input === "number" ? undefined : input.assertOwnerCurrent;
-    return await this.enqueueMutation(async () => {
-      if (boardId) {
-        await this.assertCardsBoard(boardId);
-      }
-      const target = cardId ? await this.requireCard(cardId) : undefined;
-      if (target && boardId && cardBoardId(target) !== boardId) {
-        throw new Error(`card ${target.id} does not belong to board ${boardId}.`);
-      }
-      const promoted: WorkboardCard[] = [];
-      const reclaimed: WorkboardCard[] = [];
-      const blocked: WorkboardCard[] = [];
-      const orchestrated: WorkboardCard[] = [];
-      const orchestratedByBoard = new Map<string, number>();
-      for (const card of target ? [target] : await this.list({ boardId })) {
-        // Archived cards remain readable and restorable, but must never re-enter automation.
-        if (card.metadata?.archivedAt) {
-          continue;
-        }
-        // Keep the batch FIFO, but accepted work on one card cannot admit the next.
-        await this.withMutationAuthority(async () => {
-          let latest = await this.promoteDependencyReady(card.id, now);
-          const wasPromoted = latest.status !== card.status;
-          const claim = latest.metadata?.claim;
-          const latestAttempt = latestRunningAttempt(latest);
-          const maxRuntimeSeconds = latest.metadata?.automation?.maxRuntimeSeconds;
-          const runtimeStartedAt = latestAttempt?.startedAt ?? claim?.claimedAt ?? latest.startedAt;
-          const timedOut =
-            Boolean(maxRuntimeSeconds && runtimeStartedAt) &&
-            now - runtimeStartedAt! > secondsToDurationMs(maxRuntimeSeconds!);
-          const claimExpired = isWorkboardClaimReclaimable(claim, now);
-          const retriesExhausted = retryBudgetExhausted(latest);
-          if (latest.status === "running" && (timedOut || claimExpired)) {
-            const reason = timedOut
-              ? "Run exceeded the card max runtime."
-              : "Claim expired without a recent heartbeat.";
-            const finished = this.finishRun(latest, "blocked", now, reason);
-            latest = await this.updateCard(await this.requireCard(latest.id), {
-              ...finished,
-              metadata: {
-                ...finished.metadata,
-                notifications: this.appendNotification(latest.metadata, now, {
-                  kind: "failed",
-                  message: reason,
-                }),
-              },
-            });
-            blocked.push(latest);
-          } else if (claimExpired) {
-            latest = await this.updateCard(await this.requireCard(latest.id), {
-              metadata: { ...latest.metadata, claim: undefined },
-            });
-            reclaimed.push(latest);
-          }
-          if (
-            !latest.metadata?.claim &&
-            retriesExhausted &&
-            isDependencyPromotableStatus(latest.status)
-          ) {
-            latest = await this.updateCard(await this.requireCard(latest.id), {
-              status: "blocked",
-              metadata: {
-                ...latest.metadata,
-                notifications: this.appendNotification(latest.metadata, now, {
-                  kind: "failed",
-                  message: "Card exhausted its retry budget.",
-                }),
-              },
-            });
-            blocked.push(latest);
-          }
-          const orchestrationBoard = await this.getAutoOrchestrationBoard(latest);
-          if (orchestrationBoard) {
-            const latestBoardId = cardBoardId(latest);
-            const cap = orchestrationBoard.orchestration?.autoDecomposePerDispatch ?? 3;
-            const boardCount = orchestratedByBoard.get(latestBoardId) ?? 0;
-            if (boardCount < cap) {
-              latest = await this.recordOrchestrationCandidate(latest, now);
-              orchestrated.push(latest);
-              orchestratedByBoard.set(latestBoardId, boardCount + 1);
-            }
-          }
-          if (wasPromoted && latest.status !== "blocked") {
-            promoted.push(latest);
-          }
-        }, assertOwnerCurrent);
-      }
-      return {
-        promoted,
-        reclaimed,
-        blocked,
-        orchestrated,
-        count: promoted.length + reclaimed.length + blocked.length + orchestrated.length,
-      };
-    });
-  }
-
   async bulkUpdate(input: WorkboardBulkInput): Promise<{ cards: WorkboardCard[] }> {
     const ids = Array.isArray(input.ids)
       ? input.ids.filter((id): id is string => typeof id === "string" && id.trim() !== "")
@@ -716,8 +582,14 @@ export class WorkboardStore extends WorkboardNotificationStore {
     });
   }
 
-  async buildWorkerContext(id: string): Promise<string> {
+  async buildWorkerContext(id: string, options: { relatedOnly?: boolean } = {}): Promise<string> {
     const card = await this.requireCard(id);
+    if (options.relatedOnly) {
+      const related = (
+        await Promise.all(cardParentIds(card).map(async (parentId) => await this.get(parentId)))
+      ).filter((entry): entry is WorkboardCard => entry !== undefined);
+      return buildWorkerContext(card, related, { includeRecentAgentWork: false });
+    }
     return buildWorkerContext(
       card,
       await readCards(this.store, {

@@ -19,6 +19,7 @@ import {
   resolveDispatchWorkspaceAccess,
   type ResolveAgentWorkspaceRuntime,
 } from "./dispatcher-workspace.js";
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { workboardSessionKeyForCard } from "./session-link.js";
 import { cardBoardId } from "./store-card-helpers.js";
 import { workboardCardConsumesOwnerSlot, workboardCardSlotOwner } from "./store-constants.js";
@@ -33,10 +34,10 @@ import {
 
 const DEFAULT_DISPATCH_MAX_STARTS = 3;
 
-type WorkboardSubagentRuntime = Pick<PluginRuntime["subagent"], "run">;
-type WorkboardWorktreeRuntime = PluginRuntime["worktrees"];
+export type WorkboardSubagentRuntime = Pick<PluginRuntime["subagent"], "run">;
+export type WorkboardWorktreeRuntime = PluginRuntime["worktrees"];
 
-type WorkboardDispatchStartOptions = {
+export type WorkboardDispatchStartOptions = {
   cardId?: string;
   intentRunId?: string;
   targetMode?: "start" | "dispatch";
@@ -75,6 +76,7 @@ type WorkboardDispatchAndStartResult = WorkboardDispatchResult & {
 type WorkboardPreparedLaunch = Extract<WorkboardLaunchState, { phase: "prepared" }>;
 
 type WorkboardDispatchStartParams = {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   store: WorkboardStore;
   subagent: WorkboardSubagentRuntime;
   worktrees?: WorkboardWorktreeRuntime;
@@ -313,8 +315,8 @@ async function runWorkboardDispatch(
   );
   const started: WorkboardStartedRun[] = [];
   const startFailures: WorkboardStartFailure[] = [];
-  // Exact targets rely on the store's atomic owner-slot claim rather than
-  // reading unrelated queued cards to infer whether their owner is available.
+  // Exact targeting relies on claimIfOwnerAvailable for the same atomic,
+  // global owner-slot check without enumerating unrelated card records.
   const cards = directCard ? [] : await params.store.list();
   const candidates = directCard ? [directCard] : await params.store.list({ boardId });
   const ownerOverride = params.options?.ownerId?.trim() || undefined;
@@ -440,7 +442,9 @@ async function runWorkboardDispatch(
       // Racing card changes never reached a worker and must not consume the
       // provider-outage budget or starve a later healthy candidate.
       attemptedStarts += 1;
-      const context = await params.store.buildWorkerContext(card.id);
+      const context = await params.store.buildWorkerContext(card.id, {
+        relatedOnly: Boolean(directCardId),
+      });
       const materialized = await materializeWorkspace({
         card: claimed.card,
         worktrees: params.worktrees,
@@ -527,18 +531,21 @@ async function runWorkboardDispatch(
         runId: run.runId,
         execution: acceptedExecution,
       };
-      const updated =
-        (await params.store
-          .acceptExecutionLaunch(card.id, {
-            expectedLaunch: prepared.launch,
-            acceptedAt: Math.max(Date.now(), prepared.launch.preparedAt),
-            expectedSessionKey: sessionKey,
-            expectedRunId: runId,
-            sessionKey: acceptedSessionKey,
-            runId: run.runId,
-            execution: acceptedExecution,
-          })
-          .catch(() => undefined)) ?? acceptedCard;
+      const persistedAccepted = await params.store
+        .acceptExecutionLaunch(card.id, {
+          expectedLaunch: prepared.launch,
+          acceptedAt: Math.max(Date.now(), prepared.launch.preparedAt),
+          expectedSessionKey: sessionKey,
+          expectedRunId: runId,
+          sessionKey: acceptedSessionKey,
+          runId: run.runId,
+          execution: acceptedExecution,
+        })
+        .catch(() => undefined);
+      const updated = persistedAccepted ?? acceptedCard;
+      if (persistedAccepted && run.execution) {
+        params.liveExecutions?.bind(persistedAccepted, run.execution);
+      }
       acceptedStarts += 1;
       startedOwners.add(ownerId);
       started.push({
@@ -546,7 +553,7 @@ async function runWorkboardDispatch(
         title: updated.title,
         sessionKey: acceptedSessionKey,
         runId: run.runId,
-        ...(directCardId ? { card: updated } : {}),
+        ...(targetMode === "start" ? { card: updated } : {}),
       });
       // A worker already accepted this run. Logging must never revoke its
       // claim, block live execution, or reopen the owner's capacity slot.

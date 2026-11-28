@@ -5,6 +5,10 @@ import type {
   NodeWorkerJournalAuthority,
   NodeWorkerTurnReceipt,
 } from "./node-worker-journal.types.js";
+import type {
+  NodeWorkerTurnJournalSnapshot,
+  NodeWorkerTurnJournalSnapshotQuery,
+} from "./node-worker-turn-snapshot.types.js";
 import type { NodeWorkerTurnKernel } from "./node-worker-turn-store.kernel.js";
 
 export type { NodeWorkerTurnReceipt } from "./node-worker-journal.types.js";
@@ -24,6 +28,12 @@ export class NodeWorkerTurnStore {
     authority?: NodeWorkerJournalAuthority,
   ): Promise<ReturnType<NodeWorkerTurnKernel["claim"]>> {
     return this.worker.execute({ type: "nodeWorker.turn.claim", input: [params] }, authority);
+  }
+
+  snapshot(
+    query: NodeWorkerTurnJournalSnapshotQuery,
+  ): Promise<NodeWorkerTurnJournalSnapshot | undefined> {
+    return this.worker.readSnapshot(query);
   }
 
   async getMatching(

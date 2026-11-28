@@ -5,6 +5,7 @@ import type { NodePluginToolDescriptor } from "../../../packages/gateway-protoco
 import type { AgentWaitResult } from "../../agents/run-wait.types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { OperatorScope } from "../../gateway/operator-scopes.js";
+import type { SubagentExecution } from "./subagent-execution.types.js";
 import type {
   BoundManagedTaskFlows,
   BoundManagedTaskRuns,
@@ -17,12 +18,25 @@ import type {
 } from "./types-session-facts.js";
 
 export type { RuntimeLogger };
+export type { SubagentExecution } from "./subagent-execution.types.js";
 
 type PluginRuntimeChannel = import("./types-channel.js").PluginRuntimeChannel;
+
+/** Identity evidence from the real Gateway provider, not a native launch grant. */
+export type PluginLifecycleControllerCapability = Readonly<{
+  authorityVersion: 1;
+  pluginId: "pr-lifecycle-taskflow";
+  source: string;
+  rootDir: string;
+  managedFlows: true;
+  taskRuns: true;
+  nativeLaunch: true;
+}>;
 
 /** Narrow released-controller compatibility, not the removed canonical Tasks/TaskFlow API. */
 type PluginManagedTaskFlowRuntime = {
   readonly authorityVersion: 1;
+  readonly lifecycleController?: PluginLifecycleControllerCapability;
   readonly availability: Readonly<{
     managedFlows: boolean;
     taskRuns: boolean;
@@ -79,6 +93,8 @@ type PluginManagedWorktree = {
 };
 
 type SubagentRunResult = {
+  /** Optional host-owned live observation. Custom runtimes and cached runs may omit it. */
+  execution?: SubagentExecution;
   runId: string;
   /** Canonical accepted session identity. Optional for explicit/custom runtimes. */
   sessionKey?: string;

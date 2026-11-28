@@ -477,6 +477,24 @@ export async function runMemoryStatus(
       const batchSuffix = ` (failures ${status.batch.failures}/${status.batch.limit})`;
       lines.push(`${label("Batch")} ${batchColor(batchState)}${muted(batchSuffix)}`);
       addField("Batch error", status.batch.lastError, warn);
+      if (status.batch.submissionQuarantine) {
+        const quarantine = status.batch.submissionQuarantine;
+        const summary = quarantine.malformed
+          ? "active (malformed durable record)"
+          : `active (${quarantine.submissions.length} submission${quarantine.submissions.length === 1 ? "" : "s"})`;
+        lines.push(`${label("Batch quarantine")} ${warn(summary)}`);
+        for (const submission of quarantine.submissions) {
+          const resource = submission.batchName
+            ? ` · provider job ${submission.batchName}`
+            : " · create result unknown";
+          lines.push(
+            `${label("Batch submission")} ${info(submission.submissionId)}${muted(
+              `${resource} · started ${submission.startedAt}`,
+            )}`,
+          );
+        }
+        lines.push(`${label("Batch recovery")} ${warn(quarantine.recoveryAction)}`);
+      }
     }
     if (audit) {
       lines.push(`${label("Recall store")} ${info(formatAuditCounts(audit))}`);

@@ -1,3 +1,5 @@
+import { MemoryBatchSubmissionKernel } from "./manager-batch-submission-kernel.js";
+import type { MemoryBatchSubmissionCommand, MemoryBatchSubmissionReply } from "./manager-batch-submission-task.js";
 import type { DatabaseSync } from "node:sqlite";
 import {
   ensureMemoryIndexSchema,
@@ -39,6 +41,25 @@ import {
   loadMemorySourceFileState,
   refreshMemorySessionSourceState,
 } from "./manager-source-state.js";
+
+function executeBatchSubmission(db: DatabaseSync, request: MemoryBatchSubmissionCommand): MemoryBatchSubmissionReply {
+  const kernel = new MemoryBatchSubmissionKernel(() => db);
+  kernel.restorePendingKeys(request.pendingKeys);
+  const finish = <Kind extends string, Value>(kind: Kind, value: Value) => ({
+    kind, value, status: kernel.readStatus(), pendingKeys: kernel.pendingKeys(),
+  });
+  switch (request.kind) {
+    case "assert": return finish(request.kind, kernel.assertReady());
+    case "clear": return finish(request.kind, kernel.clear());
+    case "commit": return finish(request.kind, kernel.commit());
+    case "started": return finish(request.kind, kernel.createLifecycle(request.identity).started(...request.args));
+    case "accepted": return finish(request.kind, kernel.createLifecycle(request.identity).accepted(...request.args));
+    case "rejected": return finish(request.kind, kernel.createLifecycle(request.identity).rejected(...request.args));
+    case "resumeAccepted": return finish(request.kind, kernel.createLifecycle(request.identity).resumeAccepted(...request.args));
+    case "listAccepted": return finish(request.kind, kernel.createLifecycle(request.identity).listAccepted(...request.args));
+    case "publishRecovered": return finish(request.kind, kernel.createLifecycle(request.identity).publishRecovered(...request.args));
+  }
+}
 
 function failure(error: unknown): MemoryShadowFailure {
   return {
@@ -207,6 +228,9 @@ function createPublicationBackend(
       },
       execute(command) {
         assertPath();
+        if (command.type === "batch.submission") {
+          return write(() => executeBatchSubmission(db, command.input));
+        }
         if (command.type === "schema.admit") {
           // Storage/STRICT migration must disable foreign keys before BEGIN.
           db.exec("PRAGMA foreign_keys = OFF");

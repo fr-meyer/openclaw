@@ -26,11 +26,12 @@ import { parse as parseYaml } from "yaml";
 import { isRecord } from "../packages/normalization-core/src/record-coerce.ts";
 import { listChangedPathsFromGit, listStagedChangedPaths } from "./changed-lanes.mts";
 import { pnpmLockfileDocuments, resolveSnapshot } from "./lib/pnpm-lockfile-documents.mjs";
-import { resolveNpmRunner } from "./npm-runner.mts";
+import { resolveNpmRunner, type NpmRunnerParams } from "./npm-runner.mts";
 
 type UnknownRecord = Record<string, unknown>;
 type OverrideMap = Record<string, unknown>;
 type ScopedOverrides = Record<string, Record<string, string>>;
+type NpmLockCommandOptions = Omit<NpmRunnerParams, "npmArgs">;
 type NpmLockExecInvocation = UnknownRecord & {
   env?: NodeJS.ProcessEnv;
   shell?: boolean;
@@ -41,6 +42,13 @@ export type NpmLocalPackageArtifact = {
   version: string;
   spec: string;
   integrity: string;
+};
+
+// A verified, immutable byte binding, not caller-supplied artifact descriptors.
+const verifiedLocalPackageArtifactSets = new WeakSet<NpmLocalPackageArtifact[]>();
+type NpmLockArtifactPolicyContext = {
+  localPackageArtifacts: NpmLocalPackageArtifact[];
+  effectiveOverrides: OverrideMap;
 };
 
 type NpmLockOptions = {
@@ -871,6 +879,10 @@ function validateLocalPackageArtifacts(packageDir: string, artifacts: NpmLocalPa
       throw new Error(`local package artifact integrity mismatch: ${artifact.name}`);
     }
   }
+  const verified = artifacts.map((artifact) => Object.freeze({ ...artifact }));
+  Object.freeze(verified);
+  verifiedLocalPackageArtifactSets.add(verified);
+  return verified;
 }
 
 function resolveLocalFileDependency(packageDir: string, manifestDir: string, spec: string) {
@@ -968,8 +980,19 @@ export function createNpmLockExecOptions(
   };
 }
 
+export function createNpmLockCommand(args: string[], options: NpmLockCommandOptions = {}) {
+  return resolveNpmRunner({
+    comSpec: options.comSpec,
+    env: options.env,
+    execPath: options.execPath,
+    existsSync: options.existsSync,
+    npmArgs: args,
+    platform: options.platform,
+  });
+}
+
 function runNpm(args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env) {
-  const npm = resolveNpmRunner({ npmArgs: args, env });
+  const npm = createNpmLockCommand(args, { env });
   execFileSync(npm.command, npm.args, createNpmLockExecOptions(npm, cwd, env));
 }
 
@@ -1074,20 +1097,70 @@ function exactVersionFromOverrideSpec(spec: unknown) {
   return EXACT_VERSION_PATTERN.test(version) ? version : null;
 }
 
+function exactOverrideRulesFromOverrides(overrides: unknown) {
+  return Object.fromEntries(
+    Object.entries(normalizeOverrides(overrides)).flatMap<[string, string]>(([name, spec]) => {
+      const version = exactVersionFromOverrideSpec(spec);
+      return version === null ? [] : [[name, version]];
+    }),
+  );
+}
+
 function versionRangeFromOverrideSpec(spec: unknown) {
-  if (typeof spec !== "string") {
+  if (typeof spec !== "string" || !spec.trim()) {
     return null;
   }
-  const versionSpec = spec.startsWith("npm:") ? spec.slice(spec.lastIndexOf("@") + 1) : spec;
-  return semver.validRange(versionSpec) ? versionSpec : null;
+  const alias = parseNpmAliasOverrideSpec(spec);
+  if (spec.startsWith("npm:") && (!alias || !isOverridePackageName(alias.name))) {
+    return null;
+  }
+  const range = alias ? spec.slice(spec.lastIndexOf("@") + 1) : spec;
+  return range.trim() !== "" && semver.validRange(range) !== null ? range : null;
+}
+
+function isOverridePackageName(name: string) {
+  return /^(?:@[a-z0-9._~-]+\/)?[a-z0-9._~-]+$/iu.test(name);
 }
 
 function validationOverrideRulesFromOverrides(overrides: unknown) {
   const normalized = normalizeOverrides(overrides);
+  const ancestors = new Set<OverrideMap>();
+  const validate = (policy: OverrideMap, depth: number) => {
+    if (depth > 100 || ancestors.has(policy)) {
+      throw new Error("unsupported cyclic or excessively nested npm override policy");
+    }
+    ancestors.add(policy);
+    for (const [selector, spec] of Object.entries(policy)) {
+      if (selector !== ".") {
+        const parsed = parsePnpmPackageKey(selector);
+        if (
+          !isOverridePackageName(parsed?.name ?? selector) ||
+          (parsed !== null &&
+            (semver.validRange(parsed.version) === null ||
+              selector !== parsed.name + "@" + parsed.version))
+        ) {
+          throw new Error(`invalid npm override selector: ${selector}`);
+        }
+      } else if (depth === 0) {
+        throw new Error("npm override self policy requires a parent selector");
+      }
+      if (isRecord(spec) && selector !== ".") {
+        validate(spec, depth + 1);
+      } else if (versionRangeFromOverrideSpec(spec) === null) {
+        throw new Error(`unsupported npm override policy for ${selector}`);
+      }
+    }
+    ancestors.delete(policy);
+  };
+  validate(normalized, 0);
   return Object.fromEntries(
     Object.entries(normalized).flatMap<[string, string]>(([name, spec]) => {
-      const versionRange = versionRangeFromOverrideSpec(spec);
-      return versionRange === null || typeof spec !== "string" ? [] : [[name, spec]];
+      // Only unqualified root policies apply to otherwise unreachable physical copies.
+      // Qualified and nested policies are selected using actual incoming edges below.
+      const value = isRecord(spec) ? spec["."] : spec;
+      return parsePnpmPackageKey(name) === null && typeof value === "string"
+        ? [[name, value]]
+        : [];
     }),
   );
 }
@@ -1251,79 +1324,20 @@ function resolveLockDependencyPath(
   return null;
 }
 
-function isHostedGitSpec(spec: string) {
-  try {
-    const url = new URL(spec);
-    const hostname = url.hostname.replace(/^www\./u, "");
-    const segments = url.pathname.split("/").filter(Boolean);
-    const protocolAllowed = (...protocols: string[]) => protocols.includes(url.protocol);
-    if (hostname === "github.com") {
-      return (
-        protocolAllowed("git:", "http:", "https:", "ssh:", "git+ssh:", "git+https:") &&
-        Boolean(segments[0] && segments[1]) &&
-        (!segments[2] || segments[2] === "tree")
-      );
-    }
-    if (hostname === "bitbucket.org") {
-      return (
-        protocolAllowed("https:", "ssh:", "git+ssh:", "git+https:") &&
-        Boolean(segments[0] && segments[1]) &&
-        segments[2] !== "get"
-      );
-    }
-    if (hostname === "gitlab.com") {
-      return (
-        protocolAllowed("https:", "ssh:", "git+ssh:", "git+https:") &&
-        segments.length >= 2 &&
-        !url.pathname.includes("/-/") &&
-        !url.pathname.includes("/archive.tar.gz")
-      );
-    }
-    if (hostname === "gist.github.com") {
-      return (
-        protocolAllowed("git:", "https:", "ssh:", "git+ssh:", "git+https:") &&
-        segments.length >= 1 &&
-        segments[2] !== "raw"
-      );
-    }
-    return (
-      hostname === "git.sr.ht" &&
-      protocolAllowed("https:", "git+ssh:") &&
-      Boolean(segments[0] && segments[1]) &&
-      segments[2] !== "archive"
-    );
-  } catch {
-    return false;
-  }
-}
-
 function requestedSpecMatchesSelector(requestedSpec: string, selectorRange: string) {
   if (selectorRange === "*") {
     return true;
   }
-  const aliasSpec = requestedSpec.startsWith("npm:")
-    ? requestedSpec.slice(requestedSpec.lastIndexOf("@") + 1)
-    : requestedSpec;
-  const gitRangeMarker = "#semver:";
-  const gitRangeIndex = aliasSpec.indexOf(gitRangeMarker);
-  const isGitSpec =
-    gitRangeIndex >= 0 ||
-    isHostedGitSpec(aliasSpec) ||
-    /^(?:git(?:\+[^:]+)?:|git@|github:|gitlab:|bitbucket:|gist:|sourcehut:|https?:.*\.git(?:#|$)|(?![./@])(?=[^#]*\/)(?![^#]*:)(?![^#]*@)[^/\s#]+\/[^/\s#]+(?:#.*)?$)/u.test(
-      aliasSpec,
-    );
-  if (isGitSpec && gitRangeIndex < 0) {
-    return false;
+  const alias = parseNpmAliasOverrideSpec(requestedSpec);
+  const versionSpec = alias ? requestedSpec.slice(requestedSpec.lastIndexOf("@") + 1) : requestedSpec;
+  const marker = "#semver:";
+  const markerIndex = versionSpec.indexOf(marker);
+  const range = markerIndex < 0 ? versionSpec : versionSpec.slice(markerIndex + marker.length);
+  if (semver.validRange(range) === null) {
+    // Do not silently exempt an edge whose qualified policy cannot be established.
+    throw new Error(`unsupported incoming npm override edge: ${requestedSpec}`);
   }
-  const requestedRange = semver.validRange(
-    gitRangeIndex >= 0 ? aliasSpec.slice(gitRangeIndex + gitRangeMarker.length) : aliasSpec,
-  );
-  const keyRange = semver.validRange(selectorRange);
-  if (requestedRange === null || keyRange === null) {
-    // Arborist accepts tag, directory, and file edges because they have no comparable range.
-    return !isGitSpec;
-  }
-  return semver.intersects(requestedRange, keyRange, { includePrerelease: true });
+  return semver.intersects(range, selectorRange, { includePrerelease: true });
 }
 
 function matchOverridePolicy(
@@ -1340,42 +1354,32 @@ function matchOverridePolicy(
       const parsed = parsePnpmPackageKey(selector);
       const targetOverride = isRecord(spec) ? (spec["."] ?? parsed?.version) : spec;
       const targetSpec = versionRangeFromOverrideSpec(targetOverride);
-      const targetPackageName =
-        typeof targetOverride === "string"
-          ? parseNpmAliasOverrideSpec(targetOverride)?.name
-          : undefined;
       const matches = parsed
         ? parsed.name === packageName &&
           (requestedSpec !== undefined
             ? requestedSpecMatchesSelector(requestedSpec, parsed.version)
             : installedVersion !== undefined &&
-              ((targetSpec !== null &&
-                semver.satisfies(installedVersion, targetSpec, { includePrerelease: true })) ||
+              ((targetSpec !== null && semver.satisfies(installedVersion, targetSpec, { includePrerelease: true })) ||
                 semver.satisfies(installedVersion, parsed.version, { includePrerelease: true })))
         : selector === packageName;
       if (!matches) {
         continue;
       }
-      const scopedPolicies = installedVersion
-        ? policies.flatMap((candidate) => {
-            const children = scopedOverrideChildrenForVersion(
-              candidate,
-              packageName,
-              installedVersion,
-            );
-            return children ? [children] : [];
-          })
-        : [];
-      const nestedPolicies = [...scopedPolicies, isRecord(spec) ? spec : undefined].filter(
-        (candidate): candidate is OverrideMap =>
-          isRecord(candidate) && !policies.includes(candidate),
-      );
+      // The first incoming-applicable selector owns this child scope. Neither
+      // installed-version siblings nor farther shadowed selectors add children.
+      const nestedPolicies = isRecord(spec) && !policies.includes(spec) ? [spec] : [];
+      // Only an explicit self replacement changes an incoming alias's identity.
+      // A bare wildcard or selector-only child scope preserves its incoming target.
+      const replacementSpec = isRecord(spec) ? spec["."] : spec;
+      const replacementPackageName =
+        typeof replacementSpec === "string" && replacementSpec !== "*"
+          ? parseNpmAliasOverrideSpec(replacementSpec)?.name ??
+            (parseNpmAliasOverrideSpec(requestedSpec ?? "") ? packageName : undefined)
+          : undefined;
       return {
-        expectedPackageName: targetPackageName,
+        expectedPackageName: replacementPackageName,
         expectedSpec: targetSpec,
-        // A broad parent range owns its version constraint, while an exact authored
-        // parent selector owns the child policy for that installed parent version.
-        policies: [...new Set(nestedPolicies), ...policies],
+        policies: [...nestedPolicies, ...policies],
       };
     }
   }
@@ -1386,8 +1390,27 @@ function collectUnallowedOverrideViolations(
   lockfile: unknown,
   overrideRules: Record<string, string>,
   overrides: OverrideMap,
+  artifactContext?: NpmLockArtifactPolicyContext,
 ) {
   const packages = recordAt(lockfile, "packages");
+  validationOverrideRulesFromOverrides(overrides);
+  const artifactPolicies = new Map<string, { artifact: NpmLocalPackageArtifact; policy: OverrideMap }>();
+  if (artifactContext) {
+    if (!verifiedLocalPackageArtifactSets.has(artifactContext.localPackageArtifacts)) {
+      throw new Error("unverified local package artifact policy binding");
+    }
+    for (const artifact of artifactContext.localPackageArtifacts) {
+      const selector = `${artifact.name}@${artifact.version}`;
+      const effective = artifactContext.effectiveOverrides[selector];
+      if (!isRecord(effective) || effective["."] !== `$${artifact.name}`) {
+        throw new Error(`missing effective local package artifact policy: ${artifact.name}`);
+      }
+      // The manifest already resolved first-match shadowing and reentry.
+      const policy = { ...effective, ".": artifact.version };
+      validationOverrideRulesFromOverrides({ [selector]: policy });
+      artifactPolicies.set(artifact.name, { artifact, policy });
+    }
+  }
   const broadViolations = collectOverrideViolations(lockfile, overrideRules);
   if (!packages) {
     return [];
@@ -1422,6 +1445,9 @@ function collectUnallowedOverrideViolations(
     if (visited.has(stateKey)) {
       continue;
     }
+    if (visited.size >= 100_000) {
+      throw new Error("npm override policy traversal exceeds finite state limit");
+    }
     visited.add(stateKey);
     const metadata = packages[current.path];
     if (!isRecord(metadata)) {
@@ -1437,10 +1463,10 @@ function collectUnallowedOverrideViolations(
       recordAt(metadata, "optionalDependencies"),
     ]) {
       for (const [dependencyName, requestedSpec] of Object.entries(dependencySet ?? {})) {
-        dependencySpecs.set(
-          dependencyName,
-          typeof requestedSpec === "string" ? requestedSpec : undefined,
-        );
+        if (typeof requestedSpec !== "string") {
+          throw new Error(`invalid npm lock dependency edge: ${current.path} -> ${dependencyName}`);
+        }
+        dependencySpecs.set(dependencyName, requestedSpec);
       }
     }
     for (const [dependencyName, requestedSpec] of dependencySpecs) {
@@ -1457,42 +1483,83 @@ function collectUnallowedOverrideViolations(
         isRecord(dependencyMetadata) && typeof dependencyMetadata.name === "string"
           ? dependencyMetadata.name
           : dependencyName;
-      const matched = matchOverridePolicy(
-        dependencyName,
-        installedVersion,
-        requestedSpec,
-        current.policies,
-      );
+      const binding = artifactPolicies.get(dependencyName);
+      const directArtifact = current.path === "" &&
+        dependencyPath === `node_modules/${dependencyName}` &&
+        requestedSpec === binding?.artifact.spec ? binding : undefined;
+      if (directArtifact && (
+        installedPackageName !== directArtifact.artifact.name ||
+        installedVersion !== directArtifact.artifact.version ||
+        !isRecord(dependencyMetadata) ||
+        dependencyMetadata.integrity !== directArtifact.artifact.integrity ||
+        dependencyMetadata.resolved !== directArtifact.artifact.spec.replace(/^file:\.\//u, "file:")
+      )) {
+        throw new Error(`npm lock differs from local package artifact: ${dependencyName}`);
+      }
+      const matched = directArtifact
+        ? {
+            expectedPackageName: directArtifact.artifact.name,
+            expectedSpec: directArtifact.artifact.version,
+            policies: current.policies.includes(directArtifact.policy)
+              ? current.policies : [directArtifact.policy, ...current.policies],
+          }
+        : matchOverridePolicy(dependencyName, installedVersion, requestedSpec, current.policies);
+      const matches = [matched];
+      let childPolicies = matched.policies;
+      // Edge rules use the physical install name. A validated alias target may
+      // separately own an actual-name child scope, selected once in scope order.
+      const incomingAlias = parseNpmAliasOverrideSpec(requestedSpec ?? "");
+      const actualName = matched.expectedPackageName ?? incomingAlias?.name;
+      const actualSpec = matched.expectedPackageName
+        ? matched.expectedSpec : versionRangeFromOverrideSpec(requestedSpec);
+      if (incomingAlias && matched.expectedPackageName === undefined && actualSpec !== null) {
+        matches.push({
+          expectedPackageName: incomingAlias.name,
+          expectedSpec: actualSpec,
+          policies: childPolicies,
+        });
+      }
+      if (actualName && installedPackageName === actualName &&
+          actualName !== dependencyName && actualSpec !== null && installedVersion !== undefined &&
+          semver.satisfies(installedVersion, actualSpec, { includePrerelease: true })) {
+        // The actual node owns by its identity/version, not by the alias's wider
+        // incoming range. Select one applicable rule, never all actual-name siblings.
+        const owned = matchOverridePolicy(actualName, installedVersion, installedVersion, childPolicies);
+        matches.push(owned);
+        childPolicies = owned.policies;
+      }
       reachedPaths.add(dependencyPath);
-      if (
-        matched.expectedSpec &&
-        !isApprovedNpmBundledDependency(packages, dependencyPath) &&
-        (installedVersion === undefined ||
-          !semver.satisfies(installedVersion, matched.expectedSpec, { includePrerelease: true }) ||
-          (matched.expectedPackageName !== undefined &&
-            installedPackageName !== matched.expectedPackageName))
-      ) {
-        const key = `${dependencyPath}\0${matched.expectedPackageName ?? ""}\0${matched.expectedSpec}`;
-        const finding = findings.get(key) ?? {
-          shrinkwrapSources: new Set<string>(),
-          violation: {
-            actualVersion: installedVersion ?? "<missing>",
-            actualPackageName: installedPackageName,
-            expectedPackageName: matched.expectedPackageName,
-            expectedSpec: matched.expectedSpec,
-            packageName: dependencyName,
-            packagePath: parseLockPackagePath(dependencyPath),
-            path: dependencyPath,
-          },
-        };
-        if (shrinkwrapSource) {
-          finding.shrinkwrapSources.add(shrinkwrapSource);
+      for (const matched of matches) {
+        if (
+          matched.expectedSpec &&
+          !isApprovedNpmBundledDependency(packages, dependencyPath) &&
+          (installedVersion === undefined ||
+            !semver.satisfies(installedVersion, matched.expectedSpec, { includePrerelease: true }) ||
+            (matched.expectedPackageName !== undefined &&
+              installedPackageName !== matched.expectedPackageName))
+        ) {
+          const key = `${dependencyPath}\0${matched.expectedPackageName ?? ""}\0${matched.expectedSpec}`;
+          const finding = findings.get(key) ?? {
+            shrinkwrapSources: new Set<string>(),
+            violation: {
+              actualVersion: installedVersion ?? "<missing>",
+              actualPackageName: installedPackageName,
+              expectedPackageName: matched.expectedPackageName,
+              expectedSpec: matched.expectedSpec,
+              packageName: dependencyName,
+              packagePath: parseLockPackagePath(dependencyPath),
+              path: dependencyPath,
+            },
+          };
+          if (shrinkwrapSource) {
+            finding.shrinkwrapSources.add(shrinkwrapSource);
+          }
+          findings.set(key, finding);
         }
-        findings.set(key, finding);
       }
       pending.push({
         path: dependencyPath,
-        policies: matched.policies,
+        policies: childPolicies,
         shrinkwrapSource,
       });
     }
@@ -1508,7 +1575,7 @@ function collectUnallowedOverrideViolations(
   }
 
   return [...findings.values()].map((finding) => {
-    if (finding.shrinkwrapSources.size === 0) {
+    if (finding.shrinkwrapSources.size === 0 && !reachedPaths.has(finding.violation.path)) {
       const shrinkwrappedAncestor = finding.violation.packagePath
         .slice(0, -1)
         .toReversed()
@@ -1529,13 +1596,14 @@ function disableDependencyShrinkwrapOverrideConflictSources(
   lockfile: unknown,
   overrideRules: Record<string, string>,
   overrides: OverrideMap = overrideRules,
+  artifactContext?: NpmLockArtifactPolicyContext,
 ) {
   const packages = recordAt(lockfile, "packages");
   if (!packages) {
     return [];
   }
   const disabled = new Set<string>();
-  for (const violation of collectUnallowedOverrideViolations(lockfile, overrideRules, overrides)) {
+  for (const violation of collectUnallowedOverrideViolations(lockfile, overrideRules, overrides, artifactContext)) {
     for (const source of violation.shrinkwrapSources) {
       const sourceMetadata = packages[source];
       if (isRecord(sourceMetadata)) {
@@ -1565,7 +1633,12 @@ function describeOverrideViolations(violations: ReturnType<typeof collectOverrid
     .join("; ");
 }
 
-function installNpmPackageLock(tempDir: string, npmInstallArgs: string[], env: NodeJS.ProcessEnv) {
+function installNpmPackageLock(
+  tempDir: string,
+  npmInstallArgs: string[],
+  env: NodeJS.ProcessEnv,
+  artifactContext: NpmLockArtifactPolicyContext,
+) {
   const npmLockPath = path.join(tempDir, "package-lock.json");
   const enforcedOverrides = readWorkspaceOverrides();
   const overrideRules = validationOverrideRulesFromOverrides(enforcedOverrides);
@@ -1577,7 +1650,7 @@ function installNpmPackageLock(tempDir: string, npmInstallArgs: string[], env: N
     runNpm(npmInstallArgs, tempDir, env);
     const npmLockText = readFileSync(npmLockPath, "utf8");
     const npmLock = parseJsonObject(npmLockText);
-    const remaining = collectUnallowedOverrideViolations(npmLock, overrideRules, enforcedOverrides);
+    const remaining = collectUnallowedOverrideViolations(npmLock, overrideRules, enforcedOverrides, artifactContext);
     if (remaining.length === 0) {
       // npm can assign nested override sets differently on a fresh tree than when it
       // reloads that lock, so `npm ci` rejects a first-pass lock as out of sync.
@@ -1599,6 +1672,7 @@ function installNpmPackageLock(tempDir: string, npmInstallArgs: string[], env: N
       npmLock,
       overrideRules,
       enforcedOverrides,
+      artifactContext,
     );
     const packages = recordAt(npmLock, "packages") ?? {};
     const newSources = newlyDisabled.filter((source) => {
@@ -1664,8 +1738,9 @@ export function generateNpmPackageLock(packageDir: string, options: NpmLockOptio
     const packageJson = parseJsonObject(
       readFileSync(path.join(packageDir, "package.json"), "utf8"),
     );
-    const localPackageArtifacts = options.localPackageArtifacts ?? [];
-    validateLocalPackageArtifacts(packageDir, localPackageArtifacts);
+    const localPackageArtifacts = validateLocalPackageArtifacts(
+      packageDir, options.localPackageArtifacts ?? [],
+    );
     const installOverrides = readNpmLockOverrides(packageJson, packageDir, localPackageArtifacts);
     const normalizedPackageJson = packageJsonForNpmLock(
       packageJson,
@@ -1691,7 +1766,10 @@ export function generateNpmPackageLock(packageDir: string, options: NpmLockOptio
     copyLocalFileDependencies(normalizedPackageJson, packageDir, tempDir);
     // Lock-derived overrides steer npm placement. Only explicit workspace overrides
     // are policy that dependency shrinkwraps must not violate.
-    installNpmPackageLock(tempDir, npmInstallArgs, env);
+    installNpmPackageLock(tempDir, npmInstallArgs, env, {
+      localPackageArtifacts,
+      effectiveOverrides: normalizeOverrides(normalizedPackageJson.overrides),
+    });
     const generated = normalizeNpmVersionDrift(
       applyPackageExtensionPeerMetadata(
         parseJsonObject(readFileSync(path.join(tempDir, "package-lock.json"), "utf8")),
@@ -2289,6 +2367,10 @@ export {
   // Test-facing helpers cover lockfile normalization, override merging, and
   // changed-package detection without invoking npm.
   collectOverrideViolations,
+  collectUnallowedOverrideViolations,
+  validateLocalPackageArtifacts,
+  exactOverrideRulesFromOverrides,
+  exactVersionFromOverrideSpec,
   collectPnpmLockViolations,
   collectPnpmLockPlatformViolations,
   disableDependencyShrinkwrapOverrideConflictSources,

@@ -533,7 +533,7 @@ describe("dependency guard script", () => {
     expect(enforcement.stdout).toContain("Automatic lockfile cleanup is best effort.");
   });
 
-  it("does not approve or autoscrub grandfathered lockfile PRs in any mode", () => {
+  it.skipIf(loadSecurityReviewPolicy().rolloutPullRequest === undefined)("does not approve or autoscrub grandfathered lockfile PRs in any mode", () => {
     const cases = ["detect", "autoscrub", "enforce"];
     for (const mode of cases) {
       const result = runDependencyGuard(

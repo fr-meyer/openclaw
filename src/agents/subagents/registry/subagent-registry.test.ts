@@ -53,13 +53,14 @@ import {
   observeRootWork,
   registerBrowserCleanupBoundaryTests,
 } from "./subagent-registry.browser-cleanup.test-support.js";
+import { registerSubagentForcedCollectorYieldCompletionTests } from "./subagent-registry.collector-yield.test-support.js";
 import {
   registerForcedCollectorCompletionSettlementTests,
   registerQueuedCollectorLaunchSettlementTest,
   registerRestartDrainCompletionSettlementTest,
 } from "./subagent-registry.native-settlement.test-support.js";
 import { registerSupersededNativeTimingTest } from "./subagent-registry.native-termination.test-support.js";
-import { registerSubagentRegistrationPersistenceTests } from "./subagent-registry.persistence.test-support.js";
+import { registerSubagentRegistrationCompletionTest, registerSubagentRegistrationPersistenceTests } from "./subagent-registry.persistence.test-support.js";
 import {
   activateSubagentRegistryWithRecoveryRuntime,
   registerRestoredRequesterWakeSettlementTests,
@@ -1515,6 +1516,14 @@ describe("subagent registry seam flow", () => {
     mockPendingAgentWait,
   });
 
+  registerSubagentForcedCollectorYieldCompletionTests({
+    getRegistry: () => mod,
+    mocks,
+    mockPendingAgentWait,
+    findRequesterRun,
+    getLifecycleHandler,
+  });
+
   it.each([
     { observation: "lifecycle", kind: "outer-timeout" },
     { observation: "wait", kind: "blocked" },
@@ -2096,6 +2105,11 @@ describe("subagent registry seam flow", () => {
       status: "error",
       error: expect.stringContaining("Gateway restart"),
     });
+  });
+
+  registerSubagentRegistrationCompletionTest({
+    getRegistry: () => mod,
+    mocks,
   });
 
   it.each(["registry write", "completion hook"] as const)(

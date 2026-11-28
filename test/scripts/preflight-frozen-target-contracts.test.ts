@@ -16,6 +16,7 @@ import {
   expandUpdateFirstHopCompatLanes,
 } from "../../scripts/lib/update-first-hop-lanes.mjs";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
+import { materializeNativeCompiler } from "./native-boundary-fixture.js";
 
 const temps = useAutoCleanupTempDirTracker(afterEach);
 const repo = resolve(".");
@@ -132,6 +133,9 @@ function fixture(
   }
   const selected = commit(selectedRoot, layout === "nested-tooling" ? [".release-harness"] : []);
   const tooling = commit(toolingRoot, layout === "nested-selected" ? ["selected"] : []);
+  if (parser) {
+    materializeNativeCompiler(toolingRoot);
+  }
   const log = join(root, "forbidden-commands");
   const bin = join(root, "bin");
   mkdirSync(bin);
@@ -309,6 +313,99 @@ describe("frozen admission upgrade Docker aliases", () => {
     expect(JSON.parse(currentOnly.stdout).sources.selected).toEqual([]);
   });
 
+  it.each(
+    lanes.flatMap((lane) =>
+      [
+        { version: "2026.6.35", recipe: "config-recipe.mjs", train: "extended-stable" },
+        { version: "2026.7.33", recipe: "config-recipe.mts", train: "extended-stable" },
+        { version: "2026.9.9", recipe: "", train: "stable" },
+      ].map((value) => Object.assign({}, value, { lane })),
+    ),
+  )("admits $lane with committed $version contracts", ({ lane, version, recipe, train }) => {
+    const files = recipe
+      ? survivorFiles(version, recipe)
+      : { "package.json": JSON.stringify({ type: "module", version }) };
+    const f = fixture({
+      ...files,
+      [pluginAssertions]: "throw new Error('unselected plugin code executed');",
+    });
+    const oid = f.selected.git("rev-parse", `${f.selected.sha}:${pluginAssertions}`);
+    rmSync(join(f.selected.root, ".git/objects", oid.slice(0, 2), oid.slice(2)));
+    const result = f.run({ docker: { lanes: [lane] } });
+    expect(result.status, result.stderr).toBe(0);
+    const record = JSON.parse(result.stdout);
+    expect(record.docker).toEqual({ lanes: [lane], omitted: [], status: "ADMITTED" });
+    expect(record.selection.consumers).toEqual(["upgrade-survivor"]);
+    expect(record.contracts).toHaveLength(1);
+    expect(record.contracts[0].modes).toEqual({
+      OPENCLAW_FROZEN_UPGRADE_SURVIVOR_CLAWHUB_MODE: "current",
+      releaseTrain: train,
+    });
+    expect(record.selectedSha).toBe(f.selected.sha);
+    expect(record.toolingSha).toBe(f.tooling.sha);
+    expect(record.contracts[0].files).toHaveLength(recipe ? 5 : 0);
+    if (recipe) {
+      expect(record.contracts[0].files).toContainEqual({ source: "selected", path: companion });
+    } else {
+      expect(existsSync(join(f.selected.root, "scripts/e2e/lib/upgrade-survivor"))).toBe(false);
+    }
+    for (const root of [f.root, f.selected.root, f.tooling.root]) {
+      expect(existsSync(join(root, "selected-code-executed"))).toBe(false);
+      expect(existsSync(join(root, "node_modules"))).toBe(false);
+    }
+  });
+
+  it("deduplicates upgrade aliases and existing family without dropping the plugin consumer", () => {
+    const f = fixture({ "package.json": '{"type":"module","version":"2026.9.9"}' });
+    const selected = [...lanes, "upgrade-survivor", "plugins-offline"];
+    const result = f.run({ docker: { lanes: selected } });
+    expect(result.status, result.stderr).toBe(0);
+    const record = JSON.parse(result.stdout);
+    expect(record.docker.lanes.toSorted()).toEqual(selected.toSorted());
+    expect(record.selection.consumers).toEqual(["plugins", "upgrade-survivor"]);
+    expect(record.contracts.map((contract: { consumer: string }) => contract.consumer)).toEqual([
+      "plugins",
+      "upgrade-survivor",
+    ]);
+  });
+
+  it.each([
+    "plugins-offline",
+    "docker-package-install",
+    "live-cli-backend-claude",
+    "live-cli-backend-gemini",
+    "update-first-hop-compat",
+    "release-user-journey",
+    "release-upgrade-user-journey",
+  ])("keeps unselected upgrade contracts inert for %s", (lane) => {
+    const files: Record<string, string> = {
+      "package.json": '{"type":"module","version":"invalid"}',
+      "src/infra/clawhub-install-trust.ts": "throw new Error('unselected upgrade code executed');",
+      "scripts/print-cli-backend-live-metadata.ts":
+        "throw new Error('unselected CLI code executed');",
+    };
+    if (lane === "update-first-hop-compat") {
+      files["scripts/runtime-postbuild.mts"] =
+        `throw new Error("selected postbuild executed");\n${readFileSync("scripts/runtime-postbuild.mts", "utf8")}`;
+    }
+    const f = fixture(files);
+    for (const path of [
+      "src/infra/clawhub-install-trust.ts",
+      "scripts/print-cli-backend-live-metadata.ts",
+    ]) {
+      const oid = f.selected.git("rev-parse", `${f.selected.sha}:${path}`);
+      rmSync(join(f.selected.root, ".git/objects", oid.slice(0, 2), oid.slice(2)));
+    }
+    const expandedLanes = expandUpdateFirstHopCompatLanes([lane]);
+    const result = f.run({ docker: { lanes: expandedLanes } });
+    expect(result.status, result.stderr).toBe(0);
+    const record = JSON.parse(result.stdout);
+    expect(record.docker).toEqual({ lanes: expandedLanes, omitted: [], status: "ADMITTED" });
+    expect(record.selection.consumers).toEqual(lane === "plugins-offline" ? ["plugins"] : []);
+    expect(record.contracts.map((contract: { consumer: string }) => contract.consumer)).toEqual(
+      record.selection.consumers,
+    );
+  });
   it.each(["plugins-offline", "update-first-hop-compat"])(
     "keeps unselected upgrade contracts inert for %s",
     (lane) => {

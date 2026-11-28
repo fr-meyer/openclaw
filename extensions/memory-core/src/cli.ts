@@ -149,6 +149,11 @@ export function registerMemoryCli(program: Command, hostOptions?: MemoryCoreRunt
 
   agentCommand("index", "Reindex memory files", true)
     .option("--force", "Force full reindex", false)
+    .option(
+      "--clear-batch-quarantine",
+      "Clear a reconciled native-batch quarantine before forced reindex",
+      false,
+    )
     .option("--verbose", "Verbose logging", false)
     .action(lazyAction("runMemoryIndex"));
 

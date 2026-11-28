@@ -1,3 +1,4 @@
+import type { readOwnedWarmSessionSnapshotSync } from "./session-accessor.sqlite-read.js";
 import type { Result } from "@openclaw/normalization-core/result";
 import type { ProgressCard } from "../../../packages/gateway-protocol/src/index.js";
 import type {
@@ -204,6 +205,16 @@ export type SessionResetRecallWorkerInput = {
   admission?: UserTurnTranscriptAdmissionReceipt;
 };
 
+/** Compute data only: this message carries no owner admission authority. */
+export type SessionEntryProjectionWorkerInput = {
+  kind: "session-entry-projection";
+  binding: string;
+  absPath: string;
+  options: { agentId: string; sessionId: string; storePath: string; parseYieldEveryLines?: number };
+  snapshot: Extract<ReturnType<typeof readOwnedWarmSessionSnapshotSync>, { status: "observed-not-atomic" }>["value"];
+  redaction: SensitiveTextRedactionSnapshot;
+};
+
 export type SessionEntryWorkerInput = {
   kind: "session-entry";
   absPath: string;
@@ -396,6 +407,7 @@ export type SessionTranscriptWorkerInput =
   | SessionModelContextWorkerInput
   | SessionContextMessagesWorkerInput
   | SessionEntryWorkerInput
+  | SessionEntryProjectionWorkerInput
   | SessionResetRecallWorkerInput;
 
 /** Only the dispatch owner attaches live physical proof; caller-prepared inputs cannot supply it. */
@@ -540,6 +552,13 @@ export type SessionTranscriptWorkerValues = SessionTranscriptInventoryWorkerValu
     "context-messages": import("./session-history-read.types.js").SessionTranscriptContextSnapshot;
     "session-reset-recall": {
       cutoff: import("../../../packages/memory-host-sdk/src/host/session-reset-recall.js").SessionResetRecallCutoff;
+    };
+    "session-entry-projection": {
+      kind: "session-entry-projection";
+      binding: string;
+      registryRevision: SensitiveTextRedactionSnapshot["registryRevision"];
+      entry: SessionFileEntry | null;
+      resetRecallCutoff: ReturnType<typeof readSessionEntryResetRecallCutoff>;
     };
     "session-entry": {
       entry: SessionFileEntry | null;

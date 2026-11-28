@@ -8,6 +8,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   applyPackageExtensionPeerMetadata,
   collectOverrideViolations,
+  exactVersionFromOverrideSpec,
+  exactOverrideRulesFromOverrides,
+  createNpmLockCommand,
+  validateLocalPackageArtifacts,
+  collectUnallowedOverrideViolations,
   collectPnpmLockViolations,
   collectPnpmLockPlatformViolations,
   collectNpmPlatformOptionalDependencies,
@@ -70,6 +75,26 @@ describe("generate-npm-package-lock", () => {
     expect(normalized).not.toHaveProperty("cpu");
     expect(normalized).not.toHaveProperty("libc");
     expect(normalized.dependencies).toEqual({ chalk: "5.6.2" });
+  });
+
+  it("runs npm package-lock generation through cmd.exe for Windows npm shims", () => {
+    const execPath = "C:\\nodejs\\node.exe";
+    const npmCmdPath = path.win32.resolve(path.win32.dirname(execPath), "npm.cmd");
+
+    expect(
+      createNpmLockCommand(["install", "--package-lock-only"], {
+        comSpec: "C:\\Windows\\System32\\cmd.exe",
+        env: {},
+        execPath,
+        existsSync: (candidate: string) => candidate === npmCmdPath,
+        platform: "win32",
+      }),
+    ).toEqual({
+      args: ["/d", "/s", "/c", `${npmCmdPath} install --package-lock-only`],
+      command: "C:\\Windows\\System32\\cmd.exe",
+      shell: false,
+      windowsVerbatimArguments: true,
+    });
   });
 
   it("bounds npm-lock command runtime and captured output by default", () => {
@@ -238,6 +263,12 @@ describe("generate-npm-package-lock", () => {
         OPENCLAW_NPM_LOCK_COMMAND_MAX_BUFFER_BYTES: "64mb",
       }),
     ).toThrow("invalid OPENCLAW_NPM_LOCK_COMMAND_MAX_BUFFER_BYTES: 64mb");
+  });
+
+  it("extracts exact versions from npm override specs", () => {
+    expect(exactVersionFromOverrideSpec("8.4.0")).toBe("8.4.0");
+    expect(exactVersionFromOverrideSpec("npm:@nolyfill/domexception@1.0.28")).toBe("1.0.28");
+    expect(exactVersionFromOverrideSpec("^8.4.0")).toBeNull();
   });
 
   it("pins same-line pnpm lock versions to the newest locked patch", () => {
@@ -429,7 +460,433 @@ describe("generate-npm-package-lock", () => {
     expect(parsePnpmPackageKey("invalid")).toBeNull();
   });
 
-  it.each(["valid", "wrong-child", "wrong-global"])(
+  it("disables embedded shrinkwraps that hide workspace overrides under npm 11", () => {
+    const lockfile = {
+      packages: {
+        "": {
+          dependencies: {
+            "lru-cache": "^11.5.0",
+          },
+        },
+        "node_modules/@openclaw/codex": {
+          version: "0.75.4",
+          hasShrinkwrap: true,
+        },
+        "node_modules/@openclaw/codex/node_modules/protobufjs": {
+          version: "7.5.9",
+        },
+        "node_modules/@openclaw/codex/node_modules/fetch-blob": {
+          version: "4.0.0",
+        },
+        "node_modules/@openclaw/codex/node_modules/fetch-blob/node_modules/node-domexception": {
+          version: "1.0.0",
+        },
+      },
+    };
+    const overrideRules = exactOverrideRulesFromOverrides({
+      protobufjs: "8.4.0",
+      "node-domexception": "npm:@nolyfill/domexception@1.0.28",
+    });
+
+    expect(collectOverrideViolations(lockfile, overrideRules)).toHaveLength(2);
+    expect(disableDependencyShrinkwrapOverrideConflictSources(lockfile, overrideRules)).toEqual([
+      "node_modules/@openclaw/codex",
+    ]);
+    expect(lockfile.packages["node_modules/@openclaw/codex"]).not.toHaveProperty("hasShrinkwrap");
+    expect(
+      lockfile.packages["node_modules/@openclaw/codex/node_modules/protobufjs"],
+    ).toBeUndefined();
+  });
+
+  // R1-NPM-1 finite edge-policy regressions. Source only in the repair packet.
+  function policyViolations(lockfile: unknown, overrides: Record<string, unknown>) {
+    return collectUnallowedOverrideViolations(
+      lockfile,
+      validationOverrideRulesFromOverrides(overrides),
+      overrides,
+    );
+  }
+
+  it("validates range overrides without flattening nested policy", () => {
+    const overrides = { foo: "^2.0.0", parent: { foo: "~1.2.0" } };
+    expect(validationOverrideRulesFromOverrides(overrides)).toEqual({ foo: "^2.0.0" });
+    expect(policyViolations({ packages: {
+      "": { dependencies: { parent: "1.0.0" } },
+      "node_modules/parent": { version: "1.0.0", dependencies: { foo: "^1.0.0" } },
+      "node_modules/foo": { version: "1.2.4" },
+    } }, overrides)).toEqual([]);
+    expect(policyViolations({ packages: {
+      "": { dependencies: { foo: "^1.0.0" } },
+      "node_modules/foo": { version: "1.2.4" },
+    } }, overrides)).toEqual([expect.objectContaining({
+      path: "node_modules/foo", expectedSpec: "^2.0.0",
+    })]);
+  });
+
+  it("rejects a scoped conflict even when the hoisted copy satisfies the global rule", () => {
+    const overrides = { foo: "^2.0.0", parent: { ".": "1.0.0", foo: "^1.0.0" } };
+    const lockfile = { packages: {
+      "": { dependencies: { parent: "1.0.0" } },
+      "node_modules/parent": {
+        version: "1.0.0", hasShrinkwrap: true, dependencies: { foo: "2.0.0" },
+      },
+      "node_modules/foo": { version: "2.1.0" },
+    } };
+    expect(policyViolations(lockfile, overrides)).toEqual([expect.objectContaining({
+      path: "node_modules/foo", expectedSpec: "^1.0.0",
+      shrinkwrapSources: ["node_modules/parent"],
+    })]);
+    expect(disableDependencyShrinkwrapOverrideConflictSources(
+      lockfile, validationOverrideRulesFromOverrides(overrides), overrides,
+    )).toEqual(["node_modules/parent"]);
+  });
+
+  it("matches selectors using incoming ranges rather than the installed version", () => {
+    const overrides = { "parent@1.0.0": { foo: "1.0.0" } };
+    const findings = policyViolations({ packages: {
+      "": { dependencies: { parent: "^1.0.0" } },
+      "node_modules/parent": { version: "1.1.0", dependencies: { foo: "2.0.0" } },
+      "node_modules/foo": { version: "2.0.0" },
+    } }, overrides);
+    expect(findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "node_modules/parent", expectedSpec: "1.0.0" }),
+      expect.objectContaining({ path: "node_modules/foo", expectedSpec: "1.0.0" }),
+    ]));
+  });
+
+  it("enforces a qualified parent's implicit version and attributes the incoming source", () => {
+    const overrides = { "parent@1.0.0": { foo: "1.0.0" } };
+    expect(policyViolations({ packages: {
+      "": { dependencies: { wrapper: "1.0.0" } },
+      "node_modules/wrapper": {
+        version: "1.0.0", hasShrinkwrap: true, dependencies: { parent: "^1.0.0" },
+      },
+      "node_modules/parent": { version: "1.1.0", dependencies: { foo: "1.0.0" } },
+      "node_modules/foo": { version: "1.0.0" },
+    } }, overrides)).toEqual([expect.objectContaining({
+      path: "node_modules/parent", expectedSpec: "1.0.0",
+      shrinkwrapSources: ["node_modules/wrapper"],
+    })]);
+  });
+
+  it("preserves legitimate hoisted peer and separate global occurrences", () => {
+    const overrides = { foo: "2.0.0", parent: { ".": "1.0.0", foo: "1.0.0" } };
+    const lockfile = { packages: {
+      "": { dependencies: { parent: "1.0.0", other: "1.0.0" } },
+      "node_modules/parent": { version: "1.0.0", peerDependencies: { foo: "1.0.0" } },
+      "node_modules/foo": { version: "1.0.0" },
+      "node_modules/other": { version: "1.0.0", dependencies: { foo: "2.0.0" } },
+      "node_modules/other/node_modules/foo": { version: "2.0.0" },
+    } };
+    expect(policyViolations(lockfile, overrides)).toEqual([]);
+    expect(disableDependencyShrinkwrapOverrideConflictSources(
+      lockfile, validationOverrideRulesFromOverrides(overrides), overrides,
+    )).toEqual([]);
+  });
+
+  it("checks every incoming policy context for a shared hoisted occurrence", () => {
+    const overrides = { first: { foo: "1.0.0" }, second: { foo: "2.0.0" } };
+    expect(policyViolations({ packages: {
+      "": { dependencies: { first: "1.0.0", second: "1.0.0" } },
+      "node_modules/first": { version: "1.0.0", dependencies: { foo: "*" } },
+      "node_modules/second": {
+        version: "1.0.0", hasShrinkwrap: true, dependencies: { foo: "*" },
+      },
+      "node_modules/foo": { version: "1.0.0" },
+    } }, overrides)).toEqual([expect.objectContaining({
+      path: "node_modules/foo", expectedSpec: "2.0.0",
+      shrinkwrapSources: ["node_modules/second"],
+    })]);
+  });
+
+  it("keeps the nearest nested policy ahead of global and qualified sibling policies", () => {
+    const overrides = {
+      foo: "3.0.0",
+      parent: { ".": "1.0.0", child: { ".": "1.0.0", foo: "1.0.0" } },
+      "parent@1.0.0": { child: { ".": "1.0.0", foo: "2.0.0" } },
+    };
+    expect(policyViolations({ packages: {
+      "": { dependencies: { parent: "1.0.0" } },
+      "node_modules/parent": { version: "1.0.0", dependencies: { child: "1.0.0" } },
+      "node_modules/child": { version: "1.0.0", dependencies: { foo: "*" } },
+      "node_modules/foo": { version: "2.0.0" },
+    } }, overrides)).toEqual([expect.objectContaining({
+      path: "node_modules/foo", expectedSpec: "1.0.0",
+    })]);
+  });
+
+  it("uses optional dependency precedence for incoming selector matching", () => {
+    const overrides = { foo: "2.0.0", "parent@1.0.0": { foo: "1.0.0" } };
+    expect(policyViolations({ packages: {
+      "": { dependencies: { parent: "1.0.0" }, optionalDependencies: { parent: "2.0.0" } },
+      "node_modules/parent": { version: "2.0.0", dependencies: { foo: "*" } },
+      "node_modules/foo": { version: "2.0.0" },
+    } }, overrides)).toEqual([]);
+  });
+
+  it.each([undefined, "foo", "other-foo"])(
+    "rejects same-version alias identity mismatch (%s)", (name) => {
+      const overrides = { foo: "npm:@patched/foo@^1.0.0" };
+      expect(policyViolations({ packages: {
+        "": { dependencies: { foo: "1.0.0" } },
+        "node_modules/foo": { name, version: "1.0.0" },
+      } }, overrides)).toEqual([expect.objectContaining({
+        path: "node_modules/foo", expectedPackageName: "@patched/foo",
+      })]);
+      expect(policyViolations({ packages: {
+        "": { dependencies: { foo: "1.0.0" } },
+        "node_modules/foo": { name: "@patched/foo", version: "1.0.0" },
+      } }, overrides)).toEqual([]);
+    },
+  );
+
+  it("attributes only failing incoming shrinkwrap sources, not unrelated holders", () => {
+    const overrides = { bad: { foo: "2.0.0" }, good: { foo: "1.0.0" } };
+    const lockfile = { packages: {
+      "": { dependencies: { bad: "1.0.0", good: "1.0.0" } },
+      "node_modules/bad": {
+        version: "1.0.0", hasShrinkwrap: true, dependencies: { foo: "*" },
+      },
+      "node_modules/good": {
+        version: "1.0.0", hasShrinkwrap: true, dependencies: { foo: "*" },
+      },
+      "node_modules/foo": { version: "1.0.0" },
+    } };
+    expect(disableDependencyShrinkwrapOverrideConflictSources(
+      lockfile, validationOverrideRulesFromOverrides(overrides), overrides,
+    )).toEqual(["node_modules/bad"]);
+    expect(lockfile.packages["node_modules/good"].hasShrinkwrap).toBe(true);
+    expect(lockfile.packages["node_modules/foo"].version).toBe("1.0.0");
+  });
+
+  it("rejects unsupported policy and incomparable qualified edges conservatively", () => {
+    for (const overrides of [
+      { foo: "latest" }, { foo: "npm:@patched/foo@latest" },
+      { "foo@not-a-range": "1.0.0" }, { foo: { ".": null } },
+    ]) {
+      expect(() => validationOverrideRulesFromOverrides(overrides)).toThrow();
+    }
+    expect(() => policyViolations({ packages: {
+      "": { dependencies: { parent: "file:./parent.tgz" } },
+      "node_modules/parent": { version: "1.0.0" },
+    } }, { "parent@^1.0.0": {} })).toThrow("unsupported incoming npm override edge");
+  });
+
+  // R5 source-only regressions. These declarations were not executed in authoring.
+  it.each(["1.0.0", "2.0.0"])(
+    "does not activate incoming-inapplicable installed-version siblings (foo=%s)",
+    (version) => {
+      const overrides = { parent: { foo: "1.0.0" }, "parent@2.0.0": { foo: "2.0.0" } };
+      const findings = policyViolations({ packages: {
+        "": { dependencies: { parent: "1.0.0" } },
+        "node_modules/parent": { version: "2.0.0", dependencies: { foo: "*" } },
+        "node_modules/foo": { version },
+      } }, overrides);
+      expect(findings).toEqual(version === "1.0.0" ? [] : [expect.objectContaining({
+        path: "node_modules/foo", expectedSpec: "1.0.0",
+      })]);
+    },
+  );
+
+  it.each(["1.0.0", "2.0.0"])(
+    "keeps a nearest selected child ahead of qualified farther ancestors (foo=%s)",
+    (version) => {
+      const overrides = {
+        parent: { child: { foo: "1.0.0" } },
+        "child@1.0.0": { foo: "2.0.0" },
+      };
+      const findings = policyViolations({ packages: {
+        "": { dependencies: { parent: "1.0.0" } },
+        "node_modules/parent": { version: "1.0.0", dependencies: { child: "1.0.0" } },
+        "node_modules/child": { version: "1.0.0", dependencies: { foo: "*" } },
+        "node_modules/foo": { version },
+      } }, overrides);
+      expect(findings).toEqual(version === "1.0.0" ? [] : [expect.objectContaining({
+        path: "node_modules/foo", expectedSpec: "1.0.0",
+      })]);
+    },
+  );
+
+  it.each(["1.0.0", "2.0.0"])(
+    "selects one actual-name alias child scope without harvesting siblings (foo=%s)",
+    (version) => {
+      const overrides = {
+        alias: "npm:real@1.0.0",
+        "real@1.0.0": { foo: "1.0.0" },
+        "real@^1.0.0": { foo: "2.0.0" },
+      };
+      const findings = policyViolations({ packages: {
+        "": { dependencies: { alias: "npm:real@1.0.0" } },
+        "node_modules/alias": { name: "real", version: "1.0.0", dependencies: { foo: "*" } },
+        "node_modules/foo": { version },
+      } }, overrides);
+      expect(findings).toEqual(version === "1.0.0" ? [] : [expect.objectContaining({
+        path: "node_modules/foo", expectedSpec: "1.0.0",
+      })]);
+    },
+  );
+
+  it.each([undefined, "other"])(
+    "does not lend actual-name child ownership to an unverified alias identity (%s)",
+    (name) => {
+      const findings = policyViolations({ packages: {
+        "": { dependencies: { alias: "npm:real@1.0.0" } },
+        "node_modules/alias": { name, version: "1.0.0", dependencies: { foo: "*" } },
+        "node_modules/foo": { version: "2.0.0" },
+      } }, { alias: "npm:real@1.0.0", "real@1.0.0": { foo: "1.0.0" } });
+      expect(findings).toEqual([expect.objectContaining({
+        path: "node_modules/alias", expectedPackageName: "real",
+      })]);
+    },
+  );
+
+  it.each([
+    { rule: "1.0.0", name: "alias", version: "1.0.0" },
+    { rule: "^2.0.0", name: "alias", version: "2.1.0" },
+    { rule: { ".": "1.0.0" }, name: "alias", version: "1.0.0" },
+    { rule: { ".": "^2.0.0" }, name: "alias", version: "2.1.0" },
+    { rule: "npm:other@^2.0.0", name: "other", version: "2.1.0" },
+  ])("uses the effective replacement identity for an incoming alias (%j)", ({ rule, name, version }) => {
+    expect(policyViolations({ packages: {
+      "": { dependencies: { wrapper: "1.0.0" } },
+      "node_modules/wrapper": {
+        version: "1.0.0", hasShrinkwrap: true,
+        dependencies: { alias: "npm:real@^1.0.0" },
+      },
+      "node_modules/alias": { name, version },
+    } }, { alias: rule })).toEqual([]);
+  });
+
+  it.each([
+    { rule: "1.0.0", name: "real", version: "1.0.0", expectedName: "alias" },
+    { rule: "^2.0.0", name: "real", version: "2.1.0", expectedName: "alias" },
+    { rule: "1.0.0", name: "alias", version: "2.0.0", expectedName: "alias" },
+    { rule: "npm:other@^2.0.0", name: "real", version: "2.1.0", expectedName: "other" },
+  ])("rejects a stale identity or wrong version after alias replacement (%j)", ({ rule, name, version, expectedName }) => {
+    expect(policyViolations({ packages: {
+      "": { dependencies: { wrapper: "1.0.0" } },
+      "node_modules/wrapper": { version: "1.0.0", dependencies: { alias: "npm:real@^1.0.0" } },
+      "node_modules/alias": { name, version },
+    } }, { alias: rule })).toEqual([expect.objectContaining({
+      path: "node_modules/alias", expectedPackageName: expectedName,
+    })]);
+  });
+
+  it.each([
+    { label: "no replacement", overrides: {} },
+    { label: "bare wildcard", overrides: { alias: "*" } },
+    { label: "object wildcard", overrides: { alias: { ".": "*" } } },
+    { label: "selector-only child scope", overrides: { "alias@^1.0.0": { child: "1.0.0" } } },
+  ])("preserves incoming alias identity for $label", ({ overrides }) => {
+    for (const name of ["real", "alias"]) {
+      const findings = policyViolations({ packages: {
+        "": { dependencies: { wrapper: "1.0.0" } },
+        "node_modules/wrapper": { version: "1.0.0", dependencies: { alias: "npm:real@^1.0.0" } },
+        "node_modules/alias": { name, version: "1.0.0", dependencies: { child: "1.0.0" } },
+        "node_modules/child": { version: "1.0.0" },
+      } }, overrides);
+      expect(findings).toEqual(name === "real" ? [] : [expect.objectContaining({
+        path: "node_modules/alias", expectedPackageName: "real",
+      })]);
+    }
+  });
+
+  it("does not lend superseded alias target children to an ordinary replacement", () => {
+    expect(policyViolations({ packages: {
+      "": { dependencies: { wrapper: "1.0.0" } },
+      "node_modules/wrapper": { version: "1.0.0", dependencies: { alias: "npm:real@^1.0.0" } },
+      "node_modules/alias": { name: "alias", version: "2.0.0", dependencies: { child: "*" } },
+      "node_modules/child": { version: "1.0.0" },
+    } }, { alias: "2.0.0", "real@2.0.0": { child: "9.0.0" } })).toEqual([]);
+  });
+
+  it("carries byte-verified direct artifact policy through the normalization selection seam", () => {
+    const root = tempDirs.make("openclaw-npm-artifact-policy-");
+    // Exercise the byte verifier, not a fabricated verified-array capability.
+    // This is a hash-binding regression, not packed archive/runtime acceptance.
+    const bytes = readFileSync(new URL(import.meta.url));
+    const artifact = { name: "patched", version: "1.0.0", spec: "file:./patched.tgz",
+      integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}` };
+    writeFileSync(path.join(root, "patched.tgz"), bytes);
+    const verified = validateLocalPackageArtifacts(root, [artifact]);
+    const overrides = { "patched@1.0.0": { child: "2.0.0" } };
+    const manifest = packageJsonForNpmLock({ dependencies: { patched: "1.0.0" } }, overrides, verified);
+    const context = { localPackageArtifacts: verified, effectiveOverrides: normalizeOverrides(manifest.overrides) };
+    const lockfile = { packages: {
+      "": { dependencies: { patched: artifact.spec } },
+      "node_modules/patched": { name: "patched", version: "1.0.0",
+        integrity: artifact.integrity, resolved: "file:patched.tgz",
+        dependencies: { child: "*" } },
+      "node_modules/child": { version: "2.0.0" },
+    } };
+    const collect = () => collectUnallowedOverrideViolations(
+      lockfile, validationOverrideRulesFromOverrides(overrides), overrides, context,
+    );
+    expect(collect()).toEqual([]);
+    lockfile.packages["node_modules/child"].version = "1.0.0";
+    expect(collect()).toEqual([expect.objectContaining({ path: "node_modules/child", expectedSpec: "2.0.0" })]);
+    expect(() => collectUnallowedOverrideViolations(lockfile, {}, overrides, {
+      ...context, localPackageArtifacts: [artifact],
+    })).toThrow("unverified local package artifact policy binding");
+    lockfile.packages["node_modules/patched"].integrity = "sha512-different";
+    expect(collect).toThrow("npm lock differs from local package artifact");
+    lockfile.packages["node_modules/patched"].integrity = artifact.integrity;
+    lockfile.packages[""].dependencies.patched = "file:./other.tgz";
+    expect(collect).toThrow("unsupported incoming npm override edge");
+  });
+
+  it("keeps artifact first-match shadow resolution and direct occurrence boundaries", () => {
+    const root = tempDirs.make("openclaw-npm-artifact-scope-");
+    const bytes = readFileSync(new URL(import.meta.url));
+    const artifact = { name: "patched", version: "1.0.0", spec: "file:./patched.tgz",
+      integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}` };
+    writeFileSync(path.join(root, "patched.tgz"), bytes);
+    const verified = validateLocalPackageArtifacts(root, [artifact]);
+    const overrides = { "patched@1.0.0": { child: "3.0.0" } };
+    const manifest = packageJsonForNpmLock({
+      dependencies: { patched: "1.0.0" },
+      overrides: { "patched@^1.0.0": { ".": "1.0.0", child: "2.0.0" } },
+    }, overrides, verified);
+    const reentry = packageJsonForNpmLock(manifest, overrides, verified);
+    expect(reentry).toEqual(manifest);
+    const context = { localPackageArtifacts: verified, effectiveOverrides: normalizeOverrides(reentry.overrides) };
+    const lockfile = { packages: {
+      "": { dependencies: { patched: artifact.spec, wrapper: "1.0.0" } },
+      "node_modules/patched": { version: "1.0.0", integrity: artifact.integrity,
+        resolved: "file:patched.tgz", dependencies: { child: "*" } },
+      "node_modules/child": { version: "2.0.0" },
+      "node_modules/wrapper": { version: "1.0.0", dependencies: { patched: artifact.spec } },
+      "node_modules/wrapper/node_modules/patched": { version: "1.0.0" },
+    } };
+    expect(() => collectUnallowedOverrideViolations(lockfile, {}, overrides, context))
+      .toThrow("unsupported incoming npm override edge");
+    delete (lockfile.packages["node_modules/wrapper"].dependencies as Record<string, string>).patched;
+    expect(collectUnallowedOverrideViolations(lockfile, {}, overrides, context)).toEqual([]);
+    expect(() => collectUnallowedOverrideViolations(lockfile, {}, overrides, {
+      ...context, effectiveOverrides: {},
+    })).toThrow("missing effective local package artifact policy");
+  });
+
+  it.each(["1.0.0", "2.0.0"])(
+    "uses actual alias node version rather than its wider incoming range (foo=%s)",
+    (version) => {
+      const overrides = {
+        alias: "npm:real@^1.0.0",
+        "real@1.0.0": { foo: "2.0.0" },
+        "real@^1.0.0": { foo: "1.0.0" },
+      };
+      const findings = policyViolations({ packages: {
+        "": { dependencies: { alias: "npm:real@^1.0.0" } },
+        "node_modules/alias": { name: "real", version: "1.5.0", dependencies: { foo: "*" } },
+        "node_modules/foo": { version },
+      } }, overrides);
+      expect(findings).toEqual(version === "1.0.0" ? [] : [expect.objectContaining({
+        path: "node_modules/foo", expectedSpec: "1.0.0",
+      })]);
+    },
+  );
+
+  it.each(["valid", "wrong-child", "wrong-global"])( 
     "validates the body-parser qs exception without weakening the global pin (%s)",
     (scenario) => {
       const lockfile = {
@@ -576,7 +1033,7 @@ describe("generate-npm-package-lock", () => {
         optionalDependencies: { parent: "2.0.0" },
       },
     },
-  ])("matches scoped selectors using the effective edge spec ($name)", ({ expected, root }) => {
+  ])("matches scoped selectors using the effective edge spec ($name)", ({ expected, root, name }) => {
     const lockfile = {
       packages: {
         "": root,
@@ -593,6 +1050,12 @@ describe("generate-npm-package-lock", () => {
       "parent@1.0.0": { forked: "1.0.0" },
     };
 
+    if (!["Git semver range", "npm alias range", "optional dependency precedence"].includes(name)) {
+      expect(() => disableDependencyShrinkwrapOverrideConflictSources(
+        lockfile, validationOverrideRulesFromOverrides(overrides), overrides,
+      )).toThrow("unsupported incoming npm override edge");
+      return;
+    }
     expect(
       disableDependencyShrinkwrapOverrideConflictSources(
         lockfile,
@@ -1585,7 +2048,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
           scenario === "tampered"
             ? "local package artifact integrity mismatch"
             : scenario === "wrong-version"
-              ? "npm lock differs from local package artifact: fixture-dep@1.0.0"
+              ? "npm lock differs from local package artifact: fixture-dep"
               : scenario === "symlink-escape"
                 ? "local package artifact escapes package root"
                 : "invalid local package artifact",

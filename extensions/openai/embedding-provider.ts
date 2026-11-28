@@ -1,3 +1,4 @@
+import type { OpenAiBatchJournalContext } from "./embedding-batch-journal.js";
 import {
   createRemoteEmbeddingProvider,
   normalizeEmbeddingModelWithPrefixes,
@@ -9,6 +10,8 @@ import {
 import { OPENAI_DEFAULT_EMBEDDING_MODEL } from "./default-models.js";
 
 export type OpenAiEmbeddingClient = RemoteEmbeddingClient & {
+  /** Independent controller custody only; never inferred from credentials. */
+  batchJournal?: OpenAiBatchJournalContext;
   inputType?: string;
   queryInputType?: string;
   documentInputType?: string;

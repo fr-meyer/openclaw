@@ -37,6 +37,7 @@ export {
   normalizeEmbeddingModelWithPrefixes,
   postJsonWithRetry,
   readEmbeddingBatchJsonl,
+  readEmbeddingVectors,
   resolveEmbeddingEndpointUrl,
   resolveEmbeddingInputFormatVersion,
   resolveRemoteEmbeddingBearerClient,
@@ -66,6 +67,7 @@ export { registerRuntimeAuthProfileStoreMutationListener } from "../agents/auth-
 export type {
   MemoryEmbeddingBatchChunk,
   MemoryEmbeddingBatchOptions,
+  MemoryEmbeddingBatchSubmissionLifecycle,
   MemoryEmbeddingProvider,
   MemoryEmbeddingProviderAdapter,
   MemoryEmbeddingProviderCallOptions,

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { EmbeddingCandidateAdmission, EmbeddingCandidateControllerIdentity, EmbeddingProviderBatchRuntime } from "openclaw/plugin-sdk/embedding-provider-runtime-contract";
 // Memory Core plugin module owns manager cache and close serialization.
 import { toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import { enqueueKeyedTask } from "openclaw/plugin-sdk/keyed-async-queue";
@@ -12,6 +14,7 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import type { MemoryEmbeddingProbeResult } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
+import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/time-runtime";
 import {
   resolveMemoryCoreLocalServiceHostIdentity,
   type MemoryCoreAcquireLocalService,
@@ -47,6 +50,15 @@ type PreparedMemoryManager<T extends ClosableMemoryManager> = {
 type MemoryManagerRegistryCallbacks<T extends ClosableMemoryManager> = {
   prepare: () => Promise<PreparedMemoryManager<T> | null> | PreparedMemoryManager<T> | null;
 };
+
+export type MemoryManagerAdmission = { signal?: AbortSignal; waitMs?: number; deadlineMs?: number };
+
+class MemoryManagerAdmissionUnavailableError extends Error {
+  constructor() {
+    super("Memory manager admission timed out");
+    this.name = "MemoryManagerAdmissionUnavailableError";
+  }
+}
 
 export function resolveMemoryIndexManagerCacheKey(params: {
   agentId: string;
@@ -93,6 +105,10 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
   private readonly scopeOperations = new Map<string, Promise<void>>();
   private closePromise: Promise<void> | null = null;
   private readonly managers = new Map<T, ManagerOwnership>();
+  private readonly candidateOwners = new WeakMap<MemoryEmbeddingProvider, {
+    runtime: NonNullable<MemoryEmbeddingProviderCreateResult["runtime"]>;
+    bind: EmbeddingProviderBatchRuntime["withCandidateBatch"];
+  }>();
   constructor(private readonly lifecycle: MemoryManagerLifecycle = {}) {
     lifecycle.prepare = (reload) => this.prepareManagersForReload(reload);
   }
@@ -136,6 +152,9 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
       const result = await create();
       if (result.provider) {
         owner.providers.set(result.provider, adapter);
+        if (result.runtime) {
+          this.candidateOwners.set(result.provider, { runtime: result.runtime, bind: result.runtime.withCandidateBatch });
+        }
         owner.failedAdapters.delete(adapter);
       } else {
         owner.failedAdapters.add(adapter);
@@ -147,6 +166,85 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
     } finally {
       owner.pending.delete(acquisition);
     }
+  }
+
+  withCandidateBatch<R>(
+    manager: T, provider: MemoryEmbeddingProvider,
+    runtime: NonNullable<MemoryEmbeddingProviderCreateResult["runtime"]>,
+    admission: EmbeddingCandidateAdmission,
+    run: (batch: EmbeddingProviderBatchRuntime["batchEmbed"], identity: EmbeddingCandidateControllerIdentity) => Promise<R>,
+  ): Promise<R> {
+    const operation = (async () => {
+      const baseline = Object.freeze({ agentId: admission.agentId,
+        journal: Object.freeze({ path: admission.journal.path, migrationId: admission.journal.migrationId,
+          sourceRevision: admission.journal.sourceRevision, accountId: admission.journal.accountId,
+          route: admission.journal.route }),
+        expected: Object.freeze({ model: admission.expected.model, dimensions: admission.expected.dimensions }) });
+      const adapterAdmission = Object.freeze({ ...baseline,
+        journal: Object.freeze({ ...baseline.journal }), expected: Object.freeze({ ...baseline.expected }) });
+      const expectedIdentity = createHash("sha256").update(JSON.stringify({
+        migrationId: baseline.journal.migrationId, sourceRevision: baseline.journal.sourceRevision,
+        accountId: baseline.journal.accountId, route: baseline.journal.route,
+        agentId: baseline.agentId, model: baseline.expected.model, dimensions: baseline.expected.dimensions,
+      })).digest("hex");
+      const owner = this.managers.get(manager);
+      const adapter = owner?.providers.get(provider);
+      const owned = this.candidateOwners.get(provider);
+      const assertCurrent = () => {
+        if (!owner || owner.retiring || this.reload?.retireRuntime || !adapter ||
+          this.reload?.adapters.has(adapter) || owner.providers.get(provider) !== adapter ||
+          !owned || owned.runtime !== runtime || !owned.bind || runtime.withCandidateBatch !== owned.bind) {
+          throw new Error("Candidate Batch capability is not owned by the current registered provider");
+        }
+      };
+      assertCurrent();
+      const bind = owned!.bind!;
+      return await bind(adapterAdmission, async (batch, identity) => {
+        assertCurrent();
+        if (identity.agentId !== baseline.agentId || identity.identity !== expectedIdentity ||
+          JSON.stringify(identity.journal) !== JSON.stringify(baseline.journal) ||
+          JSON.stringify(identity.expected) !== JSON.stringify(baseline.expected)) {
+          throw new Error("Registered candidate controller changed its admitted identity");
+        }
+        const retainedIdentity = Object.freeze({ ...baseline, identity: expectedIdentity });
+        let active = true;
+        const pending = new Set<Promise<number[][] | null>>();
+        const failures: unknown[] = [];
+        const track = (work: Promise<number[][] | null>) => {
+          pending.add(work);
+          void work.then(() => { pending.delete(work); }, (error) => {
+            pending.delete(work); if (!failures.includes(error)) { failures.push(error); }
+          });
+          return work;
+        };
+        let result: R | undefined;
+        try {
+          result = await run((options) => {
+            try {
+              assertCurrent();
+              if (!active) { throw new Error("Candidate registry Batch custody retired"); }
+              const snapshot = { agentId: options.agentId, chunks: structuredClone(options.chunks),
+                wait: options.wait, concurrency: options.concurrency, pollIntervalMs: options.pollIntervalMs,
+                timeoutMs: options.timeoutMs, debug: options.debug };
+              return track(batch(snapshot));
+            } catch (error) { return track(Promise.reject(error)); }
+          }, retainedIdentity);
+        } catch (error) {
+          const index = failures.indexOf(error); if (index >= 0) { failures.splice(index, 1); }
+          failures.unshift(error);
+        } finally {
+          active = false;
+          while (pending.size) { await Promise.allSettled([...pending]); }
+        }
+        try { assertCurrent(); } catch (error) { failures.push(error); }
+        if (failures.length === 1) { throw failures[0]; }
+        if (failures.length > 1) { throw new AggregateError(failures,
+          "Candidate registry callback/drain/owner failed", { cause: failures[0] }); }
+        return result as R;
+      });
+    })();
+    void operation.catch(() => {});
+    return operation;
   }
 
   canPublishProbe(manager: T): boolean {
@@ -209,7 +307,11 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
   }
 
   async acquire(
-    params: { agentId: string; purpose: MemoryIndexManagerPurpose },
+    params: {
+      agentId: string;
+      purpose: MemoryIndexManagerPurpose;
+      admission?: MemoryManagerAdmission;
+    },
     callbacks: MemoryManagerRegistryCallbacks<T>,
   ): Promise<T | null> {
     // A detached search handoff may race global teardown. Decline late
@@ -285,6 +387,27 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
     }
   }
 
+  async retireAllForAgent(agentId: string): Promise<void> {
+    const agent = normalizeAgentId(agentId);
+    // Admission must already be required, blocking queued/new acquisitions.
+    const pending = [...this.scopeOperations.entries()]
+      .filter(([key]) => {
+        try {
+          return JSON.parse(key)[0] === agent;
+        } catch {
+          return false;
+        }
+      })
+      .map(([, task]) => task);
+    await Promise.allSettled(pending);
+    await this.closeEntries(
+      [...this.managers]
+        .filter(([, owner]) => owner.key.startsWith(agent + ":"))
+        .map(([manager, owner]) => [owner.key, manager]),
+      agent,
+    );
+  }
+
   async closeForAgent(params: {
     agentId: string;
     purpose: MemoryIndexManagerPurpose;
@@ -301,24 +424,105 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
   }
 
   private async runScopeOperation<R>(
-    params: { agentId: string; purpose: MemoryIndexManagerPurpose },
+    params: {
+      agentId: string;
+      purpose: MemoryIndexManagerPurpose;
+      admission?: MemoryManagerAdmission;
+    },
     operation: () => Promise<R>,
   ): Promise<R> {
-    while (this.closePromise) {
-      const globalClose = this.closePromise;
-      try {
-        await globalClose;
-      } catch {
-        if (this.closePromise === globalClose) {
-          await this.closeAll();
+    const admission = new AbortController();
+    const callerSignal = params.admission?.signal;
+    const onCallerAbort = () => admission.abort(callerSignal?.reason);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onQueuedAbort: (() => void) | undefined;
+    const disarm = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+      if (onQueuedAbort) {
+        admission.signal.removeEventListener("abort", onQueuedAbort);
+      }
+    };
+    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+    if (callerSignal?.aborted) {
+      onCallerAbort();
+    }
+    const deadlineMs = params.admission?.deadlineMs;
+    const waitMs = deadlineMs !== undefined
+      ? Math.max(0, deadlineMs - Date.now())
+      : params.admission?.waitMs;
+    if (waitMs === 0) {
+      admission.abort(new MemoryManagerAdmissionUnavailableError());
+    } else if (waitMs !== undefined && Number.isFinite(waitMs) && waitMs > 0) {
+      timer = setTimeout(
+        () => admission.abort(new MemoryManagerAdmissionUnavailableError()),
+        waitMs,
+      );
+      timer.unref?.();
+    }
+    try {
+      // One budget covers both admission barriers. Never cancel either shared owner.
+      while (this.closePromise) {
+        const globalClose = this.closePromise;
+        try {
+          await racePromiseWithAbortSignal(
+            globalClose,
+            admission.signal,
+            (signal) => signal.reason,
+          );
+        } catch (error) {
+          if (admission.signal.aborted) {
+            throw error;
+          }
+          if (this.closePromise === globalClose) {
+            await racePromiseWithAbortSignal(
+              () => this.closeAll(),
+              admission.signal,
+              (signal) => signal.reason,
+            );
+          }
         }
       }
+      admission.signal.throwIfAborted();
+      let started = false;
+      let abandoned = false;
+      const queued = enqueueKeyedTask({
+        tails: this.scopeOperations,
+        key: JSON.stringify([params.agentId, params.purpose]),
+        task: async () => {
+          if (abandoned) {
+            throw admission.signal.reason;
+          }
+          callerSignal?.throwIfAborted();
+          admission.signal.throwIfAborted();
+          if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+            throw new MemoryManagerAdmissionUnavailableError();
+          }
+          started = true;
+          // The bound ends before prepare, replacement close, or factory work starts.
+          disarm();
+          return await operation();
+        },
+      });
+      return await new Promise<R>((resolve, reject) => {
+        onQueuedAbort = () => {
+          if (started) {
+            return;
+          }
+          abandoned = true;
+          reject(admission.signal.reason);
+        };
+        admission.signal.addEventListener("abort", onQueuedAbort, { once: true });
+        if (admission.signal.aborted) {
+          onQueuedAbort();
+        }
+        // Keep observing a rejected abandoned queue callback after our caller exits.
+        queued.then(resolve, reject);
+      });
+    } finally {
+      disarm();
     }
-    return await enqueueKeyedTask({
-      tails: this.scopeOperations,
-      key: JSON.stringify([params.agentId, params.purpose]),
-      task: operation,
-    });
   }
 
   private async closeAllUnlocked(): Promise<void> {

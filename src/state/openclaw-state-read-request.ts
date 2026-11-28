@@ -579,6 +579,9 @@ function commandBytes(command: OpenClawStateReadRequest["command"]): number {
   if (command.type === "meetingTranscripts.export") {
     return bytes + Buffer.byteLength(JSON.stringify(command));
   }
+  if (command.type === "nodeWorker.turnJournalSnapshot") {
+    return bytes + Buffer.byteLength(command.turnId, "utf8") + Buffer.byteLength(command.ownerLaunchId, "utf8");
+  }
   return bytes;
 }
 

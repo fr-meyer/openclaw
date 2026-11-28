@@ -257,3 +257,13 @@ export async function readMemoryTranscriptStatsInWorker(
   }
   return result.stats;
 }
+
+export async function runMemoryBatchSubmissionStatus(target: MemoryReadTarget) {
+  const fileIdentity = readMemoryShadowIdentity(target.databasePath);
+  const result = await runRetrieval(
+    { ...target, kind: "batch-status", fileIdentity },
+    { inputBytes: 2 * (target.databasePath.length + target.agentId.length) },
+    "native batch submission status",
+  );
+  return result.status;
+}

@@ -82,6 +82,10 @@ class IntervalSyncHarness extends MemorySyncTestHarness {
     return this.resolveBatchConfig();
   }
 
+  protected async assertNoBatchSubmissionQuarantine(): Promise<void> {}
+
+  protected async commitBatchSubmissionQuarantine(): Promise<void> {}
+
   protected computeProviderKey(): string {
     return "test";
   }

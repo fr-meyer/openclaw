@@ -966,3 +966,81 @@ describe("prepared Docker publication", () => {
     ).toEqual(["publish"]);
   });
 });
+
+
+describe("native smoke resource admission", () => {
+  const digest = "sha256:" + "a".repeat(64);
+  const ownedContainer = "c".repeat(64);
+
+  function smokeHarness(failStart = false) {
+    const text = readFileSync("scripts/docker-release-artifacts.mjs", "utf8");
+    const start = text.indexOf("function smokeImage(");
+    const end = text.indexOf("function releaseContext(", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const events: string[] = [];
+    const commands: string[][] = [];
+    const smoke = runInNewContext(
+      text.slice(start, end) + "; smokeImage;",
+      {
+        DIGEST: /^sha256:[0-9a-f]{64}$/u,
+        ARCHITECTURES: ["amd64", "arm64"],
+        WORKSPACE_SMOKE: "workspace smoke fixture",
+        requireValue(value: unknown, message: string) {
+          if (!value) throw new Error(message);
+        },
+        run(command: string, args: string[]) {
+          commands.push([command, ...args]);
+          events.push([command, ...args.slice(0, 2)].join(" "));
+          if (failStart && args[0] === "start") throw new Error("attached smoke failed");
+          if (args[0] === "image") return digest;
+          if (args[0] === "create") return ownedContainer;
+          if (args[0] === "inspect") return "false 0";
+          return "";
+        },
+      },
+    );
+    return { smoke, events, commands };
+  }
+
+  it.each([undefined, "secretless"])("admits immediately before native launch: %s", (isolation) => {
+    const { smoke, events } = smokeHarness();
+    smoke("/unused", "amd64", "default", digest, {
+      transport: "loaded", isolation,
+      beforeNative() { events.push("admission"); },
+    });
+    const launch = events.findIndex((event) => /^docker (create|run) /u.test(event));
+    expect(events[launch - 1]).toBe("admission");
+    expect(events.filter((event) => event === "admission")).toHaveLength(1);
+    if (isolation === "secretless") {
+      expect(events).toContain("docker rm --force");
+    }
+  });
+
+  it.each([undefined, "secretless"])("propagates refusal without any native launch: %s", (isolation) => {
+    const { smoke, events } = smokeHarness();
+    const refusal = new Error("fresh resource admission refused");
+    expect(() => smoke("/unused", "amd64", "default", digest, {
+      transport: "loaded", isolation,
+      beforeNative() { throw refusal; },
+    })).toThrow(refusal);
+    expect(events).toEqual(["docker image inspect"]);
+  });
+
+  it("retains exact owned cleanup when native start fails after admission", () => {
+    const { smoke, events, commands } = smokeHarness(true);
+    expect(() => smoke("/unused", "amd64", "default", digest, {
+      transport: "loaded", isolation: "secretless",
+      beforeNative() { events.push("admission"); },
+    })).toThrow("attached smoke failed");
+    expect(commands.at(-1)).toEqual(["docker", "rm", "--force", ownedContainer]);
+  });
+
+  it("rejects an invalid admission callback before preparation or inspection", () => {
+    const { smoke, events } = smokeHarness();
+    expect(() => smoke("/unused", "amd64", "default", digest, {
+      beforeNative: true,
+    })).toThrow("Docker smoke beforeNative must be a function.");
+    expect(events).toEqual([]);
+  });
+});

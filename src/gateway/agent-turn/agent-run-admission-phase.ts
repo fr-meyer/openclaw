@@ -74,6 +74,8 @@ import {
   releasePreparedAgentRunUserTurnAfterFailure,
   type PreparedAgentRunUserTurn,
 } from "./agent-run-user-turn.js";
+import { createAgentTurnExecutionSettlement } from "./execution-settlement.js";
+import type { AgentTurnExecutionSettlement } from "./execution-settlement.types.js";
 
 export async function prepareAgentRunDispatch(
   params: PrepareAgentRunDispatchParams,
@@ -135,6 +137,7 @@ export async function prepareAgentRunDispatch(
   } = resolveAgentRunAdmissionModel(params);
   let timeoutSeconds: number | undefined;
   let operationalRunInstance: OperationalRunInstanceRef | undefined;
+  let executionSettlement: AgentTurnExecutionSettlement | undefined;
   try {
     await params.acquireGatewayWorkAdmission(lifecycleStorePath);
     const admittedSessionEntry = params.assertGatewayWorkAdmissionAllowed();
@@ -627,6 +630,16 @@ export async function prepareAgentRunDispatch(
         return rejectPreaccept(resolveAgentRunAdmissionError(ErrorCodes.UNAVAILABLE, failure));
       }
     }
+    if (params.io.emitExecutionOwner && params.resolvedSessionKey && activeRunAbort.entry) {
+      executionSettlement = createAgentTurnExecutionSettlement({
+        runId: params.runId,
+        sessionKey: params.resolvedSessionKey,
+        entry: activeRunAbort.entry,
+        lifecycleGeneration: params.lifecycleGeneration,
+        context: params.context,
+      });
+      params.io.emitExecutionOwner(executionSettlement.owner);
+    }
     followupCompletion?.markAccepted(params.runId);
     params.markAgentRunAccepted(true);
     adoptedParentResume = undefined;
@@ -672,6 +685,7 @@ export async function prepareAgentRunDispatch(
     return {
       activeGatewayWorkAdmission,
       activeRunAbort,
+      ...(executionSettlement ? { executionSettlement } : {}),
       ...(cronCreatorAuthority ? { cronCreatorAuthority } : {}),
       releaseCallerAuthority: () => {
         try {
@@ -701,6 +715,7 @@ export async function prepareAgentRunDispatch(
       restoreAdmittedRestartRecoveryInterrupted,
     };
   } catch (error) {
+    executionSettlement?.markUnknown();
     return releaseFailedAgentRunAdmission(userTurn, error, cleanupPreaccept);
   }
 }

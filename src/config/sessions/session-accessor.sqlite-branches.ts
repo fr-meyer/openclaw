@@ -1,3 +1,4 @@
+import { createBranchReadDiagnostics, type BranchReadDiagnosticsSink } from "../../infra/branch-read-diagnostics.js";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import { runSqliteDeferredTransactionSync } from "../../infra/sqlite-transaction.js";
@@ -97,8 +98,11 @@ export function readSessionBranchSnapshot(
   > & {
     databaseIdentity?: string;
   },
+  diagnosticsSink?: BranchReadDiagnosticsSink,
 ): SessionBranchSummaryReadResult {
-  return runSqliteDeferredTransactionSync<SessionBranchSummaryReadResult>(
+  const diagnostics = diagnosticsSink ? createBranchReadDiagnostics() : undefined;
+  try {
+  const result = runSqliteDeferredTransactionSync<SessionBranchSummaryReadResult>(
     database.db,
     () => {
       if (
@@ -128,30 +132,41 @@ export function readSessionBranchSnapshot(
         previous.maxSeq <= watermark.maxSeq
           ? previous
           : undefined;
+      if (cached?.maxSeq === watermark.maxSeq) diagnostics?.add("cache");
       const summaries =
         cached?.maxSeq === watermark.maxSeq
           ? cached
-          : readSessionBranchSummaries(database, expected.sessionId, cached);
+          : readSessionBranchSummaries(database, expected.sessionId, cached, diagnostics);
+      diagnostics?.add("branchCount", summaries.branches.length);
       return {
         status: "ok",
         ...watermark,
         appendSafe: summaries.appendSafe,
-        branches: cloneSessionBranchSummaries(summaries.branches),
+        branches: diagnostics ? diagnostics.measure("cloneMs", () => cloneSessionBranchSummaries(summaries.branches)) : cloneSessionBranchSummaries(summaries.branches),
       };
     },
     { operationLabel: "session branch summaries read" },
   );
+  diagnostics?.add(result.status === "ok" ? "ok" : result.status === "missing-session" ? "missing" : "failed");
+  return result;
+  } catch (error) {
+    diagnostics?.add("exception");
+    throw error;
+  } finally {
+    if (diagnostics && diagnosticsSink) diagnostics.emit(diagnosticsSink);
+  }
 }
 
 /** The transcript worker opens and closes its own read-only handle; only summaries leave it. */
 export function readSessionBranchSummariesInWorker(
   request: SessionBranchSummaryReadRequest,
+  diagnosticsSink?: BranchReadDiagnosticsSink,
 ): SessionBranchSummaryReadResult {
   const result = withFreshOpenClawAgentDatabaseReadOnly(
     (database) =>
       request.validation && !adoptOpenClawAgentDatabaseValidation(database, request.validation)
         ? { status: "failed" as const }
-        : readSessionBranchSnapshot(database, request),
+        : readSessionBranchSnapshot(database, request, diagnosticsSink),
     request.database,
   );
   return result.found ? result.value : { status: "missing-session" };

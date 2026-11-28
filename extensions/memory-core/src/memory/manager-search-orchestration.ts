@@ -17,6 +17,7 @@ import {
 import { WorkerTaskError } from "openclaw/plugin-sdk/process-runtime";
 import { redactSensitiveText } from "openclaw/plugin-sdk/security-runtime";
 import { uniqueValues } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { assertBoundedMemoryOperation } from "./bounded-admission.js";
 import { mergeHybridResults, selectHybridSearchResults } from "./hybrid.js";
 import { runMemoryVectorFallback } from "./manager-cpu-worker-runtime.js";
 import { isMemoryEmbeddingOperationError } from "./manager-embedding-errors.js";
@@ -59,6 +60,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
   }
 
   async search(query: string, opts?: MemoryIndexSearchOptions): Promise<MemorySearchResult[]> {
+    assertBoundedMemoryOperation(this.agentId, true);
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
       return [];

@@ -9,6 +9,7 @@ import {
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
+import { assertBoundedMemoryOperation, boundedMemoryAdmissionActive } from "./bounded-admission.js";
 import type { IndexedMemoryChunk } from "./manager-chunk-writer.js";
 import {
   collectMemoryCachedEmbeddings,
@@ -41,6 +42,10 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
   ): Promise<number[][]>;
 
   protected async pruneEmbeddingCacheIfNeeded(): Promise<void> {
+    assertBoundedMemoryOperation(this.agentId);
+    if (boundedMemoryAdmissionActive(this.agentId)) {
+      return;
+    }
     const max = this.cache.maxEntries;
     if (!this.cache.enabled || !max || max <= 0) {
       return;
@@ -59,6 +64,7 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
   protected assertEmbeddingCacheGenerationCurrent(
     generation: MemorySemanticProviderGeneration,
   ): void {
+    assertBoundedMemoryOperation(this.agentId);
     if (
       this.closed ||
       this.syncProviderGeneration !== generation ||
@@ -109,6 +115,7 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
     candidates: MemoryEmbeddingCacheCandidate[],
     generation: MemorySemanticProviderGeneration,
     maxTokens: number,
+    onBatchSuccess?: (items: MemoryEmbeddingCacheCandidate[], vectors: number[][]) => void,
   ): Promise<number[][]> {
     const { embeddings, missing, missingCandidates } = await this.collectCachedEmbeddings(
       candidates,
@@ -134,6 +141,8 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
         generation,
         batchCandidates,
       );
+      this.assertEmbeddingCacheGenerationCurrent(generation);
+      onBatchSuccess?.(batchCandidates, batchEmbeddings);
       for (let i = 0; i < batchChunks.length; i += 1) {
         const item = missing[cursor + i];
         const embedding = batchEmbeddings[i] ?? [];

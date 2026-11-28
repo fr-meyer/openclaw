@@ -782,6 +782,47 @@ describe("Workboard gateway lifecycle sync", () => {
     expect((await store.get(card.id))?.status).toBe("running");
   });
 
+  it("suffix-matches an accepted agentless run whose link could not be persisted", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const card = await store.create({ title: "Accepted without link", status: "ready" });
+    const acceptedSessionKey = workboardSessionKeyForCard(card);
+    const claimed = await store.claim(card.id, { ownerId: "workboard-dispatcher" });
+    const provisional = await store.update(card.id, {
+      sessionKey: acceptedSessionKey,
+      runId: "provisional-run",
+      execution: execution(acceptedSessionKey, "provisional-run"),
+    });
+    const canonicalSessionKey = `agent:worker:${acceptedSessionKey}`;
+
+    expect(claimed.card).toMatchObject({
+      status: "running",
+      metadata: { claim: { ownerId: "workboard-dispatcher" } },
+    });
+    expect(claimed.card.agentId).toBeUndefined();
+    await runSessionSweep({
+      store,
+      sessions: [
+        {
+          key: canonicalSessionKey,
+          status: "done",
+          hasActiveRun: false,
+          updatedAt: provisional.updatedAt + 1,
+        },
+      ],
+    });
+
+    await expect(store.get(card.id)).resolves.toMatchObject({
+      status: "review",
+      sessionKey: canonicalSessionKey,
+      runId: "provisional-run",
+      execution: {
+        sessionKey: canonicalSessionKey,
+        runId: "provisional-run",
+        status: "review",
+      },
+    });
+  });
+
   it("does not backfill over a newer attempt after lifecycle matching", async () => {
     const store = createWorkboardSqliteTestStore();
     const provisionalSessionKey = "subagent:workboard-default-match-race";
@@ -919,6 +960,56 @@ describe("Workboard gateway lifecycle sync", () => {
     });
 
     expect((await store.get(card.id))?.status).toBe("review");
+  });
+
+  it("federates configured agents without ownerless sentinels", async () => {
+    const request = vi
+      .fn()
+      .mockImplementation(
+        async (_method: string, options: { includeGlobal?: boolean; includeUnknown?: boolean }) => {
+          if (options.includeGlobal || options.includeUnknown) {
+            throw new Error(
+              'Multiple agents are configured, but session key "global" has no explicit owner.',
+            );
+          }
+          return {
+            sessions: [
+              {
+                key: "agent:alpha:dashboard:live",
+                status: "done",
+                hasActiveRun: false,
+                lastRunId: "run-alpha-terminal",
+                updatedAt: 1234,
+              },
+            ],
+          };
+        },
+      );
+
+    await expect(
+      readWorkboardLifecycleSessions({ isAvailable: async () => true, request }),
+    ).resolves.toEqual({
+      sessions: [
+        {
+          key: "agent:alpha:dashboard:live",
+          status: "done",
+          hasActiveRun: false,
+          lastRunId: "run-alpha-terminal",
+          updatedAt: 1234,
+        },
+      ],
+      complete: true,
+    });
+    expect(request).toHaveBeenCalledWith(
+      "sessions.list",
+      {
+        limit: 10_000,
+        configuredAgentsOnly: true,
+        includeGlobal: false,
+        includeUnknown: false,
+      },
+      { scopes: ["operator.read"] },
+    );
   });
 
   it("keeps unknown excluded when explicit ownership requires agent selection", async () => {

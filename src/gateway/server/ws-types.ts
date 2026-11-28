@@ -1,5 +1,8 @@
 import type { WebSocket } from "ws";
-import type { ConnectParams } from "../../../packages/gateway-protocol/src/schema/frames.js";
+import type {
+  ConnectParams,
+  HelloOk,
+} from "../../../packages/gateway-protocol/src/schema/frames.js";
 import type { PairedDeviceTokenIdentity } from "../../infra/device-pairing-identity.js";
 import type { UserProfileIdentity } from "../../state/user-profiles.types.js";
 import type { AgentRuntimeIdentity } from "../agent-runtime-identity-token.js";
@@ -35,6 +38,8 @@ export type GatewayWsClient = PluginNodeCapabilityClient & {
   /** Physical WS liveness capability; absent on transports without ping/pong. */
   webSocket?: Pick<WebSocket, "ping" | "once" | "off">;
   connect: ConnectParams;
+  /** Actual authentication result retained by WS admission; never copied from request params. */
+  readonly authenticationMethod?: HelloOk["auth"]["method"];
   connId: string;
   /** Host-owned transport retirement notification; never accepted from wire params. */
   connectionSignal?: AbortSignal;
@@ -86,6 +91,8 @@ export type GatewayWsClient = PluginNodeCapabilityClient & {
     /** Additional access captured at authenticated admission; independent of socket lifetime. */
     operatorAccessAuthority?: GatewayOperatorAccessAuthority | null;
   };
+  /** Transport-owned revocation invalidates retained request authority. */
+  invalidated?: boolean;
   invalidatedReason?: string;
 };
 

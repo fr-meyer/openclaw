@@ -154,15 +154,19 @@ function toLegacyProjectMemoryHit(entry: MemorySearchResult, providerId: string)
 
 // Legacy runtimes keep the already-loaded manager path; recall never loads the slot plugin.
 async function prepareLegacyProjectMemoryBootstrap(
-  params: { cfg: OpenClawConfig; agentId: string; activeProjectKeys: readonly string[] },
+  params: ProjectMemoryBootstrapParams,
   runtime: MemoryPluginRuntime,
+  budget: ProjectMemoryBudget,
 ): Promise<string[]> {
   try {
+    budget.assertCurrent();
     const lookup = await runtime.getMemorySearchManager({
       cfg: params.cfg,
       agentId: params.agentId,
       purpose: "default",
+      admission: { signal: params.context?.signal, deadlineMs: budget.deadlineMs },
     });
+    budget.assertCurrent();
     if (!lookup.manager?.listCuratedProjectCandidates) {
       return [];
     }
@@ -170,6 +174,7 @@ async function prepareLegacyProjectMemoryBootstrap(
       activeProjectKeys: [...params.activeProjectKeys],
       limit: 48,
     });
+    budget.assertCurrent();
     const providerId = normalizePluginsConfig(params.cfg.plugins).slots.memory ?? "memory";
     return buildProjectMemoryBootstrap({
       entries: results.map((entry) => toLegacyProjectMemoryHit(entry, providerId)),
@@ -180,20 +185,92 @@ async function prepareLegacyProjectMemoryBootstrap(
   }
 }
 
-export async function prepareProjectMemoryBootstrap(params: {
+type ProjectMemoryBootstrapParams = {
   cfg: OpenClawConfig;
   agentId: string;
   activeProjectKeys: readonly string[];
   context?: MemoryCallerContext;
-}): Promise<string[]> {
+};
+
+type ProjectMemoryBudget = {
+  deadlineMs: number;
+  assertCurrent(): void;
+  remainingMs(): number;
+};
+
+export async function prepareProjectMemoryBootstrap(
+  params: ProjectMemoryBootstrapParams,
+): Promise<string[]> {
+  const signal = params.context?.signal;
+  signal?.throwIfAborted();
   if (params.activeProjectKeys.length === 0) {
     return [];
   }
+  const deadline = Date.now() + 1_000;
+  let active = true;
+  const budget: ProjectMemoryBudget = {
+    deadlineMs: deadline,
+    remainingMs: () => Math.max(0, deadline - Date.now()),
+    assertCurrent() {
+      signal?.throwIfAborted();
+      if (!active || Date.now() >= deadline) {
+        throw new Error("optional project recall budget expired");
+      }
+      params.context?.assertCurrent();
+    },
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    const lines = await new Promise<string[]>((resolve, reject) => {
+      onAbort = () => {
+        active = false;
+        reject(signal?.reason);
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      timer = setTimeout(() => {
+        active = false;
+        if (signal?.aborted) {
+          reject(signal.reason);
+        } else {
+          log.debug("optional project recall exceeded 1000ms; continuing without recall");
+          resolve([]);
+        }
+      }, budget.remainingMs());
+      // Both handlers remain attached after the caller leaves. The loader owns late
+      // provider release; timeout never aborts storage or closes a borrowed manager.
+      loadProjectMemoryBootstrap(params, budget).then(resolve, reject);
+    });
+    signal?.throwIfAborted();
+    try {
+      budget.assertCurrent();
+      return lines;
+    } catch {
+      signal?.throwIfAborted();
+      return [];
+    }
+  } finally {
+    active = false;
+    clearTimeout(timer);
+    if (onAbort) {
+      signal?.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
+async function loadProjectMemoryBootstrap(
+  params: ProjectMemoryBootstrapParams,
+  budget: ProjectMemoryBudget,
+): Promise<string[]> {
   // Only a native slot owner serves recall under caller authority. Classification reads
   // owners this process already loaded; legacy owners keep the loaded-runtime path.
   if (resolveLoadedMemoryProviderKind(params.cfg) !== "native") {
     const runtime = getMemoryRuntime();
-    return runtime ? await prepareLegacyProjectMemoryBootstrap(params, runtime) : [];
+    return runtime ? await prepareLegacyProjectMemoryBootstrap(params, runtime, budget) : [];
   }
   let active = true;
   const caller: MemoryCallerContext = params.context ?? {
@@ -211,6 +288,7 @@ export async function prepareProjectMemoryBootstrap(params: {
       if (!active) {
         throw new Error("project memory request has ended");
       }
+      budget.assertCurrent();
       assertCallerCurrent();
     },
   };
@@ -223,12 +301,14 @@ export async function prepareProjectMemoryBootstrap(params: {
       import("../plugins/memory-audience.js"),
     ]);
     assertCallerCurrent = () => assertMemoryCallerCurrent(caller);
+    budget.assertCurrent();
     const lookup = await getActiveMemoryProviderCore({
       cfg: params.cfg,
       agentId: params.agentId,
       context,
     });
     provider = lookup.provider;
+    budget.assertCurrent();
     if (!lookup.provider) {
       log.debug(
         `project memory recall denied by ${lookup.providerId ?? selectedPluginId ?? "selected memory plugin"}: ${lookup.error ?? "provider unavailable"}`,
@@ -274,6 +354,7 @@ export async function prepareProjectMemoryBootstrap(params: {
   }
   try {
     // Cleanup may yield after selection; the owning run and its audience still control release.
+    budget.assertCurrent();
     assertCallerCurrent();
     return lines;
   } catch (error) {

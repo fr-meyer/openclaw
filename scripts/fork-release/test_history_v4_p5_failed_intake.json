@@ -1,0 +1,148 @@
+{
+  "schema": "openclaw.v108.public-failed-intake-fixture.v1",
+  "sourceRunSha256": "26c2108ebd9cf7880a4bc40f0ab07f66fc596e9be032423bc7f42518ba805e25",
+  "sourceJobTableSha256": "d0fed2461c9b80b23bbf389433415beadb300e3445014116772a3cf3d451fde1",
+  "projection": "Public GitHub identity/acquisition/terminal fields only; explicit nulls and step evidence retained. No credentials or task-local paths.",
+  "run": {
+    "id": 40681376480,
+    "name": "future-v108-source-validation-20261027",
+    "path": ".github/workflows/future-v108-source-validation.yml",
+    "event": "pull_request",
+    "head_branch": "task/v107-source-binding",
+    "head_sha": "de4cdb8aae20719ae95808d3cf725a4b503d6d01",
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "created_at": "2026-10-28T11:37:17Z",
+    "updated_at": "2026-10-28T11:42:11Z",
+    "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40681376480",
+    "repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "head_repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "display_title": "future-v108-source-validation-20261027",
+    "pull_requests": [
+      {
+        "number": 28
+      }
+    ]
+  },
+  "jobs": {
+    "total_count": 3,
+    "jobs": [
+      {
+        "id": 122792631331,
+        "name": "admission",
+        "run_id": 40681376480,
+        "head_sha": "de4cdb8aae20719ae95808d3cf725a4b503d6d01",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "failure",
+        "runner_id": 1000023365,
+        "runner_name": "GitHub Actions 1000023365",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ],
+        "started_at": "2026-10-28T11:37:21Z",
+        "completed_at": "2026-10-28T11:42:10Z",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Observe shared admission budget before either checkout",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Checkout reviewed pipeline head and complete ancestry",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Bound product checkout by the same admission clock",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Checkout frozen product source",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Admit exact campaign and source with read-only public metadata",
+            "status": "completed",
+            "conclusion": "failure",
+            "number": 6
+          },
+          {
+            "name": "Post Checkout frozen product source",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Post Checkout reviewed pipeline head and complete ancestry",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13
+          }
+        ]
+      },
+      {
+        "id": 122794755937,
+        "name": "final",
+        "run_id": 40681376480,
+        "head_sha": "de4cdb8aae20719ae95808d3cf725a4b503d6d01",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "runner_id": null,
+        "runner_name": null,
+        "runner_group_name": null,
+        "labels": [
+          "ubuntu-24.04"
+        ],
+        "started_at": "2026-10-28T11:42:11Z",
+        "completed_at": "2026-10-28T11:42:11Z",
+        "steps": []
+      },
+      {
+        "id": 122794756443,
+        "name": "source (${{ matrix.profile }})",
+        "run_id": 40681376480,
+        "head_sha": "de4cdb8aae20719ae95808d3cf725a4b503d6d01",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "runner_id": null,
+        "runner_name": null,
+        "runner_group_name": null,
+        "labels": [
+          "ubuntu-24.04"
+        ],
+        "started_at": "2026-10-28T11:42:11Z",
+        "completed_at": "2026-10-28T11:42:11Z",
+        "steps": []
+      }
+    ]
+  }
+}

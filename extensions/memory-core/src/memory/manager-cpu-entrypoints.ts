@@ -16,6 +16,7 @@ export const memoryCpuProcessEntrypoints = {
   search: memoryWorkerEntrypoint("manager-search.worker", "memory-search.worker"),
   index: memoryWorkerEntrypoint("manager-index.worker", "memory-index.worker"),
   publication: memoryWorkerEntrypoint("manager-publication.worker", "memory-publication.worker"),
+  boundedAdmission: memoryWorkerEntrypoint("bounded-admission.worker", "bounded-admission.worker"),
   standingIntents: memoryWorkerEntrypoint("../standing-intents.worker", "standing-intents.worker"),
   entryOrigins: memoryWorkerEntrypoint(
     "../memory-entry-origins.worker",

@@ -195,6 +195,7 @@ describe("Gateway verified namespace read", () => {
     { name: "missing connection", server: { connId: "" } },
     { name: "non-operator role", auth: { role: "node" } },
     { name: "missing read scope", auth: { scopes: ["operator.write"] } },
+    { name: "overbroad read grant", auth: { scopes: ["operator.read", "operator.admin"] } },
     { name: "unauthenticated connection", auth: { method: "none" } },
     { name: "bootstrap authentication", auth: { method: "bootstrap-token" } },
     { name: "unattested authentication", auth: { method: undefined } },

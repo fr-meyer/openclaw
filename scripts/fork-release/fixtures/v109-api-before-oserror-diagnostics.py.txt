@@ -1,0 +1,53 @@
+class API:
+    """Fixed GitHub read-only API, no credential forwarding across redirects."""
+    def __init__(self, token, deadline, opener=None):
+        policy.need(type(token) is str and 0 < len(token) <= 4096, "v9.api_token_required")
+        self.token, self.deadline = token, deadline
+        self.opener = opener or urllib.request.build_opener(NoRedirect)
+        self.cache = {}
+        self.read_ordinal = 0
+
+    def __call__(self, path):
+        policy.need(type(path) is str and path.startswith("/repos/" + policy.REPOSITORY + "/") and
+            len(path) <= 1024 and not any(c in path for c in "\r\n#") and ".." not in path,
+            "v9.fixed_api_route")
+        if path not in self.cache:
+            req = urllib.request.Request("https://api.github.com" + path, headers={
+                "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": policy.CAMPAIGN, "Authorization": "Bearer " + self.token})
+            # The observed502 is a transient fixed-read transport failure. This
+            # never starts another CI attempt and never retries an authority,
+            # rate-limit, missing-resource, parse or security refusal.
+            for get_attempt in range(1, 4):
+                seconds = min(30, self.deadline - time.time())
+                policy.need(seconds > 0, "v9.api_deadline")
+                self.read_ordinal += 1
+                operation = "open"
+                try:
+                    with self.opener.open(req, timeout=seconds) as response:
+                        policy.need(response.geturl() == "https://api.github.com" + path, "v9.api_redirect")
+                        operation = "read"
+                        raw = response.read(4 * 1024 * 1024 + 1)
+                    operation = "parse"
+                    self.cache[path] = policy.parse(raw, 4 * 1024 * 1024)
+                    break
+                except (policy.Refusal, ValueError, KeyError, TypeError, OSError) as error:
+                    delay = get_attempt  # Fixed1s then2s; no third backoff.
+                    retry = (isinstance(error, urllib.error.HTTPError) and type(error.code) is int and
+                        error.code == 502 and get_attempt < 3 and self.deadline - time.time() > delay)
+                    recorded = emit_failure_diagnostic(error, family=provider_call_family(path),
+                        ordinal=self.read_ordinal, operation=operation, get_attempt=get_attempt,
+                        retry_delay=delay if retry else None)
+                    if not retry or recorded is not True:
+                        raise
+                    # Do not read an error body or leave its owned stream open.
+                    closed = False
+                    try:
+                        error.close()
+                        closed = True
+                    except Exception:
+                        pass
+                    if not closed or self.deadline - time.time() <= delay:
+                        raise
+                    time.sleep(delay)
+        return self.cache[path]

@@ -1,3 +1,4 @@
+import type { MemoryEmbeddingProviderAdapter } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -49,12 +50,15 @@ type ManagerIndexFixtureConfig = {
 };
 
 type ProviderCall = {
+  createProvider?: import("./manager-registry.js").MemoryManagerProviderFactory;
   provider?: string;
   model?: string;
   outputDimensionality?: number;
 };
 
 type ProviderControls = {
+  candidateAdapter: MemoryEmbeddingProviderAdapter | null;
+  syntheticDimensionsByModel: Record<string, number>;
   beforeEmbedBatch: (() => Promise<void>) | null;
   beforeEmbedQuery: ((options?: EmbeddingProviderCallOptions) => Promise<void>) | null;
   embedQueryCalls: number;
@@ -68,6 +72,11 @@ type ProviderControls = {
   providerRuntimeBatchGate: Promise<void> | null;
   providerRuntimeBatchEntered: ((activeCalls: number, texts: readonly string[]) => void) | null;
   providerRuntimeBatchErrors: unknown[];
+  providerRuntimeBatchFailureMode: "fallback" | "error" | undefined;
+  providerRuntimeBatchInvocations: number;
+  providerRuntimeBatchSignals: Array<AbortSignal | undefined>;
+  providerRuntimeBatchWaitForAbort: boolean;
+  providerRuntimeSubmissionMode: "none" | "ambiguous" | "accepted" | "rejected";
   providerRuntimeBatchFailuresRemaining: number;
   providerRuntimeActiveBatchCalls: number;
   providerRuntimeMaxActiveBatchCalls: number;
@@ -120,6 +129,8 @@ export type ManagerIndexFixture = {
 };
 
 const providerState = vi.hoisted(() => ({
+  candidateAdapter: null as MemoryEmbeddingProviderAdapter | null,
+  syntheticDimensionsByModel: {} as Record<string, number>,
   beforeEmbedBatch: null as ProviderControls["beforeEmbedBatch"],
   beforeEmbedQuery: null as ProviderControls["beforeEmbedQuery"],
   embedQueryCalls: 0,
@@ -135,6 +146,11 @@ const providerState = vi.hoisted(() => ({
     | ((activeCalls: number, texts: readonly string[]) => void)
     | null,
   providerRuntimeBatchErrors: [] as unknown[],
+  providerRuntimeBatchFailureMode: undefined as "fallback" | "error" | undefined,
+  providerRuntimeBatchInvocations: 0,
+  providerRuntimeBatchSignals: [] as Array<AbortSignal | undefined>,
+  providerRuntimeBatchWaitForAbort: false,
+  providerRuntimeSubmissionMode: "none" as "none" | "ambiguous" | "accepted" | "rejected",
   providerRuntimeBatchFailuresRemaining: 0,
   providerRuntimeActiveBatchCalls: 0,
   providerRuntimeMaxActiveBatchCalls: 0,
@@ -170,13 +186,15 @@ function createLocalWorkerExitError(): Error {
 
 vi.mock("./embeddings.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./embeddings.js")>();
-  const embedText = (text: string) => {
+  const embedText = (text: string, model?: string) => {
     const lower = text.toLowerCase();
     const alpha = lower.split("alpha").length - 1;
     const beta = lower.split("beta").length - 1;
     const image = lower.split("image").length - 1;
     const audio = lower.split("audio").length - 1;
-    return [alpha, beta, image, audio];
+    const vector = [alpha, beta, image, audio];
+    const dimensions = providerState.syntheticDimensionsByModel[model ?? ""];
+    return dimensions ? Array.from({ length: dimensions }, (_, index) => vector[index] ?? 0) : vector;
   };
   const resolveFallbackModel = (providerId: string, fallbackSourceModel: string) =>
     providerId === "gemini" || providerId === "fallback-provider"
@@ -217,6 +235,14 @@ vi.mock("./embeddings.js", async (importOriginal) => {
             },
           },
     createEmbeddingProvider: async (options: ProviderCall) => {
+      if (providerState.candidateAdapter && options.provider === "openai") {
+        if (!options.createProvider) { throw new Error("Synthetic candidate requires native factory ownership"); }
+        const adapter = providerState.candidateAdapter;
+        const result = await options.createProvider(adapter, () => adapter.create({
+          ...options, dimensions: options.outputDimensionality,
+        } as Parameters<typeof adapter.create>[0]));
+        return { ...result, requestedProvider: "openai" };
+      }
       providerState.providerCalls.push({
         provider: options.provider,
         model: options.model,
@@ -274,7 +300,7 @@ vi.mock("./embeddings.js", async (importOriginal) => {
             const text = typeof input === "string" ? input : input.text;
             providerState.embedQueryCalls += 1;
             providerState.embeddedQueryTexts.push(text);
-            return embedText(text);
+            return embedText(text, options.model);
           },
           embedBatch: async (inputs: EmbeddingInput[]) => {
             await providerState.beforeEmbedBatch?.();
@@ -299,7 +325,7 @@ vi.mock("./embeddings.js", async (importOriginal) => {
                   if (mimeType?.startsWith("audio/")) {
                     return [0, 0, 0, 1];
                   }
-                  return embedText(input.text);
+                  return embedText(input.text, options.model);
                 });
               }
             }
@@ -309,7 +335,7 @@ vi.mock("./embeddings.js", async (importOriginal) => {
             const texts = inputs.map((input) => (typeof input === "string" ? input : input.text));
             providerState.embedBatchCalls += 1;
             providerState.embeddedBatchTexts.push(...texts);
-            return texts.map(embedText);
+            return texts.map((text) => embedText(text, options.model));
           },
         },
         ...(providerId === providerState.identityAlias.provider
@@ -336,7 +362,39 @@ vi.mock("./embeddings.js", async (importOriginal) => {
                 runtime: {
                   id: providerId,
                   ...(providerId === "batch-wide-test" ? { sourceWideBatchEmbed: true } : {}),
-                  batchEmbed: async (batch: { chunks: Array<{ text: string }> }) => {
+                  ...(providerState.providerRuntimeBatchFailureMode
+                    ? { batchFailureMode: providerState.providerRuntimeBatchFailureMode }
+                    : {}),
+                  batchEmbed: async (batch: {
+                    chunks: Array<{ text: string }>;
+                    signal?: AbortSignal;
+                    submissionLifecycle?: {
+                      started: (params: { submissionId: string }) => Promise<void>;
+                      accepted: (params: {
+                        submissionId: string;
+                        batchName: string;
+                      }) => Promise<void>;
+                      rejected: (params: { submissionId: string }) => Promise<void>;
+                    };
+                  }) => {
+                    providerState.providerRuntimeBatchInvocations += 1;
+                    const submissionId = `openclaw-memory-test-${providerState.providerRuntimeBatchInvocations}`;
+                    if (providerState.providerRuntimeSubmissionMode !== "none") {
+                      const lifecycle = batch.submissionLifecycle;
+                      if (!lifecycle) {
+                        throw new Error("expected batch submission lifecycle");
+                      }
+                      await lifecycle.started({ submissionId });
+                      if (providerState.providerRuntimeSubmissionMode === "accepted") {
+                        await lifecycle.accepted({
+                          submissionId,
+                          batchName: `batches/test-${providerState.providerRuntimeBatchInvocations}`,
+                        });
+                      } else if (providerState.providerRuntimeSubmissionMode === "rejected") {
+                        await lifecycle.rejected({ submissionId });
+                      }
+                    }
+                    providerState.providerRuntimeBatchSignals.push(batch.signal);
                     providerState.providerRuntimeActiveBatchCalls += 1;
                     providerState.providerRuntimeMaxActiveBatchCalls = Math.max(
                       providerState.providerRuntimeMaxActiveBatchCalls,
@@ -347,6 +405,25 @@ vi.mock("./embeddings.js", async (importOriginal) => {
                         providerState.providerRuntimeActiveBatchCalls,
                         batch.chunks.map((chunk) => chunk.text),
                       );
+                      if (providerState.providerRuntimeBatchWaitForAbort) {
+                        const signal = batch.signal;
+                        if (!signal) {
+                          throw new Error("expected batch abort signal");
+                        }
+                        await new Promise<void>((_resolve, reject) => {
+                          const rejectAborted = () =>
+                            reject(
+                              signal.reason instanceof Error
+                                ? signal.reason
+                                : new Error("batch aborted"),
+                            );
+                          if (signal.aborted) {
+                            rejectAborted();
+                            return;
+                          }
+                          signal.addEventListener("abort", rejectAborted, { once: true });
+                        });
+                      }
                       await providerState.providerRuntimeBatchGate;
                       providerState.providerRuntimeBatchCalls.push(
                         batch.chunks.map((chunk) => chunk.text),
@@ -358,7 +435,7 @@ vi.mock("./embeddings.js", async (importOriginal) => {
                         providerState.providerRuntimeBatchFailuresRemaining -= 1;
                         throw new Error("provider runtime batch failed");
                       }
-                      return batch.chunks.map((chunk) => embedText(chunk.text));
+                      return batch.chunks.map((chunk) => embedText(chunk.text, options.model));
                     } finally {
                       providerState.providerRuntimeActiveBatchCalls -= 1;
                     }
@@ -577,6 +654,8 @@ export function createManagerIndexFixture(deps: {
   beforeEach(async () => {
     vi.useRealTimers();
     clearRegistry();
+    providerState.candidateAdapter = null;
+    providerState.syntheticDimensionsByModel = {};
     providerState.beforeEmbedQuery = null;
     providerState.beforeEmbedBatch = null;
     providerState.embedQueryCalls = 0;
@@ -590,6 +669,11 @@ export function createManagerIndexFixture(deps: {
     providerState.providerRuntimeBatchGate = null;
     providerState.providerRuntimeBatchEntered = null;
     providerState.providerRuntimeBatchErrors = [];
+    providerState.providerRuntimeBatchFailureMode = undefined;
+    providerState.providerRuntimeBatchInvocations = 0;
+    providerState.providerRuntimeBatchSignals = [];
+    providerState.providerRuntimeBatchWaitForAbort = false;
+    providerState.providerRuntimeSubmissionMode = "none";
     providerState.providerRuntimeBatchFailuresRemaining = 0;
     providerState.providerRuntimeActiveBatchCalls = 0;
     providerState.providerRuntimeMaxActiveBatchCalls = 0;
