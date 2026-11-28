@@ -70,6 +70,7 @@ import { printClawBanner, type ClawBannerResult } from "../claw-banner.js";
 import { formatCliCommand } from "../command-format.js";
 import { formatInvalidConfigPort, formatInvalidPortOption } from "../error-format.js";
 import { withProgress } from "../progress.js";
+import { measureGatewayBootstrapStep } from "../startup-trace.js";
 import {
   isTerminalInteractive,
   NON_INTERACTIVE_GATEWAY_RUN_FORCE_MESSAGE,
@@ -161,15 +162,22 @@ async function readGatewayStartupConfig(params: {
   snapshot: ConfigFileSnapshot;
   startupConfigSnapshotRead: ReadConfigFileSnapshotWithPluginMetadataResult;
 }> {
-  const { readConfigFileSnapshotWithPluginMetadata } = await import("../../config/config.js");
-  const snapshotRead = await params.startupTrace.measure("cli.config-snapshot", () =>
-    readConfigFileSnapshotWithPluginMetadata({
-      isolateEnv: true,
-      observe: false,
-      ...(Object.keys(params.lowerPrecedenceEnv).length > 0
-        ? { lowerPrecedenceEnv: params.lowerPrecedenceEnv }
-        : {}),
-    }),
+  const { readConfigFileSnapshotWithPluginMetadata } = await measureGatewayBootstrapStep(
+    "cli.bootstrap.gateway-config.import",
+    () => import("../../config/config.js"),
+  );
+  const snapshotRead = await measureGatewayBootstrapStep(
+    "cli.bootstrap.gateway-config.snapshot",
+    () =>
+      params.startupTrace.measure("cli.config-snapshot", () =>
+        readConfigFileSnapshotWithPluginMetadata({
+          isolateEnv: true,
+          observe: false,
+          ...(Object.keys(params.lowerPrecedenceEnv).length > 0
+            ? { lowerPrecedenceEnv: params.lowerPrecedenceEnv }
+            : {}),
+        }),
+      ),
   );
   const { snapshot } = snapshotRead;
   if (!snapshot.valid && isConfigReadFailure(snapshot)) {
@@ -193,12 +201,18 @@ type GatewayRunShellEnvFallbackPlan =
 async function resolveGatewayRunShellEnvFallbackPlan(
   cfg: OpenClawConfig,
 ): Promise<GatewayRunShellEnvFallbackPlan> {
-  const { createConfigRuntimeEnv } = await import("../../config/env-vars.js");
+  const { createConfigRuntimeEnv } = await measureGatewayBootstrapStep(
+    "cli.bootstrap.gateway-config.env-import",
+    () => import("../../config/env-vars.js"),
+  );
   const {
     resolveShellEnvFallbackTimeoutMs,
     shouldDeferShellEnvFallback,
     shouldEnableShellEnvFallback,
-  } = await import("../../infra/shell-env.js");
+  } = await measureGatewayBootstrapStep(
+    "cli.bootstrap.gateway-config.shell-import",
+    () => import("../../infra/shell-env.js"),
+  );
   const planEnv = createConfigRuntimeEnv(cfg, process.env);
   const enabled =
     (shouldEnableShellEnvFallback(planEnv) || cfg.env?.shellEnv?.enabled === true) &&
@@ -206,7 +220,10 @@ async function resolveGatewayRunShellEnvFallbackPlan(
   if (!enabled) {
     return { enabled: false };
   }
-  const { resolveShellEnvExpectedKeys } = await import("../../config/shell-env-expected-keys.js");
+  const { resolveShellEnvExpectedKeys } = await measureGatewayBootstrapStep(
+    "cli.bootstrap.gateway-config.shell-keys-import",
+    () => import("../../config/shell-env-expected-keys.js"),
+  );
   return {
     enabled: true,
     expectedKeys: resolveShellEnvExpectedKeys(planEnv, cfg),
@@ -265,8 +282,12 @@ async function readGatewayStartupConfigWithShellEnv(params: {
         lowerPrecedenceEnv,
         startupTrace: params.startupTrace,
       });
-      const plan = await resolveGatewayRunShellEnvFallbackPlan(
-        startupConfig.snapshot.valid ? startupConfig.cfg : {},
+      const plan = await measureGatewayBootstrapStep(
+        "cli.bootstrap.gateway-config.shell-plan",
+        () =>
+          resolveGatewayRunShellEnvFallbackPlan(
+            startupConfig.snapshot.valid ? startupConfig.cfg : {},
+          ),
       );
       const planSignature = JSON.stringify(plan);
       if (!plan.enabled) {
@@ -282,7 +303,10 @@ async function readGatewayStartupConfigWithShellEnv(params: {
         return { ...startupConfig, lowerPrecedenceEnv };
       }
       await clearGatewayRunShellEnvFallback(lowerPrecedenceEnv);
-      lowerPrecedenceEnv = await loadGatewayRunShellEnvFallback(plan);
+      lowerPrecedenceEnv = await measureGatewayBootstrapStep(
+        "cli.bootstrap.gateway-config.shell-load",
+        () => loadGatewayRunShellEnvFallback(plan),
+      );
       loadedPlanSignature = planSignature;
     }
   } catch (err) {
@@ -537,9 +561,9 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
 
   gatewayLog.info("loading configuration…");
   const { cfg, lowerPrecedenceEnv, snapshot, startupConfigSnapshotRead } =
-    await readGatewayStartupConfigWithShellEnv({
-      startupTrace,
-    });
+    await measureGatewayBootstrapStep("cli.bootstrap.gateway-config", () =>
+      readGatewayStartupConfigWithShellEnv({ startupTrace }),
+    );
   if (
     !enforceGatewayRunFutureConfigGuard({
       opts,

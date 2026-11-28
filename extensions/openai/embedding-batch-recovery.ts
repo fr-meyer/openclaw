@@ -443,14 +443,18 @@ export class OpenAiBatchRecovery {
       await this.read(
         `files/${encodeURIComponent(status.output_file_id)}/content`,
         async (response) => {
-          if (!response.body) throw new Error("openai batch output has no readable body");
+          if (!response.body) {
+            throw new Error("openai batch output has no readable body");
+          }
           const seen = new Set<string>();
           await readEmbeddingBatchJsonl<ProviderBatchOutputLine>(response, {
             label: "openai.batch-file-content",
             maxRecords: group.length,
             onRecord: (line) => {
               const id = line.custom_id;
-              if (!id || !expected.has(id)) return true;
+              if (!id || !expected.has(id)) {
+                return true;
+              }
               if (seen.has(id)) {
                 ambiguousFailures.add(id);
                 return true;
@@ -487,7 +491,9 @@ export class OpenAiBatchRecovery {
                 }
                 vectors.set(id, vector);
               } catch (error) {
-                if (!conclusivelyFailed.has(id)) ambiguousFailures.add(id);
+                if (!conclusivelyFailed.has(id)) {
+                  ambiguousFailures.add(id);
+                }
                 problems.push(diagnostic(error));
               }
               return !group.every((request) => vectors.has(request.custom_id));
@@ -508,9 +514,12 @@ export class OpenAiBatchRecovery {
         );
         // Preserve the text reader's byte bound and the input-sized physical row budget.
         const rows = text.split("\n");
-        if (rows.at(-1) === "") rows.pop();
-        if (rows.length > group.length)
+        if (rows.at(-1) === "") {
+          rows.pop();
+        }
+        if (rows.length > group.length) {
           throw new Error("openai batch error file exceeds record budget");
+        }
         const records = rows
           .filter((line) => line.trim())
           .map((line) => {
@@ -551,9 +560,13 @@ export class OpenAiBatchRecovery {
           const response = asOptionalRecord(line?.response);
           const code = response?.status_code;
           if (typeof id === "string" && expected.has(id)) {
-            if (errorIds.has(id)) ambiguousFailures.add(id);
+            if (errorIds.has(id)) {
+              ambiguousFailures.add(id);
+            }
             errorIds.add(id);
-            if (typeof code === "number" && code >= 200 && code < 300) ambiguousFailures.add(id);
+            if (typeof code === "number" && code >= 200 && code < 300) {
+              ambiguousFailures.add(id);
+            }
             if (typeof code === "number" ? code < 200 || code >= 300 : Boolean(line?.error)) {
               conclusivelyFailed.add(id);
             }

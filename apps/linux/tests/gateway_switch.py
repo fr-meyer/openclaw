@@ -250,8 +250,76 @@ class GatewaySwitchFixture(GatewayFixture):
         self.chrome.command("xdotool", "mousemove", str(bounds.x + bounds.width // 2),
                             str(bounds.y + bounds.height // 2), "click", "1")
         self.chrome.until(lambda: "/fixture/" in self.websocket_paths, "Primary native chat RPC demand")
+        hide_poll = {"polls": 0, "count": None, "quickchatListed": None, "mainListed": None}
+
+        def quickchat_hidden():
+            windows = self.windows(app)
+            hide_poll.update(
+                polls=hide_poll["polls"] + 1, count=len(windows),
+                quickchatListed=quickchat in windows, mainListed=main in windows,
+            )
+            return len(windows) == 2
+
         self.chrome.command("xdotool", "key", "Escape")
-        self.chrome.until(lambda: len(self.windows(app)) == 2, "Quick Chat to hide")
+        try:
+            self.chrome.until(quickchat_hidden, "Quick Chat to hide")
+        except Exception as hide_error:
+            # Diagnostic failures must not replace the original hide failure.
+            try:
+                diagnostic = {
+                    "phase": "after-hide-wait-failure",
+                    "failureType": type(hide_error).__name__,
+                    "focusEstablishedBeforeInputClick": True,
+                    "composerHadPositiveExtent": bounds.width > 0 and bounds.height > 0,
+                    "rpcDemandObserved": True,
+                    "escapeCommandReturned": True,
+                    "lastPoll": hide_poll,
+                }
+                for name, command in (
+                    ("activeWindow", ("xprop", "-root", "_NET_ACTIVE_WINDOW")),
+                    ("quickchatMap", ("xwininfo", "-id", quickchat)),
+                ):
+                    try:
+                        result = subprocess.run(
+                            command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            text=True, timeout=1, check=False,
+                        )
+                        observation = {"status": "failed"}
+                        if result.returncode == 0:
+                            output = result.stdout[:8192]
+                            observation = {"status": "unparsed"}
+                            if name == "activeWindow":
+                                tokens = output.split()
+                                if tokens and tokens[-1].startswith("0x"):
+                                    active_window = int(tokens[-1], 16)
+                                    observation = {
+                                        "status": "ok",
+                                        "knownWindow": (
+                                            "quickchat" if active_window == int(quickchat, 16)
+                                            else "main" if active_window == int(main, 16)
+                                            else "none" if active_window == 0 else "other"
+                                        ),
+                                    }
+                            else:
+                                for line in output.splitlines():
+                                    if "Map State:" in line:
+                                        state = {
+                                            "isunmapped": "unmapped",
+                                            "isunviewable": "unviewable",
+                                            "isviewable": "viewable",
+                                        }.get(line.partition("Map State:")[2].strip().casefold())
+                                        if state is not None:
+                                            observation = {"status": "ok", "state": state}
+                                        break
+                        diagnostic[name] = observation
+                    except Exception as query_error:
+                        diagnostic[name] = {
+                            "status": "query-error", "errorType": type(query_error).__name__,
+                        }
+                print("Quick Chat hide diagnostic: " + json.dumps(diagnostic, sort_keys=True), flush=True)
+            except Exception:
+                pass
+            raise
         self.chrome.command("wmctrl", "-ia", main)
         record("Quick Chat RPC stays on Primary while Studio is selected")
         click("Advance dashboard state")

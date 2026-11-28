@@ -128,7 +128,7 @@ export const openAiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
                     () => {
                       pending.delete(work);
                     },
-                    (error) => {
+                    (error: unknown) => {
                       pending.delete(work);
                       if (!failures.includes(error)) {
                         failures.push(error);
@@ -194,7 +194,11 @@ export const openAiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
                         })();
                         return track(work); // Includes mapping; never an unobserved async wrapper.
                       } catch (error) {
-                        return track(Promise.reject(error));
+                        return track(
+                          (async () => {
+                            throw error;
+                          })(),
+                        );
                       }
                     },
                     { ...accepted, identity: controller.manifest.identity },
@@ -208,7 +212,7 @@ export const openAiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
                 } finally {
                   active = false;
                   while (pending.size) {
-                    await Promise.allSettled([...pending]);
+                    await Promise.allSettled(pending);
                   }
                 }
                 if (failures.length === 1) {

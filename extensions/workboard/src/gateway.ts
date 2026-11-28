@@ -164,8 +164,8 @@ export function registerWorkboardGatewayMethods(params: {
     );
   const dispatchCards = createWorkboardDispatchHandler({ api, store, liveExecutions });
 
-  register("workboard.cards.executionSettlement", READ_SCOPE, async ({ params }) => {
-    const card = await store.get(readId(params));
+  register("workboard.cards.executionSettlement", READ_SCOPE, async ({ params: input }) => {
+    const card = await store.get(readId(input));
     if (!card) {
       throw new Error("Workboard card not found.");
     }

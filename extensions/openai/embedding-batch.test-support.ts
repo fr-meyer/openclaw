@@ -31,7 +31,9 @@ afterEach(async () => {
 });
 
 export function trackBatchJournalWorkers() {
-  if (trackingInstalled) return;
+  if (trackingInstalled) {
+    return;
+  }
   trackingInstalled = true;
   const spy = vi.spyOn(journalRuntime, "updateOpenAiBatchJournal").mockImplementation((params) => {
     const work = originalJournalUpdate(params);
@@ -48,13 +50,15 @@ export function trackBatchJournalWorkers() {
 async function drainJournalWorkers() {
   while (journalWork.size) {
     // Event-driven worker completion, not real sleeps or wall-clock polling.
-    await Promise.allSettled([...journalWork]);
+    await Promise.allSettled(journalWork);
   }
 }
 
 export function createBatchTestJournal(route: string): OpenAiBatchJournalContext {
   const prior = contexts.get(route);
-  if (prior) return prior;
+  if (prior) {
+    return prior;
+  }
   const root = tempDirs.make("openai-batch-fixture-");
   const context = {
     path: join(root, "intents.sqlite"),
@@ -144,7 +148,11 @@ export function singleRequestBatchParams(
 }
 
 export function fetchInputUrl(input: RequestInfo | URL): string {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.href;
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
   return input.url;
 }

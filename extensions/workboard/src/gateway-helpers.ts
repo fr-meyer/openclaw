@@ -228,9 +228,13 @@ export function createWorkboardDispatchHandler(params: {
     }
     return {
       ...redactDispatchResult(result),
-      started: result.started.map((started) =>
-        started.card ? { ...started, card: redactClaimToken(started.card) } : started,
-      ),
+      started: result.started.map((started) => {
+        if (!started.card) {
+          return started;
+        }
+        const redacted = Object.assign({}, started);
+        return Object.assign(redacted, { card: redactClaimToken(started.card) });
+      }),
     };
   };
 }

@@ -14,7 +14,9 @@ describe("memory rejection diagnostics", () => {
     for (const reason of ["cancelled", 0, null, undefined, opaque]) {
       const error = memoryRejectionError(reason);
       expect(error).toBeInstanceOf(Error);
-      expect(error.message).toBe(String(reason));
+      const expectedMessage =
+        typeof reason === "object" && reason !== null ? "[object Object]" : String(reason);
+      expect(error.message).toBe(expectedMessage);
       expect(error.cause).toBe(reason);
     }
   });

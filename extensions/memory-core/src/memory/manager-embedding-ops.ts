@@ -678,4 +678,3 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingRe
     await this.writeChunks(prepared, generation, embeddings, vectorReady);
   }
 }
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

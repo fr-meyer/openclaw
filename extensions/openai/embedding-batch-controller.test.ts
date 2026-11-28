@@ -283,7 +283,9 @@ describe("native durable Batch controller binding", () => {
         // Intentionally do not await or attach a handler to the returned promise.
         throw callbackError;
       }).catch((error: unknown) => error);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
       expect(unhandled).toEqual([]);
       expect(failure).toBeInstanceOf(AggregateError);
       expect((failure as AggregateError).cause).toBe(callbackError);

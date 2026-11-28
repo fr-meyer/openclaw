@@ -102,7 +102,9 @@ export async function updateOpenAiBatchJournal(params: {
   try {
     return await work;
   } finally {
-    if (journalTails.get(params.path) === tail) journalTails.delete(params.path);
+    if (journalTails.get(params.path) === tail) {
+      journalTails.delete(params.path);
+    }
   }
 }
 

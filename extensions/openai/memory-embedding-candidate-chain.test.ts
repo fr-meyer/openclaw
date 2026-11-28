@@ -192,8 +192,10 @@ describe("real registered OpenAI adapter/controller/journal chain", () => {
       const failure = await invoke(async (batch) => {
         escaped = batch(options("A"));
         throw primary;
-      }).catch((error) => error);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      }).catch((error: unknown) => error);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
       expect(unhandled).toEqual([]);
       const flatten = (error: unknown): unknown[] =>
         error instanceof AggregateError ? [error, ...error.errors.flatMap(flatten)] : [error];

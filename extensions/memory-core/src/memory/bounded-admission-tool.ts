@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isRecord, isStringRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveSessionAgentIdStrict } from "openclaw/plugin-sdk/agent-scope-runtime";
 import {
   getAgentWorkspaceAccess,
@@ -31,9 +32,6 @@ export type BoundedOwnerBinding = {
   assertFinancialAdmissionCurrent(): void;
   assertSelectedIndexRecoveryPrepared(): void;
 };
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function isAllocation(value: unknown): value is BoundedAllocation {
   return (
@@ -42,10 +40,6 @@ function isAllocation(value: unknown): value is BoundedAllocation {
     typeof value.mass === "number" &&
     typeof value.money === "number"
   );
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.values(value).every((pin) => typeof pin === "string");
 }
 
 function isBoundedOwnerBinding(value: unknown): value is BoundedOwnerBinding {

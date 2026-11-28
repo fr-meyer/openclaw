@@ -530,20 +530,20 @@ export async function runGeminiEmbeddingBatches(
     ...(params.debug ? { debug: params.debug } : {}),
     ...(params.submissionLifecycle ? { submissionLifecycle: params.submissionLifecycle } : {}),
   });
-  const byCustomId = new Map<string, number[]>();
+  const reconciledByCustomId = new Map<string, number[]>();
   const pendingRequests: GeminiBatchRequest[] = [];
   for (const request of params.requests) {
     const recovered = recoveredByHash.get(request.chunkHash);
     if (recovered) {
-      byCustomId.set(request.custom_id, recovered);
+      reconciledByCustomId.set(request.custom_id, recovered);
     } else {
       pendingRequests.push(request);
     }
   }
   if (pendingRequests.length === 0) {
-    return byCustomId;
+    return reconciledByCustomId;
   }
-  const completed = await runEmbeddingBatchGroups({
+  const completedGroups = await runEmbeddingBatchGroups({
     ...buildEmbeddingBatchGroupOptions(
       { ...params, requests: pendingRequests },
       {
@@ -689,8 +689,8 @@ export async function runGeminiEmbeddingBatches(
       }
     },
   });
-  for (const [customId, embedding] of completed) {
-    byCustomId.set(customId, embedding);
+  for (const [customId, embedding] of completedGroups) {
+    reconciledByCustomId.set(customId, embedding);
   }
-  return byCustomId;
+  return reconciledByCustomId;
 }

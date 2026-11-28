@@ -176,7 +176,11 @@ export async function withOpenAiBatchController<T>(
             );
           }
         } catch (error) {
-          return observe(Promise.reject(error));
+          return observe(
+            (async () => {
+              throw error;
+            })(),
+          );
         }
         batchActive = true;
         pending = (async () => {
