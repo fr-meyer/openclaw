@@ -34,9 +34,13 @@ export function createBranchReadDiagnostics() {
   const values = Object.fromEntries(fields.map((key) => [key, 0])) as Record<Field, number>;
   return {
     add(key: Field, value = 1) {
-      if (!fields.includes(key) || !Number.isFinite(value) || value < 0) return;
+      if (!fields.includes(key) || !Number.isFinite(value) || value < 0) {
+        return;
+      }
       const sum = values[key] + value;
-      if (sum > Number.MAX_SAFE_INTEGER) values.saturated = 1;
+      if (sum > Number.MAX_SAFE_INTEGER) {
+        values.saturated = 1;
+      }
       values[key] = Math.min(Number.MAX_SAFE_INTEGER, sum);
     },
     measure<T>(key: Field, action: () => T): T {

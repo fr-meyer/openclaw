@@ -4,36 +4,37 @@ import type { DatabaseSync } from "node:sqlite";
 import { resolveSessionTranscriptsDirForAgent } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
-import type { ManagerIndexFixture } from "./manager-index.test-support.js";
+import type { MemoryIndexSessionSeedParams } from "./manager-index-session-types.test-support.js";
 
-export const seedMemoryIndexSessionTranscript: ManagerIndexFixture["seedSessionTranscript"] =
-  async (params) => {
-    const sessionsDir = resolveSessionTranscriptsDirForAgent("main");
-    const storePath = path.join(sessionsDir, "sessions.json");
-    const sessionKey = params.sessionKey ?? `agent:main:memory:${params.sessionId}`;
-    const updatedAt = Date.now();
-    await fs.mkdir(sessionsDir, { recursive: true });
-    await upsertSessionEntry({
+export const seedMemoryIndexSessionTranscript = async (
+  params: MemoryIndexSessionSeedParams,
+): Promise<void> => {
+  const sessionsDir = resolveSessionTranscriptsDirForAgent("main");
+  const storePath = path.join(sessionsDir, "sessions.json");
+  const sessionKey = params.sessionKey ?? `agent:main:memory:${params.sessionId}`;
+  const updatedAt = Date.now();
+  await fs.mkdir(sessionsDir, { recursive: true });
+  await upsertSessionEntry({
+    agentId: "main",
+    sessionKey,
+    storePath,
+    entry: { sessionId: params.sessionId, updatedAt },
+  });
+  for (const message of params.messages) {
+    await appendSessionTranscriptMessageByIdentity({
       agentId: "main",
+      sessionId: params.sessionId,
       sessionKey,
       storePath,
-      entry: { sessionId: params.sessionId, updatedAt },
+      message: {
+        role: message.role,
+        timestamp: message.timestamp,
+        content: [{ type: "text", text: message.content }],
+        ...(message.senderIsOwner ? { __openclaw: { senderIsOwner: true } } : {}),
+      },
     });
-    for (const message of params.messages) {
-      await appendSessionTranscriptMessageByIdentity({
-        agentId: "main",
-        sessionId: params.sessionId,
-        sessionKey,
-        storePath,
-        message: {
-          role: message.role,
-          timestamp: message.timestamp,
-          content: [{ type: "text", text: message.content }],
-          ...(message.senderIsOwner ? { __openclaw: { senderIsOwner: true } } : {}),
-        },
-      });
-    }
-  };
+  }
+};
 
 export function readPublishedSessionIndex(
   database: DatabaseSync,

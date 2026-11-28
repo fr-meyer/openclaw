@@ -20,8 +20,8 @@ export function projectPackagedMergeguezTaskFlowRuntime(
   admission?: ControllerAdmission,
 ): NonNullable<PluginRuntime["tasks"]> {
   const controllerParity =
-    tasks.availability.managedFlows === true &&
-    tasks.availability.taskRuns === true &&
+    tasks.availability.managedFlows &&
+    tasks.availability.taskRuns &&
     record.id === "mergeguez-pr-lifecycle" &&
     record.origin === "config" &&
     record.rootDir === PACKAGED_MERGEGUEZ_ROOT &&

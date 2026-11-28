@@ -65,7 +65,9 @@ export function readSessionBranchSummaries(
     if (!row) {
       throw new Error("Branch headline row is missing from the transcript snapshot");
     }
-    if (!diagnostics) return extractSessionBranchHeadline(JSON.parse(row.event_json));
+    if (!diagnostics) {
+      return extractSessionBranchHeadline(JSON.parse(row.event_json));
+    }
     diagnostics.add("selectedHeadlineRows");
     diagnostics.add("selectedBodyUtf16CodeUnits", row.event_json.length);
     const decoded = diagnostics.measure("decodeMs", () => JSON.parse(row.event_json));

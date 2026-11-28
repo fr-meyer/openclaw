@@ -292,7 +292,6 @@ export class MemoryBatchSubmissionKernel {
           byCustomId.set(entry.customId, entry.embedding);
         }
 
-        let recovered: Array<{ chunkHash: string; embedding: number[] }> = [];
         const db = this.getDatabase();
         const rowValue = db
           .prepare(`SELECT value FROM memory_index_meta WHERE key = ?`)
@@ -324,7 +323,7 @@ export class MemoryBatchSubmissionKernel {
             `memory embedding batch submission belongs to a different provider identity: ${submissionId}`,
           );
         }
-        recovered = record.manifest.map((item) => {
+        const recovered = record.manifest.map((item) => {
           const embedding = byCustomId.get(item.customId);
           if (!embedding) {
             throw new Error(`memory embedding recovered output is incomplete for ${item.customId}`);
@@ -336,14 +335,14 @@ export class MemoryBatchSubmissionKernel {
         // A rollback retains the acknowledged paid job for resume, never paid replay.
         const now = Date.now();
         for (let start = 0; start < recovered.length; start += RECOVERED_CACHE_WRITE_BATCH_SIZE) {
-          const entries = recovered.slice(start, start + RECOVERED_CACHE_WRITE_BATCH_SIZE);
+          const cacheEntries = recovered.slice(start, start + RECOVERED_CACHE_WRITE_BATCH_SIZE);
           runSqliteImmediateTransactionSync(db, () => {
             upsertMemoryEmbeddingCache({
               db,
               provider: identity.provider,
               providerKey: identity.providerKey,
               entries: () =>
-                entries.map((entry) => ({
+                cacheEntries.map((entry) => ({
                   hash: entry.chunkHash,
                   embedding: entry.embedding,
                 })),

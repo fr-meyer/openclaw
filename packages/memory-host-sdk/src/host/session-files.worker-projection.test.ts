@@ -13,9 +13,9 @@ import {
   runOpenClawAgentWriteTransaction,
 } from "../../../../src/state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../../../../src/test-utils/openclaw-test-state.js";
+import { prepareSessionColdStateInHost } from "../../test-support/memory-sessions-cold-host.js";
 import { captureSensitiveTextRedactionSnapshot } from "./openclaw-runtime-io.js";
 import * as runtime from "./openclaw-runtime-session.js";
-import { prepareSessionColdStateInHost } from "./session-files.cold-host.test-support.js";
 import {
   buildSessionEntry,
   buildSessionEntryInProcess,

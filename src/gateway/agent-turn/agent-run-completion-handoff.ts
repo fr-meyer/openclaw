@@ -59,9 +59,9 @@ export function rejectUnavailableAgentRunContinuation(
   return false;
 }
 
-export function recordAcceptedAgentRunDedupe<Accepted extends object>(
+export function recordAcceptedAgentRunDedupe(
   params: PrepareAgentRunDispatchParams,
-  accepted: Accepted,
+  accepted: object,
   controlUiVisible: boolean,
 ) {
   setGatewayDedupeEntries({

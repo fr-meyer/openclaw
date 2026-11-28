@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
-import { type MemorySyncParams } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+import type { MemorySyncParams } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { resolveOpenClawAgentSqlitePath } from "openclaw/plugin-sdk/sqlite-runtime";
 import { useSqliteWorkerFault } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { describe, expect, it, vi } from "vitest";

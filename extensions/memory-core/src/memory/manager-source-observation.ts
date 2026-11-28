@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { type SessionTranscriptCorpusEntry } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
+import type { SessionTranscriptCorpusEntry } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
 import {
   buildFileEntry,
   hashText,
@@ -43,7 +43,7 @@ export function fingerprintSourceRows(scope: string, rows: readonly Row[]): stri
   }
   return digest([
     scope,
-    [...unique].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, row]) => row),
+    [...unique].toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, row]) => row),
   ]);
 }
 export function compareSourceObservations(
@@ -122,7 +122,7 @@ export async function observeNativeSources(params: {
   indexFence: string;
   sessions: () => Promise<SessionTranscriptCorpusEntry[]>;
 }): Promise<SourceObservation> {
-  const sources = [...params.sources].sort();
+  const sources = [...params.sources].toSorted();
   const settings = structuredClone(params.settings);
   const workspaceDir = params.workspaceDir;
   const files = params.files,
@@ -148,7 +148,7 @@ export async function observeNativeSources(params: {
       ];
       const rootsState = async () => {
         const result: string[] = [];
-        for (const root of [...new Set(roots)].sort()) {
+        for (const root of [...new Set(roots)].toSorted()) {
           try {
             const s = await fs.lstat(root, { bigint: true });
             if (s.isSymbolicLink() || (await fs.realpath(root)) !== root) {
@@ -181,7 +181,7 @@ export async function observeNativeSources(params: {
           await listMemoryFiles(workspaceDir, settings.extraPaths, settings.multimodal, () => {
             skipped = true;
           })
-        ).sort();
+        ).toSorted();
       const before = await list();
       for (const filename of before) {
         const bound = await readBoundFile(filename);

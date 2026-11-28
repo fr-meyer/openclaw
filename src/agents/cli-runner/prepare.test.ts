@@ -125,6 +125,10 @@ import { finalizeCliContextEngineTurn } from "./cli-run-transcript.js";
 import { executePluginOwnedProcess } from "./execute-plugin.js";
 import { prepareCliHistoryBoundary } from "./history-boundary.js";
 import {
+  createArgBackendConfig,
+  createJsonlStdinBackendConfig,
+} from "./prepare-backend-config.test-support.js";
+import {
   registerCliMcpPreparationTests,
   setRawCliBackendForPrepareTest,
 } from "./prepare-mcp.test-support.js";
@@ -288,24 +292,6 @@ function setCliBackendForPrepareTest(
       },
     ],
   });
-}
-
-function createArgBackendConfig(
-  command: string,
-  args = ["--print"],
-  output: "text" | "json" = "text",
-): CliBackendPlugin["config"] {
-  return { command, args, output, input: "arg", sessionMode: "existing" };
-}
-
-function createJsonlStdinBackendConfig(command: string): CliBackendPlugin["config"] {
-  return {
-    command,
-    args: ["--print"],
-    output: "jsonl",
-    input: "stdin",
-    sessionMode: "existing",
-  };
 }
 
 type CliContextBudgetTestCase = {

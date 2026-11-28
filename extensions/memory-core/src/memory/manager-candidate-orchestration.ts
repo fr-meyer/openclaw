@@ -19,14 +19,13 @@ import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 import { readMemoryIndexMetadata } from "./manager-retrieval-read.js";
 import { readMemoryShadowIdentity } from "./manager-shadow-task.js";
 import { observeNativeSources, type SourceObservation } from "./manager-source-observation.js";
-import type { MemoryIndexManager } from "./manager.js";
 export abstract class MemoryCandidateOrchestration extends MemoryManagerState {
   /** Internal build-only boundary on a dedicated, isolated CLI manager.
    * The serving manager is observed for identity, never reconfigured.
    * No activation, resubmission or retained-artifact cleanup is exposed here.
    */
   async buildCandidate(
-    serving: MemoryIndexManager,
+    serving: MemoryCandidateOrchestration,
     request: MemoryCandidateRequest,
   ): Promise<MemoryCandidateManifest> {
     if (
@@ -186,7 +185,7 @@ export abstract class MemoryCandidateOrchestration extends MemoryManagerState {
                   "Persistent OpenAI candidate requires explicit durable Batch journal binding",
                 );
               }
-              await this.managerRegistry.withCandidateBatch(
+              await this.providerOwnerRegistry.withCandidateBatch(
                 this.managerOwner,
                 provider,
                 runtime,

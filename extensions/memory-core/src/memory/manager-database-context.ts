@@ -28,8 +28,10 @@ import { assertBoundedMemoryOperation } from "./bounded-admission.js";
 import type { MemoryBatchSubmissionCommand } from "./manager-batch-submission-task.js";
 import { readConnectionPragmas } from "./manager-connection-pragmas.js";
 import { memoryCpuProcessEntrypoints } from "./manager-cpu-entrypoints.js";
-import { runMemoryBatchSubmissionStatus } from "./manager-cpu-worker-runtime.js";
-import { runMemorySourceState } from "./manager-cpu-worker-runtime.js";
+import {
+  runMemoryBatchSubmissionStatus,
+  runMemorySourceState,
+} from "./manager-cpu-worker-runtime.js";
 import { MemoryIndexRevisionConflictError } from "./manager-db-kernel.js";
 import { closeMemoryDatabase, openMemoryDatabaseAtPath } from "./manager-db.js";
 import { withMemoryIndexGeneration } from "./manager-index-generation-lease.js";

@@ -95,6 +95,8 @@ function executeBatchSubmission(
         kernel.createLifecycle(request.identity).publishRecovered(...request.args),
       );
   }
+  const unsupported: never = request;
+  throw new Error("Unsupported memory batch submission command", { cause: unsupported });
 }
 
 function failure(error: unknown): MemoryShadowFailure {

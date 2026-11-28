@@ -30,7 +30,7 @@ import {
   type ManagedTaskRunRecord,
 } from "./managed-task-flow-contract.js";
 import {
-  required,
+  requireManagedTaskFlowText as required,
   integer,
   encodeJson,
   decodeFlow,

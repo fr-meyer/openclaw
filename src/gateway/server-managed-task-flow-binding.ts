@@ -22,7 +22,8 @@ import {
   isClaimedManagedFlowNativeRun,
 } from "./server-managed-task-flow-policy.js";
 import { executeGatewayManagedTaskFlowRead } from "./server-managed-task-flow-read.js";
-import { prepareGatewaySessionAccessAuthority } from "./session-access-authority.js";
+import { loadGatewaySessionAccessPreparation } from "./session-access-authority-loader.js";
+import type { GatewaySessionAccessAuthority } from "./session-access-authority.types.js";
 
 export function bindGatewayManagedTaskFlowHost(
   input: { sessionKey: string; agentId?: string },
@@ -146,7 +147,7 @@ export function bindGatewayManagedTaskFlowHost(
       }
     });
   };
-  type Access = Awaited<ReturnType<typeof prepareGatewaySessionAccessAuthority>>["authority"];
+  type Access = GatewaySessionAccessAuthority;
   let access: ReturnType<Access["retain"]> | undefined;
   let admittedAuthority: Access | undefined;
   let preparation: Promise<void> | undefined;
@@ -176,7 +177,13 @@ export function bindGatewayManagedTaskFlowHost(
       if (!client || statusOnly || workerCandidate || foreignRunObserver) {
         return;
       }
-      const prepared = await prepareGatewaySessionAccessAuthority({
+      const loadedPreparation = await loadGatewaySessionAccessPreparation({
+        client,
+        assertCurrent,
+        readInheritedPolicy: () => clientRun?.sessionSpawnContext?.inheritedToolPolicy,
+      });
+      loadedPreparation.assertSourceCurrent();
+      const prepared = await loadedPreparation.prepareGatewaySessionAccessAuthority({
         policy: { mode: "write" },
         requestParams: { sessionKey, ...(agentId ? { agentId } : {}) },
         client,

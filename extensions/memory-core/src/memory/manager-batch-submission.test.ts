@@ -24,13 +24,13 @@ describe("memory batch submission durable kernel", () => {
     return db;
   }
 
-  it("quarantines an accepted provider job across owner restart", async () => {
+  it("quarantines an accepted provider job across owner restart", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({ submissionId: "submission-1" });
-      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+      lifecycle.started({ submissionId: "submission-1" });
+      lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
       const restarted = new MemoryBatchSubmissionKernel(() => db);
       expect(restarted.readStatus()).toMatchObject({
@@ -49,20 +49,20 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("resumes an acknowledged provider job across owner restart by exact fingerprint", async () => {
+  it("resumes an acknowledged provider job across owner restart by exact fingerprint", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({
+      lifecycle.started({
         submissionId: "submission-1",
         requestFingerprint: "fingerprint-1",
       });
-      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+      lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
       const restarted = new MemoryBatchSubmissionKernel(() => db);
       expect(() => restarted.assertReady()).not.toThrow();
-      const resumed = await restarted
+      const resumed = restarted
         .createLifecycle(geminiIdentity)
         .resumeAccepted?.({ requestFingerprint: "fingerprint-1" });
       expect(resumed).toEqual({ submissionId: "submission-1", batchName: "batches/job-1" });
@@ -74,12 +74,12 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("recovers an acknowledged job across source drift and atomically publishes its cache", async () => {
+  it("recovers an acknowledged job across source drift and atomically publishes its cache", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({
+      lifecycle.started({
         submissionId: "submission-1",
         requestFingerprint: "fingerprint-old",
         manifest: [
@@ -87,7 +87,7 @@ describe("memory batch submission durable kernel", () => {
           { customId: "chunk-b", chunkHash: "hash-b" },
         ],
       });
-      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+      lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
       const restarted = new MemoryBatchSubmissionKernel(() => db);
       const restartedLifecycle = restarted.createLifecycle(geminiIdentity);
@@ -144,12 +144,12 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("keeps the reservation and cache unchanged when recovered output is incomplete", async () => {
+  it("keeps the reservation and cache unchanged when recovered output is incomplete", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({
+      lifecycle.started({
         submissionId: "submission-1",
         requestFingerprint: "fingerprint-old",
         manifest: [
@@ -157,7 +157,7 @@ describe("memory batch submission durable kernel", () => {
           { customId: "chunk-b", chunkHash: "hash-b" },
         ],
       });
-      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+      lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
       expect(() =>
         lifecycle.publishRecovered?.({
@@ -174,17 +174,17 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("never recovers a completed job under a different model or cache identity", async () => {
+  it("never recovers a completed job under a different model or cache identity", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({
+      lifecycle.started({
         submissionId: "submission-1",
         requestFingerprint: "fingerprint-old",
         manifest: [{ customId: "chunk-a", chunkHash: "hash-a" }],
       });
-      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+      lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
       const changedLifecycle = new MemoryBatchSubmissionKernel(() => db).createLifecycle({
         provider: { id: "gemini", model: "gemini-embedding-future" },
@@ -206,16 +206,16 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("does not adopt or submit past an acknowledged job with a different fingerprint", async () => {
+  it("does not adopt or submit past an acknowledged job with a different fingerprint", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({
+      lifecycle.started({
         submissionId: "submission-1",
         requestFingerprint: "fingerprint-1",
       });
-      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+      lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
       const restarted = new MemoryBatchSubmissionKernel(() => db);
       const restartedLifecycle = restarted.createLifecycle(geminiIdentity);
@@ -233,13 +233,13 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("removes a reservation after a definitive pre-submit rejection", async () => {
+  it("removes a reservation after a definitive pre-submit rejection", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({ submissionId: "submission-1" });
-      await lifecycle.rejected({ submissionId: "submission-1" });
+      lifecycle.started({ submissionId: "submission-1" });
+      lifecycle.rejected({ submissionId: "submission-1" });
 
       expect(owner.readStatus()).toBeUndefined();
       expect(() => owner.assertReady()).not.toThrow();
@@ -248,13 +248,13 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("clears only this sync's reservations after local publication commits", async () => {
+  it("clears only this sync's reservations after local publication commits", () => {
     const db = createDb();
     try {
       const owner = new MemoryBatchSubmissionKernel(() => db);
       const lifecycle = owner.createLifecycle(geminiIdentity);
-      await lifecycle.started({ submissionId: "submission-1" });
-      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+      lifecycle.started({ submissionId: "submission-1" });
+      lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
 
       owner.commit();
 
@@ -264,12 +264,12 @@ describe("memory batch submission durable kernel", () => {
     }
   });
 
-  it("serializes reservations across independent owners", async () => {
+  it("serializes reservations across independent owners", () => {
     const db = createDb();
     try {
       const first = new MemoryBatchSubmissionKernel(() => db);
       const second = new MemoryBatchSubmissionKernel(() => db);
-      await first.createLifecycle(geminiIdentity).started({ submissionId: "submission-1" });
+      first.createLifecycle(geminiIdentity).started({ submissionId: "submission-1" });
 
       expect(() =>
         second.createLifecycle(geminiIdentity).started({ submissionId: "submission-2" }),

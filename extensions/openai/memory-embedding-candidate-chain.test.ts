@@ -172,7 +172,8 @@ describe("real registered OpenAI adapter/controller/journal chain", () => {
     await invoke(async (batch) => {
       const input = options("original");
       const pending = batch(input);
-      expectDefined(input.chunks[0]).text = "mutated";
+      expectDefined(input.chunks[0], "Expected the original OpenAI embedding chunk").text =
+        "mutated";
       input.chunks.push(...options("extra").chunks);
       expect(await pending).toHaveLength(1);
     });
@@ -283,8 +284,10 @@ describe("real registered OpenAI adapter/controller/journal chain", () => {
         createHash("sha256")
           .update(
             JSON.stringify({
-              source: expectDefined(input.chunks[0]).sourceKey,
-              chunk: expectDefined(input.chunks[0]).hash,
+              source: expectDefined(input.chunks[0], "Expected the original OpenAI embedding chunk")
+                .sourceKey,
+              chunk: expectDefined(input.chunks[0], "Expected the original OpenAI embedding chunk")
+                .hash,
               body,
             }),
           )

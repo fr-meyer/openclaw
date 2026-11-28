@@ -135,7 +135,9 @@ export function readSessionBranchSnapshot(
           previous.maxSeq <= watermark.maxSeq
             ? previous
             : undefined;
-        if (cached?.maxSeq === watermark.maxSeq) diagnostics?.add("cache");
+        if (cached?.maxSeq === watermark.maxSeq) {
+          diagnostics?.add("cache");
+        }
         const summaries =
           cached?.maxSeq === watermark.maxSeq
             ? cached
@@ -160,7 +162,9 @@ export function readSessionBranchSnapshot(
     diagnostics?.add("exception");
     throw error;
   } finally {
-    if (diagnostics && diagnosticsSink) diagnostics.emit(diagnosticsSink);
+    if (diagnostics && diagnosticsSink) {
+      diagnostics.emit(diagnosticsSink);
+    }
   }
 }
 

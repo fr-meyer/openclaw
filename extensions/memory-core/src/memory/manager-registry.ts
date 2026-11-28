@@ -28,6 +28,7 @@ import {
   type MemoryManagerLifecycle,
   type MemoryReloadState,
 } from "./lifecycle.js";
+import { memoryRejectionError } from "./manager-rejection.js";
 
 const log = createSubsystemLogger("memory");
 
@@ -41,7 +42,7 @@ export function normalizeMemoryIndexManagerPurpose(
     : "default";
 }
 
-type ClosableMemoryManager = {
+export type ClosableMemoryManager = {
   close(): Promise<void>;
 };
 
@@ -264,7 +265,7 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
             () => {
               pending.delete(work);
             },
-            (error) => {
+            (error: unknown) => {
               pending.delete(work);
               if (!failures.includes(error)) {
                 failures.push(error);
@@ -292,7 +293,7 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
               };
               return track(batch(snapshot));
             } catch (error) {
-              return track(Promise.reject(error));
+              return track(Promise.reject(memoryRejectionError(error)));
             }
           }, retainedIdentity);
         } catch (error) {
@@ -304,7 +305,7 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
         } finally {
           active = false;
           while (pending.size) {
-            await Promise.allSettled([...pending]);
+            await Promise.allSettled(pending);
           }
         }
         try {
@@ -590,7 +591,7 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
             return;
           }
           abandoned = true;
-          reject(admission.signal.reason);
+          reject(memoryRejectionError(admission.signal.reason));
         };
         admission.signal.addEventListener("abort", onQueuedAbort, { once: true });
         if (admission.signal.aborted) {
@@ -653,3 +654,14 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
     }
   }
 }
+
+/** Provider ownership only; ancestor state must not depend on the concrete cached manager. */
+export type MemoryManagerProviderOwnerRegistry = Pick<
+  MemoryManagerRegistry<ClosableMemoryManager>,
+  | "createProvider"
+  | "releaseProvider"
+  | "canPublishProbe"
+  | "getProbeOwners"
+  | "embeddingProbeCache"
+  | "withCandidateBatch"
+>;

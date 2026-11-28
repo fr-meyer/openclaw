@@ -237,7 +237,9 @@ export async function runMemoryEmbeddingBatchRetryWithSplit<TInput, TOutput>(par
       waitForRetry: params.waitForRetry,
     });
   } catch (err) {
-    if (isMemoryAdmissionRefused(err)) throw err;
+    if (isMemoryAdmissionRefused(err)) {
+      throw err;
+    }
     const message = embeddingRetryMessage(err);
     if (
       isInvalidEmbeddingResponse(err) ||

@@ -204,7 +204,7 @@ export function resolveLoadedCommitHash(
     : loaded;
 }
 
-type FullLoadedStamp = string | "headless" | null | undefined;
+type FullLoadedStamp = string | null | undefined;
 
 function readFullLoadedStamp(
   moduleUrl: string,

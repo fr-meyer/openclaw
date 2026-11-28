@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import type { OpenClawConfig } from "../../../../src/config/types.js";
+import type { OpenClawConfig } from "../../../src/config/types.js";
 import {
   resolveRuntimeWorkerThreadExecArgv,
   resolveRuntimeWorkerUrl,
-} from "../../../../src/infra/runtime-worker-url.js";
+} from "../../../src/infra/runtime-worker-url.js";
 import {
   resolveTestNodeExecPath,
   spawnNodeEvalSync,
-} from "../../../../src/test-utils/node-process.js";
-import { cleanupSessionStateForTest } from "../../../../src/test-utils/session-state-cleanup.js";
+} from "../../../src/test-utils/node-process.js";
+import { cleanupSessionStateForTest } from "../../../src/test-utils/session-state-cleanup.js";
 
 /** Cold maintenance needs a real main-thread host, not the unit-support thread pool. */
 export async function prepareSessionColdStateInHost(
@@ -26,15 +26,15 @@ export async function prepareSessionColdStateInHost(
       distWorkerPath,
     });
   const maintenance = resolveHostModule(
-    "../../../../src/config/sessions/session-cold-storage",
+    "../../../src/config/sessions/session-cold-storage",
     "config/sessions/session-cold-storage.js",
   );
   const agents = resolveHostModule(
-    "../../../../src/state/openclaw-agent-db",
+    "../../../src/state/openclaw-agent-db",
     "state/openclaw-agent-db.js",
   );
   const state = resolveHostModule(
-    "../../../../src/state/openclaw-state-db",
+    "../../../src/state/openclaw-state-db",
     "state/openclaw-state-db.js",
   );
   const runtimeArgs = resolveRuntimeWorkerThreadExecArgv(maintenance, resolveTestNodeExecPath());

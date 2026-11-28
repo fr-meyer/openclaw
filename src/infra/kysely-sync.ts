@@ -281,12 +281,12 @@ export function iterateSqliteQuerySync<Row>(
             [Symbol.iterator]() {
               // Acquire the native iterator record only when for-of does, after retain.
               const source = iterator[Symbol.iterator]();
-              const next = source.next;
+              const next = source.next.bind(source);
               return {
                 next() {
                   const start = performance.now();
                   try {
-                    return Reflect.apply(next, source, []);
+                    return next();
                   } finally {
                     try {
                       observeNext(Math.max(0, performance.now() - start));
@@ -297,8 +297,8 @@ export function iterateSqliteQuerySync<Row>(
                 },
                 get return() {
                   // GetMethod is evaluated once at IteratorClose, with its receiver kept.
-                  const close = source.return;
-                  return close == null ? undefined : () => Reflect.apply(close, source, []);
+                  const close = source.return?.bind(source);
+                  return close == null ? undefined : () => close();
                 },
               };
             },

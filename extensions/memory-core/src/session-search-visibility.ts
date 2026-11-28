@@ -26,6 +26,7 @@ import {
   normalizeOptionalLowercaseString as normalizeAgentIdForCompare,
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { memoryRejectionError } from "./memory/manager-rejection.js";
 import {
   readSessionArchiveReasonFromHitPath,
   type SessionResetRecallCutoff,
@@ -154,7 +155,7 @@ async function awaitWithSearchSignal<T>(promise: Promise<T>, signal?: AbortSigna
   signal.throwIfAborted();
   let removeAbort = () => {};
   const aborted = new Promise<never>((_resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
+    const onAbort = () => reject(memoryRejectionError(signal.reason));
     signal.addEventListener("abort", onAbort, { once: true });
     removeAbort = () => signal.removeEventListener("abort", onAbort);
     if (signal.aborted) {

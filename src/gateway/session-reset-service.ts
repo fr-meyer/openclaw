@@ -13,7 +13,7 @@ import { tryPrepareFreshManagerRuntimeSession } from "../acp/control-plane/manag
 import { getAcpRuntimeBackend } from "../acp/runtime/registry.js";
 import { rebindDurableAcpSessionMetaAfterReset } from "../acp/runtime/session-meta-reset.js";
 import { retireSessionMcpRuntime } from "../agents/agent-bundle-mcp-tools.js";
-import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { clearFinishedSessionsForScopes } from "../agents/bash-process-registry.js";
 import {
   clearBootstrapSnapshot,
@@ -25,8 +25,6 @@ import {
   isEmbeddedAgentRunActive,
   waitForEmbeddedAgentRunEnd,
 } from "../agents/embedded-agent-runner/runs.js";
-import { resetRegisteredAgentHarnessSessions } from "../agents/harness/registry.js";
-import { acquireAgentRuntimeCleanupRegistries } from "../agents/prepared-model-runtime.js";
 import { resolveSessionModelRef } from "../agents/session-model-ref.js";
 import { readRegistryWorktree } from "../agents/worktrees/registry-read.js";
 import { captureWorktreeRunEndContext } from "../agents/worktrees/run-end-lifecycle.js";
@@ -118,6 +116,7 @@ import {
   closeAcpRuntimeForSession,
   closeChildAcpRuntimesForParent,
 } from "./session-reset-acp.js";
+import { resetSessionAgentHarnesses } from "./session-reset-agent-harnesses.js";
 import { deleteIncognitoSessionForReset } from "./session-reset-incognito.js";
 import { notifyGatewaySessionReset } from "./session-reset-notifications.js";
 import { resolveSessionResetTarget } from "./session-reset-target.js";
@@ -129,32 +128,6 @@ import {
   resolveSessionWorkerPlacementMutationError,
   retireSessionWorkerPlacementBeforeMutation,
 } from "./worker-environments/session-placement-lifecycle.js";
-
-async function resetSessionAgentHarnesses(params: {
-  cfg: OpenClawConfig;
-  target: Pick<GatewaySessionStoreTarget, "agentId" | "canonicalKey">;
-  entry: SessionEntry;
-  reason: "reset" | "deleted";
-  assertCurrent?: () => void;
-}): Promise<void> {
-  const { agentId, canonicalKey: sessionKey } = params.target;
-  params.assertCurrent?.();
-  await using owners = await acquireAgentRuntimeCleanupRegistries(
-    resolveAgentDir(params.cfg, agentId),
-  );
-  params.assertCurrent?.();
-  await resetRegisteredAgentHarnessSessions(
-    {
-      agentId,
-      sessionId: params.entry.sessionId,
-      sessionKey,
-      sessionFile: sessionKey,
-      reason: params.reason,
-    },
-    owners.registries,
-  );
-  params.assertCurrent?.();
-}
 
 type McpRunEndWatcherState = {
   cancellations: Map<string, () => void>;

@@ -1,9 +1,3 @@
-import type {
-  MemoryPublishedDatabase,
-  MemoryPublishedDatabaseConstructor,
-  MemoryPublishedOpenOptions,
-} from "./manager-published-contract.js";
-export type { MemoryPublishedOpenOptions } from "./manager-published-contract.js";
 import { MEMORY_INDEX_FTS_TABLE } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import {
   borrowOpenClawAgentDatabase,
@@ -11,6 +5,13 @@ import {
 } from "openclaw/plugin-sdk/sqlite-runtime";
 import { memoryDatabaseTableExists } from "./manager-db-kernel.js";
 import { openMemoryDatabaseReadOnlyAtPath } from "./manager-db.js";
+import type {
+  MemoryPublishedDatabase,
+  MemoryPublishedDatabaseConstructor,
+  MemoryPublishedOpenOptions,
+} from "./manager-published-contract.js";
+
+export type { MemoryPublishedOpenOptions } from "./manager-published-contract.js";
 
 export async function openPublishedMemoryDatabase<T extends MemoryPublishedDatabase>(
   Database: MemoryPublishedDatabaseConstructor<T>,

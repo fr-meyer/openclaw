@@ -225,7 +225,12 @@ export async function prepareProjectMemoryBootstrap(
     const lines = await new Promise<string[]>((resolve, reject) => {
       onAbort = () => {
         active = false;
-        reject(signal?.reason);
+        const abortReason = signal?.reason;
+        reject(
+          abortReason instanceof Error
+            ? abortReason
+            : new Error("Project memory recall aborted", { cause: abortReason }),
+        );
       };
       signal?.addEventListener("abort", onAbort, { once: true });
       if (signal?.aborted) {
@@ -235,7 +240,12 @@ export async function prepareProjectMemoryBootstrap(
       timer = setTimeout(() => {
         active = false;
         if (signal?.aborted) {
-          reject(signal.reason);
+          const abortReason = signal.reason;
+          reject(
+            abortReason instanceof Error
+              ? abortReason
+              : new Error("Project memory recall aborted", { cause: abortReason }),
+          );
         } else {
           log.debug("optional project recall exceeded 1000ms; continuing without recall");
           resolve([]);

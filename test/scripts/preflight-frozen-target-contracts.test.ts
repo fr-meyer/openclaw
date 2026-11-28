@@ -20,6 +20,13 @@ import { materializeNativeCompiler } from "./native-boundary-fixture.js";
 
 const temps = useAutoCleanupTempDirTracker(afterEach);
 const repo = resolve(".");
+const pluginAssertions = "scripts/e2e/lib/plugins/assertions.mjs";
+const lanes = [
+  "published-upgrade-survivor",
+  "root-managed-vps-upgrade",
+  "update-restart-auth",
+  "update-migration",
+];
 const entrypoint = "scripts/preflight-frozen-target-contracts.mjs";
 const closure = [
   entrypoint,
@@ -96,6 +103,7 @@ function fixture(
   files: Record<string, string> = {},
   support = false,
   layout: "siblings" | "nested-tooling" | "nested-selected" = "siblings",
+  parser = true,
 ) {
   const root = temps.make("openclaw-frozen-admission-");
   const toolingRoot = join(root, ".release-harness");
@@ -217,7 +225,6 @@ function survivorFiles(version = "2026.8.35", recipe = "config-recipe.mts") {
 }
 
 describe("frozen admission Docker consumer aliases", () => {
-  const pluginAssertions = "scripts/e2e/lib/plugins/assertions.mjs";
   const aliases = ["mcp-channels", "kitchen-sink-rpc", "plugins-offline"].map((lane) => ({
     lane,
     consumer: "plugins",

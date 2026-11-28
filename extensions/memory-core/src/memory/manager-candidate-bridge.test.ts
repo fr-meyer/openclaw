@@ -287,7 +287,9 @@ describe("candidate registered-owner manager bridge", () => {
       };
     });
     try {
-      const failure = await candidate.buildCandidate(serving, request).catch((error) => error);
+      const failure = await candidate
+        .buildCandidate(serving, request)
+        .catch((error: unknown) => error);
       expect(failure).toMatchObject({ disposition: "retained-unreconciled" });
       expect(calls.bound).toBeGreaterThan(0);
       expect(calls.direct).toBe(0);

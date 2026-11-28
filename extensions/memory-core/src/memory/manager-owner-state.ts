@@ -18,23 +18,23 @@ import {
   type MemoryEmbeddingProviderRequirement,
 } from "./manager-provider-lifecycle.js";
 import type { MemoryProviderLifecycleState } from "./manager-provider-state.js";
-import {
-  type MemoryManagerRegistry,
-  type MemoryManagerProviderFactory,
-  type MemoryIndexManagerPurpose,
+import type {
+  ClosableMemoryManager,
+  MemoryManagerProviderOwnerRegistry,
+  MemoryManagerProviderFactory,
+  MemoryIndexManagerPurpose,
 } from "./manager-registry.js";
 import type { MemoryIndexIdentityState } from "./manager-reindex-state.js";
 import { MemorySearchOrchestration } from "./manager-search-orchestration.js";
 import type { MemoryEmbeddingBatchConfig } from "./manager-sync-base.js";
 import { MemoryTargetedSessionSyncQueue } from "./manager-sync-control.js";
-import type { MemoryIndexManager } from "./manager.js";
 import type { MemoryCoreRuntimeHost } from "./runtime-host.js";
 const log = createSubsystemLogger("memory");
 export { log as memoryManagerLog };
 
 export type MemoryManagerStateOptions = {
   memoryFiles?: MemoryWorkspaceFiles;
-  managerRegistry: MemoryManagerRegistry<MemoryIndexManager>;
+  managerRegistry: MemoryManagerProviderOwnerRegistry;
   cacheKey: string;
   cfg: OpenClawConfig;
   agentId: string;
@@ -44,27 +44,27 @@ export type MemoryManagerStateOptions = {
   purpose: MemoryIndexManagerPurpose;
   acquireLocalService?: MemoryCoreAcquireLocalService;
   runInBackgroundContext?: MemoryCoreRuntimeHost["runInBackgroundContext"];
-  maintenanceSource?: MemoryIndexManager;
+  maintenanceSource?: MemoryManagerState;
   candidateOperationId?: string;
   databaseOptions: Parameters<typeof withOpenClawAgentDatabaseWrite>[0] & { path: string };
   publishedDatabase: MemoryIndexDatabase;
 };
 
 export abstract class MemoryManagerState extends MemorySearchOrchestration {
-  protected readonly managerRegistry: MemoryManagerRegistry<MemoryIndexManager>;
+  protected readonly providerOwnerRegistry: MemoryManagerProviderOwnerRegistry;
   protected readonly createProvider: MemoryManagerProviderFactory = (adapter, create) =>
-    this.managerRegistry.createProvider(this.managerOwner, adapter, create);
+    this.providerOwnerRegistry.createProvider(this.managerOwner, adapter, create);
   protected releaseProvider(provider: EmbeddingProvider): void {
-    this.managerRegistry.releaseProvider(this.managerOwner, provider);
+    this.providerOwnerRegistry.releaseProvider(this.managerOwner, provider);
   }
   protected canPublishEmbeddingProbe(): boolean {
-    return this.managerRegistry.canPublishProbe(this.managerOwner);
+    return this.providerOwnerRegistry.canPublishProbe(this.managerOwner);
   }
   protected getEmbeddingProbeOwners() {
-    return this.managerRegistry.getProbeOwners(this.managerOwner);
+    return this.providerOwnerRegistry.getProbeOwners(this.managerOwner);
   }
   protected get embeddingProbeCache() {
-    return this.managerRegistry.embeddingProbeCache;
+    return this.providerOwnerRegistry.embeddingProbeCache;
   }
   protected readonly cacheKey: string;
   protected readonly purpose: MemoryIndexManagerPurpose;
@@ -99,9 +99,9 @@ export abstract class MemoryManagerState extends MemorySearchOrchestration {
     sync: (params) => this.syncAdmitted(params, { queuedSessionOwner: true }),
   });
   protected indexIdentityState: MemoryIndexIdentityState;
-  protected abstract get managerOwner(): MemoryIndexManager;
+  protected abstract get managerOwner(): ClosableMemoryManager;
 
-  protected abstract syncAdmitted(
+  protected abstract override syncAdmitted(
     params?: MemorySyncParams,
     options?: {
       allowEmbeddingBootstrapFallback?: boolean;
@@ -111,7 +111,7 @@ export abstract class MemoryManagerState extends MemorySearchOrchestration {
 
   protected constructor(params: MemoryManagerStateOptions) {
     super(params.maintenanceSource?.automaticRebuildNotice);
-    this.managerRegistry = params.managerRegistry;
+    this.providerOwnerRegistry = params.managerRegistry;
     const effectiveSettings = resolveEffectiveMemorySearchSettings(params.settings);
     const dbPath = params.databaseOptions.path;
     this.cacheKey = params.cacheKey;

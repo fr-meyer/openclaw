@@ -84,6 +84,7 @@ it("accepts only the claimed native root cancellation without traversing descend
   const ownerKey = "agent:main:publisher";
   const controllerId = "publisher/v1";
   const entry = subagentRuns.get(runId)!;
+  const nativeGeneration = expectDefined(entry.generation);
   const flow = await executeManagedTaskFlowFixtureWrite(captureOpenClawStateWorkerContext(), {
     type: "tasks.managedFlows.create",
     input: {
@@ -95,7 +96,7 @@ it("accepts only the claimed native root cancellation without traversing descend
           sessionKey,
           runId,
           taskId: entry.taskRunId ?? runId,
-          nativeGeneration: entry.generation,
+          nativeGeneration,
         },
       },
     },

@@ -237,8 +237,10 @@ describe("native durable Batch controller binding", () => {
         const work = controller.runBatch(input, controls);
         try {
           await entered.promise;
-          expectDefined(input[0]).custom_id = "mutated-id";
-          expectDefined(input[0]).body.input = "mutated private payload must not upload";
+          expectDefined(input[0], "Expected one submitted OpenAI batch request").custom_id =
+            "mutated-id";
+          expectDefined(input[0], "Expected one submitted OpenAI batch request").body.input =
+            "mutated private payload must not upload";
           controls.wait = true;
           controls.concurrency = 0;
           controls.timeoutMs = 1;
@@ -253,7 +255,9 @@ describe("native durable Batch controller binding", () => {
         }
       }),
     ).rejects.toBeDefined();
-    const sent = JSON.parse(expectDefined(uploaded[0]).trim());
+    const sent = JSON.parse(
+      expectDefined(uploaded[0], "Expected an uploaded OpenAI batch body").trim(),
+    );
     expect(sent.custom_id).toBe("item-0");
     expect(sent.body.input).toBe("synthetic only");
     expect(sent.body.dimensions).toBe(256);

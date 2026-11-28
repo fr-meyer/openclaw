@@ -73,6 +73,7 @@ describe("candidate-only serialized schema v1", () => {
   });
   it("admits nonopenai and omitted optional ordinary fields without controller", () => {
     const { controller, ...candidate } = valid().candidate;
+    expect(controller).toBeDefined();
     expect(
       parseCandidateMetadata(
         JSON.stringify({

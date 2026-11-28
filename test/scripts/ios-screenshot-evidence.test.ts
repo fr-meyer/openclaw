@@ -319,18 +319,25 @@ describe("iOS screenshot evidence", () => {
 
     expect(manifest.runAttempt).toBe(2);
     expect(manifest.attemptModel).toEqual(ATTEMPT_MODEL);
-    expect(manifest.families.map((family: Record<string, any>) => family.family)).toEqual([
-      "ipad-13",
-      "iphone",
-      "watch",
-    ]);
+    if (!Array.isArray(manifest.families)) {
+      throw new Error("Expected screenshot evidence families");
+    }
+    const families = manifest.families.map((family: unknown) => {
+      if (
+        typeof family !== "object" ||
+        family === null ||
+        !("family" in family) ||
+        typeof family.family !== "string" ||
+        !("runAttempt" in family) ||
+        typeof family.runAttempt !== "number"
+      ) {
+        throw new Error("Expected a named screenshot family with a numeric attempt");
+      }
+      return { family: family.family, runAttempt: family.runAttempt };
+    });
+    expect(families.map((family) => family.family)).toEqual(["ipad-13", "iphone", "watch"]);
     expect(
-      Object.fromEntries(
-        (manifest.families as Array<Record<string, any>>).map((family) => [
-          family.family,
-          family.runAttempt,
-        ]),
-      ),
+      Object.fromEntries(families.map((family) => [family.family, family.runAttempt])),
     ).toEqual(runAttempts);
   });
 

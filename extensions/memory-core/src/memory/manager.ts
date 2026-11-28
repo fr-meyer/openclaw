@@ -42,6 +42,7 @@ import {
   resolveMemoryIndexManagerCacheKey,
   type MemoryIndexManagerPurpose,
   type MemoryManagerAdmission,
+  type MemoryManagerRegistry,
 } from "./manager-registry.js";
 import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 import { resolveMemoryIndexProviderIdentities } from "./manager-reindex-state.js";
@@ -57,6 +58,8 @@ export class MemoryIndexManager
   extends MemoryCandidateOrchestration
   implements MemorySearchManager
 {
+  protected readonly managerRegistry: MemoryManagerRegistry<MemoryIndexManager>;
+
   protected get managerOwner(): MemoryIndexManager {
     return this;
   }
@@ -206,8 +209,13 @@ export class MemoryIndexManager
       },
     );
   }
-  private constructor(params: MemoryManagerStateOptions) {
+  private constructor(
+    params: MemoryManagerStateOptions & {
+      managerRegistry: MemoryManagerRegistry<MemoryIndexManager>;
+    },
+  ) {
     super(params);
+    this.managerRegistry = params.managerRegistry;
   }
 
   /** Allocate a named isolated export using the native manager and DB owners.

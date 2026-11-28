@@ -146,16 +146,6 @@ describe("memory CLI promotion ordering", () => {
     await program.parseAsync(["memory", ...args], { from: "user" });
   }
 
-  const unrestrictedPromotion = [
-    "--min-score",
-    "--min-recall-count",
-    "--min-unique-queries",
-  ].flatMap((flag) => [flag, "0"]);
-
-  const configuredAgents = {
-    agents: { ownership: "explicit" as const, entries: { main: {}, ops: {} } },
-  };
-
   async function createWorkspace() {
     const workspaceDir = path.join(workspaceFixtureRoot, `case-${workspaceCaseId++}`);
     await fs.mkdir(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });

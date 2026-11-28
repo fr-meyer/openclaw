@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it } from "vitest";
 import {
   NATIVE_SECURITY_ADAPTER,
@@ -86,11 +87,19 @@ describe("native security suite ownership", () => {
         "// Synthetic metadata-only adapter.\n",
       );
       const reasons: string[] = [];
-      const shards = createChangedNodeTestShards([NATIVE_SECURITY_TEST_FILES[0]], {
-        cwd: root,
-        runnerBackend: "github",
-        onFallback: (reason) => reasons.push(reason),
-      });
+      const shards = createChangedNodeTestShards(
+        [
+          expectDefined(
+            NATIVE_SECURITY_TEST_FILES[0],
+            "Expected a declared native security member",
+          ),
+        ],
+        {
+          cwd: root,
+          runnerBackend: "github",
+          onFallback: (reason) => reasons.push(reason),
+        },
+      );
       // This tiny checkout may lack broader canonical metadata, but never admit an empty success.
       expect(shards).not.toEqual([]);
       if (shards === null) {
@@ -153,7 +162,10 @@ describe("native security suite ownership", () => {
       ).toHaveLength(1);
     }
     // Do not erase a direct duplicate; the aggregate auditor must still reject it.
-    const [member] = NATIVE_SECURITY_TEST_FILES;
+    const member = expectDefined(
+      NATIVE_SECURITY_TEST_FILES[0],
+      "Expected a declared native security member",
+    );
     expect(
       expandNativeSecurityTestOwnership([NATIVE_SECURITY_ADAPTER, member]).filter(
         (file) => file === member,
@@ -195,7 +207,10 @@ describe("native security suite ownership", () => {
 
   it("retains a removed declared member and adapter as nonempty changed owners", () => {
     const missingRoot = path.join(ROOT, ".native-ownership-missing-fixture");
-    for (const file of [NATIVE_SECURITY_TEST_FILES[0], NATIVE_SECURITY_ADAPTER]) {
+    for (const file of [
+      expectDefined(NATIVE_SECURITY_TEST_FILES[0], "Expected a declared native security member"),
+      NATIVE_SECURITY_ADAPTER,
+    ]) {
       expect(resolveChangedTestTargetPlan([file], { cwd: missingRoot })).toMatchObject({
         mode: "targets",
         targets: [NATIVE_SECURITY_ADAPTER],
@@ -217,7 +232,10 @@ describe("native security suite ownership", () => {
   });
 
   it("maps explicit source CI selections before constructing executable plans", () => {
-    const [member] = NATIVE_SECURITY_TEST_FILES;
+    const member = expectDefined(
+      NATIVE_SECURITY_TEST_FILES[0],
+      "Expected a declared native security member",
+    );
     const shards = createChangedNodeTestShards([member], {
       cwd: ROOT,
       runnerBackend: "github",

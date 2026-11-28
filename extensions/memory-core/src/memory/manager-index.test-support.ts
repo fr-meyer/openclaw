@@ -15,6 +15,7 @@ import {
   resetMemoryCoreDreamingStateForTests,
 } from "../test-helpers.js";
 import { runInMemoryTestBackgroundContext } from "./background-context.test-support.js";
+import type { MemoryIndexSessionSeedParams } from "./manager-index-session-types.test-support.js";
 import { seedMemoryIndexSessionTranscript as seedSessionTranscript } from "./manager-index-session.test-support.js";
 import type { MemoryIndexManager } from "./manager.js";
 import { isolateMemoryManagerTestConfig } from "./test-config-helpers.js";
@@ -113,16 +114,7 @@ export type ManagerIndexFixture = {
     inspectSources?: boolean,
   ) => Promise<MemoryIndexManager>;
   getFtsSessionManager: () => Promise<MemoryIndexManager | null>;
-  seedSessionTranscript: (params: {
-    messages: Array<{
-      content: string;
-      role: "assistant" | "user";
-      senderIsOwner?: boolean;
-      timestamp: number | string;
-    }>;
-    sessionId: string;
-    sessionKey?: string;
-  }) => Promise<void>;
+  seedSessionTranscript: (params: MemoryIndexSessionSeedParams) => Promise<void>;
 };
 
 const providerState = vi.hoisted(() => ({

@@ -91,9 +91,6 @@ import {
   claudeCliSessionTranscriptHasContent,
   claudeCliSessionTranscriptHasOrphanedToolUse,
 } from "../command/attempt-execution.helpers.js";
-import { resolveContextWindowInfo } from "../context-window-guard.js";
-import { resolveContextTokensForModel } from "../context.js";
-import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { waitForDeferredTurnMaintenanceForSession } from "../embedded-agent-runner/context-engine-maintenance.js";
 import { resolvePromptBuildHookResult } from "../embedded-agent-runner/run/attempt-prompt-helpers.js";
 import {
@@ -104,8 +101,6 @@ import { buildCurrentInboundPrompt } from "../embedded-agent-runner/run/runtime-
 import { remapSkillReferencePaths } from "../embedded-agent-runner/sandbox-skills.js";
 import { beginContextEngineLogicalTurn } from "../harness/context-engine-turn-begin.js";
 import type { ResolvedProviderAuth } from "../model-auth-runtime-shared.js";
-import { loadManifestModelCatalog, overlayConfiguredModelCatalog } from "../model-catalog.js";
-import { resolveModelContextWindowProfile } from "../model-context-window.js";
 import { recordAdmittedModelRoutingDecision } from "../model-routing-decision.js";
 import { applyPluginTextReplacements } from "../plugin-text-transforms.js";
 import { collectRuntimeChannelCapabilities } from "../runtime-capabilities.js";
@@ -141,8 +136,8 @@ import { prepareCliHistoryBoundary } from "./history-boundary.js";
 import { cliBackendLog } from "./log.js";
 import { prepareCliLoopbackBundleMcp } from "./loopback-bundle-mcp.js";
 import { buildCliMcpGrantContext } from "./mcp-grant-context.js";
-import { resolveCliCatalogCapabilities } from "./model-capabilities.js";
-import { detectNodeClaudePlacement, resolveClaudeCliContextModelId } from "./prepare-claude.js";
+import { detectNodeClaudePlacement } from "./prepare-claude.js";
+import { resolveCliPreparationContextBudget } from "./prepare-context-budget.js";
 import * as mcp from "./prepare-mcp.js";
 import { runWithCliPreparationSource } from "./prepare-source.js";
 import { resolveCliRuntimeToolPolicy } from "./prepare-tool-policy.js";
@@ -595,78 +590,15 @@ async function prepareCliRunContextWithinReadFence(
   const promptBuildRestrictsTools =
     promptBuildToolsAllow !== undefined &&
     !promptBuildToolsAllow.some((toolName) => normalizeToolPolicyName(toolName) === "*");
-  const isClaudeCli = isClaudeCliBackendId(params.provider);
-  const requestedContextModelId = isClaudeCli ? resolveClaudeCliContextModelId(modelId) : modelId;
-  const normalizedContextModelId = isClaudeCli
-    ? resolveClaudeCliContextModelId(normalizedCatalogModel)
-    : normalizedCatalogModel;
-  // Aliases can map a canonical id to a CLI shorthand or a user shorthand to
-  // a canonical id. Resolve both identities and keep the safest owned limit.
-  const contextModelIds = [
-    requestedContextModelId,
-    ...(normalizedContextModelId !== requestedContextModelId ? [normalizedContextModelId] : []),
-  ];
-  const resolveContextModelTokens = (contextModelId: string) =>
-    resolveContextTokensForModel({
-      cfg: params.config,
-      provider: params.provider,
-      modelProvider: backendResolved.modelProvider,
-      model: contextModelId,
-      modelContextWindow: params.modelContextWindow,
-      modelContextTokens: params.modelContextTokens,
-      allowAsyncLoad: false,
-      // A same-name API model may have a different native window from this CLI runtime.
-      allowUnscopedModelLookup: false,
+  const { isClaudeCli, contextWindowInfo, providerThinkingLevel } =
+    resolveCliPreparationContextBudget({
+      params,
+      runConfig,
+      backendResolved,
+      modelId,
+      normalizedCatalogModel,
+      workspaceDir,
     });
-  const contextTokenCandidates = contextModelIds
-    .map((contextModelId) => resolveContextModelTokens(contextModelId))
-    .filter((tokens) => tokens !== undefined);
-  let modelContextTokens = contextTokenCandidates.length
-    ? Math.min(...contextTokenCandidates)
-    : DEFAULT_CONTEXT_TOKENS;
-  // Session-selectable context windows (catalog `contextWindows`, e.g. Claude
-  // CLI 200k/1m) cap the resolved window here: the fixed provider contract in
-  // resolveAnthropicFixedContextWindow deliberately ignores catalog scalars,
-  // so the selected (or default) option must apply after it or a 200k session
-  // would auto-compact against a 1M budget.
-  const modelCatalog = overlayConfiguredModelCatalog({
-    catalog: loadManifestModelCatalog({ config: runConfig, workspaceDir }),
-    config: runConfig,
-    workspaceDir,
-  });
-  const { selectableContextEntry, providerThinkingLevel } = resolveCliCatalogCapabilities({
-    catalog: modelCatalog,
-    provider: params.provider,
-    modelProvider: backendResolved.modelProvider,
-    modelId,
-    normalizedModel: normalizedCatalogModel,
-    agentRuntime: backendResolved.id,
-    thinkLevel: params.thinkLevel,
-  });
-  if (selectableContextEntry) {
-    const contextWindowProfile = resolveModelContextWindowProfile({
-      catalogEntry: selectableContextEntry,
-      selected: params.contextWindow,
-    });
-    // Only an effective option caps the window; the bare catalog scalar stays
-    // subordinate to the fixed provider contract above.
-    if (contextWindowProfile.contextWindow && contextWindowProfile.contextTokens !== undefined) {
-      modelContextTokens = Math.min(modelContextTokens, contextWindowProfile.contextTokens);
-    }
-  }
-  const resolvedContextWindowInfo = resolveContextWindowInfo({
-    cfg: params.config,
-    provider: params.provider,
-    modelId,
-    modelContextTokens,
-    defaultTokens: DEFAULT_CONTEXT_TOKENS,
-  });
-  // The generic guard rechecks the requested id in config. An alias target may
-  // have a tighter owned limit, so the alias-aware result remains an upper bound.
-  const contextWindowInfo =
-    resolvedContextWindowInfo.tokens > modelContextTokens
-      ? { tokens: modelContextTokens, source: "model" as const }
-      : resolvedContextWindowInfo;
   const autoReseedHistoryChars = isClaudeCli
     ? resolveAutoCliSessionReseedHistoryChars(contextWindowInfo.tokens)
     : undefined;

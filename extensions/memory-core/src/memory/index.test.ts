@@ -24,10 +24,6 @@ import type { MemoryIndexManager } from "./manager.js";
 
 const { closeAllMemorySearchManagers, getMemorySearchManager } = await import("./index.js");
 
-function sessionTarget(sessionId: string, sessionKey: string) {
-  return { agentId: "main", sessionId, sessionKey };
-}
-
 describe("memory index", () => {
   const fixture = createManagerIndexFixture({
     getMemorySearchManager,

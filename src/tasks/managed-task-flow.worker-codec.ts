@@ -9,7 +9,7 @@ import {
 
 type FlowRow = Selectable<DB["flow_runs"]>;
 type TaskRow = Selectable<DB["task_runs"]>;
-export function required(value: string, label: string): string {
+export function requireManagedTaskFlowText(value: string, label: string): string {
   const normalized = value.trim();
   if (!normalized) {
     throw new Error(`${label} is required`);
