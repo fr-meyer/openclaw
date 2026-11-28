@@ -39,7 +39,9 @@ serveOwnedWorkerTasks(
     SessionTranscriptWorkerReply<keyof SessionTranscriptWorkerValues> | UsageCostWorkerReply
   > => {
     // Pure data projection is outside ALL database admission/open/inspection branches.
+    // SAFETY: The paired runtime constructs this closed request union; kind selects its pure-data branch.
     if ((input as SessionTranscriptWorkerRequest).kind === "session-entry-projection") {
+      // SAFETY: The kind check selects the paired projection request containing captured snapshot/redaction.
       const request = input as Extract<
         SessionTranscriptWorkerRequest,
         { kind: "session-entry-projection" }

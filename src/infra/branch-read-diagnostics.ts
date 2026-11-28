@@ -31,6 +31,7 @@ type Field = (typeof fields)[number];
 export type BranchReadAggregate = Readonly<Record<Field, number>>;
 export type BranchReadDiagnosticsSink = (aggregate: BranchReadAggregate) => void;
 export function createBranchReadDiagnostics() {
+  // SAFETY: Field derives from this closed tuple; map emits every key once with numeric zero.
   const values = Object.fromEntries(fields.map((key) => [key, 0])) as Record<Field, number>;
   return {
     add(key: Field, value = 1) {

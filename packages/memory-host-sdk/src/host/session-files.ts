@@ -16,6 +16,7 @@ import {
   isCronRunGeneratedRecord,
   classifySessionTranscriptFromSessionStore,
   sessionPathForFile,
+  sqliteSessionFileState,
   sanitizeSessionText,
   isRecalledMemoryMessage,
   resolveSessionEntryParseYieldLines,
@@ -54,7 +55,6 @@ import {
 import { resolveBuildSessionSqliteIdentity } from "./session-entry-source.js";
 import { classifySessionMessageOrigin } from "./session-provenance.js";
 import { resolveSessionResetRecallCutoff } from "./session-reset-recall.js";
-import { type SessionTranscriptCorpusEntry } from "./session-transcript-corpus.js";
 import type { MemoryEntryProvenance, MemoryOriginClass } from "./types.js";
 
 export {

@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -5,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { MemoryEmbeddingProviderAdapter } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseCandidateMetadata } from "./manager-candidate-schema.js";
+import { MemoryCandidateBuildError } from "./manager-candidate.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
 import { createManagerIndexFixture } from "./manager-index.test-support.js";
 import * as reindexLock from "./manager-reindex-lock.js";
@@ -291,6 +293,7 @@ describe("candidate registered-owner manager bridge", () => {
         .buildCandidate(serving, request)
         .catch((error: unknown) => error);
       expect(failure).toMatchObject({ disposition: "retained-unreconciled" });
+      assert.ok(failure instanceof MemoryCandidateBuildError);
       expect(calls.bound).toBeGreaterThan(0);
       expect(calls.direct).toBe(0);
       expect(trace).toEqual([
@@ -307,6 +310,7 @@ describe("candidate registered-owner manager bridge", () => {
       expect(errors).toContain(releaseError);
       expect(errors.some((error) => String(error).includes("UNKNOWN"))).toBe(true);
       expect(failure.cause).toBeInstanceOf(AggregateError);
+      assert.ok(failure.cause instanceof AggregateError);
       expect(flatten(failure.cause.cause).some((error) => String(error).includes("UNKNOWN"))).toBe(
         true,
       );

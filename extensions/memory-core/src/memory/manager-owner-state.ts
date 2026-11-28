@@ -156,9 +156,9 @@ export abstract class MemoryManagerState extends MemorySearchOrchestration {
       const transient = this.purpose !== "default";
       const invalidatedSources = new Set(
         (this.database.hasIndex
-          ? (this.db
+          ? this.db
               .prepare("SELECT DISTINCT source FROM memory_index_sources WHERE hash = ''")
-              .all() as Array<{ source?: unknown }>)
+              .all()
           : []
         ).flatMap((row) =>
           row.source === "memory" || row.source === "sessions" ? [row.source] : [],

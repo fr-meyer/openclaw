@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
+import { openNodeSqliteDatabase } from "openclaw/plugin-sdk/memory-core-host-engine-knn";
 import { BOUNDED_MEMORY_SCHEMA } from "./bounded-admission-schema.js";
 import {
   type BoundedMemoryPolicy,
@@ -205,7 +206,7 @@ export function assertBoundedMemoryDatabaseRegistration(path: string, agent: str
   if (!existsSync(path)) {
     return;
   }
-  const db = new DatabaseSync(path, { readOnly: true });
+  const db = openNodeSqliteDatabase(path, { readOnly: true });
   try {
     const table = db
       .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_operation_owners'")
@@ -230,7 +231,7 @@ export function readBoundedMemoryIndexMeta(path: string, agent: string): MemoryI
   if (!existsSync(path)) {
     return null;
   }
-  const db = new DatabaseSync(path, { readOnly: true });
+  const db = openNodeSqliteDatabase(path, { readOnly: true });
   try {
     const table = db
       .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_index_meta'")
@@ -241,6 +242,7 @@ export function readBoundedMemoryIndexMeta(path: string, agent: string): MemoryI
     const row = db
       .prepare("SELECT value FROM memory_index_meta WHERE key='memory_index_meta_v1'")
       .get();
+    // SAFETY: writeMeta(meta: MemoryIndexMeta) JSON-serializes this owned index metadata row.
     return row && typeof row.value === "string" ? (JSON.parse(row.value) as MemoryIndexMeta) : null;
   } finally {
     db.close();

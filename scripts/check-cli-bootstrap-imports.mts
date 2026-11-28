@@ -47,6 +47,22 @@ const GATEWAY_RUN_FORBIDDEN_STATIC_IMPORTS = [
 const STATIC_IMPORT_RE =
   /\b(?:import|export)\s+(?:(?:[^'"()]*?\s+from\s+)|)["'](?<specifier>[^"']+)["']/gu;
 
+type CliBootstrapProgressPhase =
+  | "entry"
+  | "cli-static"
+  | "gateway-run"
+  | "native-hook-relay"
+  | "worker-deploy"
+  | "worker-artifact-read"
+  | "worker-runtime-imports"
+  | "worker-first-statements";
+type CliBootstrapProgressState = "start" | "done" | "observed" | "failed";
+type CliBootstrapProgress = (
+  phase: CliBootstrapProgressPhase,
+  state: CliBootstrapProgressState,
+  artifactIndex?: number,
+) => void;
+
 type CliBootstrapCheckParams = {
   rootDir?: string;
   entrypoints?: string[];
@@ -59,6 +75,8 @@ type CliBootstrapCheckParams = {
   nativeHookRelayStaticMaxBytes?: number;
   fs?: typeof fs;
   logger?: { error(message: string): void };
+  // Opt-in source-known phase labels only: no source, paths, arguments or environment values.
+  progress?: CliBootstrapProgress;
 };
 
 function isBuiltinSpecifier(specifier: string) {
@@ -140,9 +158,14 @@ function isRequireLikeCallee(value: unknown): boolean {
   );
 }
 
-function listRuntimeImportSpecifiers(source: string): string[] {
+function listRuntimeImportSpecifiers(source: string, onFirstStatements?: () => void): string[] {
   const specifiers: string[] = [];
+  let reportedFirstStatements = false;
   visitJavaScriptStatements(source, { sourceType: "module", allowHashBang: true }, (statements) => {
+    if (!reportedFirstStatements) {
+      reportedFirstStatements = true;
+      onFirstStatements?.();
+    }
     const stack: unknown[] = statements;
     while (stack.length > 0) {
       const value = stack.pop();
@@ -499,8 +522,9 @@ export function collectWorkerDeployArtifactErrors(params: CliBootstrapCheckParam
       `Worker deploy artifact directory ${path.relative(rootDir, artifactDir)} is unreadable.`,
     );
   }
-  for (const entrypoint of entrypoints) {
+  for (const [entryIndex, entrypoint] of entrypoints.entries()) {
     const relativeEntrypoint = path.relative(rootDir, entrypoint) || entrypoint;
+    params.progress?.("worker-artifact-read", "start", entryIndex + 1);
     try {
       const stats = fsImpl.lstatSync(entrypoint);
       if (stats.isSymbolicLink() || !stats.isFile()) {
@@ -510,13 +534,17 @@ export function collectWorkerDeployArtifactErrors(params: CliBootstrapCheckParam
         relativeEntrypoint,
         source: fsImpl.readFileSync(entrypoint, "utf8"),
       });
+      params.progress?.("worker-artifact-read", "done", entryIndex + 1);
     } catch {
       return [`Worker deploy artifact ${relativeEntrypoint} is missing. Run pnpm build first.`];
     }
   }
-  for (const { relativeEntrypoint, source } of sources) {
+  for (const [sourceIndex, { relativeEntrypoint, source }] of sources.entries()) {
+    params.progress?.("worker-runtime-imports", "start", sourceIndex + 1);
     try {
-      for (const specifier of listRuntimeImportSpecifiers(source)) {
+      for (const specifier of listRuntimeImportSpecifiers(source, () =>
+        params.progress?.("worker-first-statements", "observed", sourceIndex + 1),
+      )) {
         if (
           isBuiltinSpecifier(specifier) ||
           specifier === "bun:ffi" ||
@@ -530,6 +558,7 @@ export function collectWorkerDeployArtifactErrors(params: CliBootstrapCheckParam
           `Worker deploy artifact ${relativeEntrypoint} retains runtime import "${specifier}" instead of bundling it.`,
         );
       }
+      params.progress?.("worker-runtime-imports", "done", sourceIndex + 1);
     } catch (error) {
       errors.push(
         `Worker deploy artifact ${relativeEntrypoint} is not parseable JavaScript: ${
@@ -545,11 +574,20 @@ export function collectWorkerDeployArtifactErrors(params: CliBootstrapCheckParam
  * Runs the CLI bootstrap import, chunk-budget, and worker deploy checks.
  */
 export function checkCliBootstrapExternalImports(params: CliBootstrapCheckParams = {}) {
+  const runPhase = (
+    phase: CliBootstrapProgressPhase,
+    collect: () => Array<string | LimitViolation>,
+  ) => {
+    params.progress?.(phase, "start");
+    const findings = collect();
+    params.progress?.(phase, "done");
+    return findings;
+  };
   const findings = [
-    ...collectCliBootstrapExternalImportErrors(params),
-    ...collectGatewayRunChunkBudgetErrors(params),
-    ...collectNativeHookRelayBundleErrors(params),
-    ...collectWorkerDeployArtifactErrors(params),
+    ...runPhase("cli-static", () => collectCliBootstrapExternalImportErrors(params)),
+    ...runPhase("gateway-run", () => collectGatewayRunChunkBudgetErrors(params)),
+    ...runPhase("native-hook-relay", () => collectNativeHookRelayBundleErrors(params)),
+    ...runPhase("worker-deploy", () => collectWorkerDeployArtifactErrors(params)),
   ];
   const errors = findings.filter((finding) => typeof finding === "string");
   const limitsFailed = reportLimitViolations(
@@ -567,10 +605,35 @@ export function checkCliBootstrapExternalImports(params: CliBootstrapCheckParams
 }
 
 if (isDirectRunUrl(process.argv[1], import.meta.url)) {
+  let progressLines = 0;
+  let progressLimitReported = false;
+  const progress: CliBootstrapProgress = (phase, state, artifactIndex) => {
+    // Bound interior detail, but never hide the fixed entry completion/failure markers.
+    if (phase !== "entry") {
+      if (progressLines >= 128) {
+        if (!progressLimitReported) {
+          progressLimitReported = true;
+          console.error("[cli-bootstrap] progress:limit");
+        }
+        return;
+      }
+      progressLines += 1;
+    }
+    console.error(
+      "[cli-bootstrap] " +
+        phase +
+        ":" +
+        state +
+        (artifactIndex === undefined ? "" : " artifact=" + artifactIndex),
+    );
+  };
   try {
-    checkCliBootstrapExternalImports({ requireNativeHookRelay: true });
+    progress("entry", "start");
+    checkCliBootstrapExternalImports({ requireNativeHookRelay: true, progress });
+    progress("entry", "done");
     console.log("CLI bootstrap import guard passed.");
   } catch {
+    progress("entry", "failed");
     process.exit(1);
   }
 }

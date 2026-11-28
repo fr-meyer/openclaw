@@ -321,6 +321,7 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
             cause: failures[0],
           });
         }
+        // SAFETY: The awaited callback assigns result; callback rejection is collected and thrown before return.
         return result as R;
       });
     })();

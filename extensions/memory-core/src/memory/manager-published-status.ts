@@ -131,6 +131,7 @@ export function collectPublishedMemoryStatus(
             (
               statusDb
                 ?.prepare(`SELECT COUNT(*) as c FROM ${MEMORY_EMBEDDING_CACHE_TABLE}`)
+                // SAFETY: This new statement selects COUNT(*) AS c with default numeric SQLite reads.
                 .get() as { c: number } | undefined
             )?.c ??
             0,

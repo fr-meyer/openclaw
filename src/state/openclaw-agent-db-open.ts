@@ -1,13 +1,20 @@
 import type { DatabaseSync } from "node:sqlite";
+import { sql } from "kysely";
 import { resolveStateDir } from "../config/paths.js";
 import { isGatewayExternallySupervised } from "../infra/gateway-supervision.js";
 import { registerNodeSqliteDisposeCallback } from "../infra/kysely-sync-cache-state.js";
-import { enableNodeSqliteKyselyStatementCache } from "../infra/kysely-sync.js";
+import {
+  enableNodeSqliteKyselyStatementCache,
+  executeSqliteQuerySync,
+  executeSqliteQueryTakeFirstSync,
+  getNodeSqliteKysely,
+} from "../infra/kysely-sync.js";
 import {
   openNodeSqliteDatabase,
   resolveExistingSqliteFileUri,
   supportsNodeSqliteExtensionLoading,
 } from "../infra/node-sqlite.js";
+import { setSqliteBusyTimeout } from "../infra/sqlite-busy-timeout.js";
 import { quarantineOrphanedSqliteSidecars } from "../infra/sqlite-files.js";
 import {
   isTerminalSqliteIntegrityError,
@@ -182,9 +189,19 @@ export function createOpenClawAgentDatabaseOpenSteps(
       db.enableLoadExtension(false);
       if (!openingRefusal.mainThread) {
         // Worker-owned incognito must never spill SQLite temporary content to disk.
-        db.exec("PRAGMA temp_store=MEMORY");
-        // sqlite-allow-raw -- Admit the memory-only policy before schema work can use temporary pages.
-        if (db.prepare("PRAGMA temp_store").get()?.temp_store !== 2) {
+        executeSqliteQuerySync(db, {
+          compile: () => sql`PRAGMA temp_store=MEMORY`.compile(getNodeSqliteKysely(db)),
+        });
+        // Admit the memory-only policy before schema work can use temporary pages.
+        const tempStore = executeSqliteQueryTakeFirstSync(db, {
+          compile: () => sql`PRAGMA temp_store`.compile(getNodeSqliteKysely(db)),
+        });
+        if (
+          !tempStore ||
+          typeof tempStore !== "object" ||
+          !("temp_store" in tempStore) ||
+          tempStore.temp_store !== 2
+        ) {
           throw new Error("Incognito actor requires memory-only SQLite temporary storage");
         }
       }
@@ -315,7 +332,9 @@ export function createOpenClawAgentDatabaseOpenSteps(
       enableNodeSqliteKyselyStatementCache(db);
       if (preparedLease) {
         // Worker TEMP policy precedes schema/session caches and any exposed connection.
-        db.exec("PRAGMA temp_store = FILE");
+        executeSqliteQuerySync(db, {
+          compile: () => sql`PRAGMA temp_store = FILE`.compile(getNodeSqliteKysely(db)),
+        });
       }
       finishPhase("open");
       // Eviction churn must avoid migration/convergence and registry busy waits.
@@ -331,7 +350,7 @@ export function createOpenClawAgentDatabaseOpenSteps(
       let reusedSchema = false;
       let walMaintenance: SqliteWalMaintenance;
       try {
-        db.exec(`PRAGMA busy_timeout = ${OPENCLAW_SQLITE_BUSY_TIMEOUT_MS};`);
+        setSqliteBusyTimeout(db, OPENCLAW_SQLITE_BUSY_TIMEOUT_MS);
         reusedSchema = adoptOpenClawAgentDatabaseSchema(
           validationDatabase,
           reuseAdmittedIntegrity,

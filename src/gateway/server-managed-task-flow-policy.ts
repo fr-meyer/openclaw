@@ -94,8 +94,9 @@ export function isClaimedManagedFlowNativeRun(
     typeof run.childSessionKey !== "string" ||
     typeof run.runId !== "string" ||
     typeof run.id !== "string" ||
+    typeof run.generation !== "number" ||
     !Number.isSafeInteger(run.generation) ||
-    (run.generation as number) < 1
+    run.generation < 1
   ) {
     return false;
   }

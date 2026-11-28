@@ -514,12 +514,36 @@ export class OpenAiBatchRecovery {
         const records = rows
           .filter((line) => line.trim())
           .map((line) => {
-            const parsed: unknown = JSON.parse(line);
-            if (!asOptionalRecord(parsed) || Array.isArray(parsed))
+            const parsed = asOptionalRecord(JSON.parse(line));
+            if (!parsed || Array.isArray(parsed)) {
               throw new Error("malformed batch error record");
-            return parsed as ProviderBatchOutputLine;
+            }
+            return parsed;
           });
-        detail = extractBatchErrorMessage(records);
+        const diagnosticRecords = records.map((record) => {
+          const error = asOptionalRecord(record.error);
+          const response = asOptionalRecord(record.response);
+          const body = asOptionalRecord(response?.body);
+          const nestedError = asOptionalRecord(body?.error);
+          return {
+            error: { message: typeof error?.message === "string" ? error.message : undefined },
+            response: {
+              message: typeof response?.message === "string" ? response.message : undefined,
+              body:
+                typeof response?.body === "string"
+                  ? response.body
+                  : {
+                      error: {
+                        message:
+                          typeof nestedError?.message === "string"
+                            ? nestedError.message
+                            : undefined,
+                      },
+                    },
+            },
+          };
+        });
+        detail = extractBatchErrorMessage(diagnosticRecords);
         const errorIds = new Set<string>();
         for (const record of records) {
           const line = asOptionalRecord(record);

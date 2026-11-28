@@ -31,6 +31,57 @@ export type BoundedOwnerBinding = {
   assertFinancialAdmissionCurrent(): void;
   assertSelectedIndexRecoveryPrepared(): void;
 };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isAllocation(value: unknown): value is BoundedAllocation {
+  return (
+    isRecord(value) &&
+    typeof value.calls === "number" &&
+    typeof value.mass === "number" &&
+    typeof value.money === "number"
+  );
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((pin) => typeof pin === "string");
+}
+
+function isBoundedOwnerBinding(value: unknown): value is BoundedOwnerBinding {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const policy = value.policy;
+  const allocation = value.allocation;
+  if (!isRecord(policy) || !isRecord(allocation)) {
+    return false;
+  }
+  const provider = policy.provider;
+  const cohort = policy.cohort;
+  return (
+    typeof value.agentId === "string" &&
+    typeof value.sessionKey === "string" &&
+    typeof value.sessionId === "string" &&
+    typeof value.policySha256 === "string" &&
+    typeof value.assertFinancialAdmissionCurrent === "function" &&
+    typeof value.assertSelectedIndexRecoveryPrepared === "function" &&
+    typeof policy.agent === "string" &&
+    typeof policy.operation === "string" &&
+    typeof policy.expiresAt === "number" &&
+    typeof policy.moneyPerUnit === "number" &&
+    isRecord(provider) &&
+    typeof provider.id === "string" &&
+    typeof provider.model === "string" &&
+    typeof provider.key === "string" &&
+    isRecord(cohort) &&
+    isStringRecord(cohort.forward) &&
+    isStringRecord(cohort.recovery) &&
+    isAllocation(allocation.forward) &&
+    isAllocation(allocation.recovery)
+  );
+}
+
 export function createBoundedMemoryOwnerTool(
   ctx: OpenClawPluginToolContext<2>,
 ): AnyAgentTool | null {
@@ -43,14 +94,8 @@ export function createBoundedMemoryOwnerTool(
   ) {
     return null;
   }
-  const binding = ctx.toolBindings?.["memory-core.bounded-owner"] as
-    | BoundedOwnerBinding
-    | undefined;
-  if (
-    !binding ||
-    typeof binding.assertFinancialAdmissionCurrent !== "function" ||
-    typeof binding.assertSelectedIndexRecoveryPrepared !== "function"
-  ) {
+  const binding = ctx.toolBindings?.["memory-core.bounded-owner"];
+  if (!isBoundedOwnerBinding(binding)) {
     return null;
   }
   const cfg = ctx.getRuntimeConfig?.() ?? ctx.runtimeConfig ?? ctx.config;
@@ -93,7 +138,7 @@ export function createBoundedMemoryOwnerTool(
     },
     async execute(_callId, raw, signal) {
       assertCurrent();
-      if ((raw as { action?: unknown }).action !== "forward") {
+      if (!isRecord(raw) || raw.action !== "forward") {
         throw new Error("Unsupported bounded action");
       }
       validateBoundedMemoryPolicy(policy);

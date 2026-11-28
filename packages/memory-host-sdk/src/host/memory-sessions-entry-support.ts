@@ -405,6 +405,7 @@ function readSessionTranscriptClassificationStore(
       }
       return {};
     }
+    // SAFETY: The root is a non-array JSON object; entry fields are unknown and string-checked.
     return parsed as Record<string, SessionTranscriptStoreEntry>;
   } catch {
     if (strictRead) {
@@ -545,6 +546,7 @@ export function sanitizeSessionText(text: string, role: "user" | "assistant"): s
 }
 
 export function isRecalledMemoryMessage(message: { provenance?: unknown }): boolean {
+  // SAFETY: Optional provenance fields are unknown and compared only with literal markers.
   const provenance = message.provenance as { kind?: unknown; sourceTool?: unknown } | undefined;
   return (
     provenance?.kind === "internal_system" &&
@@ -560,7 +562,7 @@ export function resolveSessionEntryParseYieldLines(opts: BuildSessionEntryOption
   return SESSION_ENTRY_PARSE_YIELD_LINES;
 }
 
-function sqliteSessionFileState(
+export function sqliteSessionFileState(
   absPath: string,
   identity: { agentId: string; sessionId: string },
   stats: ReturnType<typeof readTranscriptStatsSync>,

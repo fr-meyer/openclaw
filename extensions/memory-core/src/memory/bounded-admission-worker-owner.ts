@@ -48,6 +48,7 @@ export async function openBoundedMemoryWorkerOwner(
       options,
       async (_identity, assertAdmission) =>
         worker.run(
+          // SAFETY: Private execute pairs each literal operation K with its indexed operation input.
           (scope) => scope.execute({ type, input } as Parameters<typeof scope.execute>[0]),
           () => {
             assertInvocationCurrent();
@@ -57,6 +58,7 @@ export async function openBoundedMemoryWorkerOwner(
       true,
     );
     if (type !== "required") {
+      // SAFETY: Non-required worker dispatches return readReceipt(); required is excluded before this cast.
       receipt = output as Receipt;
     }
     return output;
@@ -126,6 +128,7 @@ export async function discoverBoundedMemoryRequirement(agentId: string): Promise
       return (await worker.execute(
         { type: "required", input: { agentId } },
         () => undefined,
+        // SAFETY: The required worker operation returns the readBoundedMemoryRequirement boolean.
       )) as boolean;
     } finally {
       await worker.close();
